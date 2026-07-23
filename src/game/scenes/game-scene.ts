@@ -11,31 +11,56 @@ import Phaser from 'phaser';
 import type { Platform } from '../../platform/platform';
 import type { RawInputProvider } from '../../core/input/raw-input';
 import type { PointerSink } from '../../platform/raw-input-provider';
-import { InputAbstraction } from '../../core/input/input-abstraction';
+import { InputAbstraction, type InputState } from '../../core/input/input-abstraction';
 import {
   webInputConfig,
   wechatInputConfig,
   characterConfig,
+  damageConfig,
   inputConfig,
   STEP_MS,
   level1_1,
 } from '../../core/config';
 import { CharacterController } from '../../core/character/character-controller';
+import { DamageStateMachine } from '../../core/damage/damage-state-machine';
 import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { drawLibaoPlaceholder } from '../../ui/placeholder';
+import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
 import { runStepSim } from '../scene-sync';
+import { resolveHazardContact } from '../damage-resolution';
+import { PlaceholderHazard } from '../debug/placeholder-hazard';
 import { FollowCamera } from '../camera/follow-camera';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
 import { createPlatform } from '../../platform';
 
 const PLAYER_W = 24;
 const PLAYER_H = 34;
+
+// 受伤 juice 时长（hud-spec §5.1 / §5.3，来自规格、非命数/无敌时长/缩放，允许字面量）。
+const HIT_FLASH_MS = 150; // 受击闪红（§5.1）
+const RESPAWN_FADE_MS = 200; // 重生淡入（§5.3）
+
+/**
+ * 中性输入（全 false）：击退 hitstun 期间替换玩家输入，使 controller 不消费方向/跳跃，
+ * 角色仅由物理积分击退（R3，integration-plan §5.3）。字段与 InputState 完全一致。
+ */
+const NEUTRAL_INPUT: InputState = {
+  left: false,
+  right: false,
+  jumpPressed: false,
+  jumpHeld: false,
+  jumpReleased: false,
+  actionPressed: false,
+  actionHeld: false,
+  actionReleased: false,
+  jumpPressedAt: 0,
+};
 
 export class GameScene extends Phaser.Scene {
   private platform!: Platform;
@@ -54,6 +79,34 @@ export class GameScene extends Phaser.Scene {
   private lastGrounded = true;
   /** 关卡已完成标记，避免重复发 ON_LEVEL_COMPLETE。 */
   private levelComplete = false;
+
+  // ── C3 受伤管线 ──
+  /** 受伤状态机（FULL/SMALL/DEAD + 无敌帧 + sizeScale）。 */
+  private damage!: DamageStateMachine;
+  /** 击退失控计时（ms）：>0 期间跳过 consume，仅物理积分击退（R3）。 */
+  private hitstunTimer = 0;
+  /** C3 占位伤害源（静态刺栗，仅验证管线，非 MVP 敌）。 */
+  private hazard!: PlaceholderHazard;
+  /** 检查点（出生点），重生落点。 */
+  private spawn!: { x: number; y: number };
+  /** 占位 hazard 渲染 Graphics（世界坐标，随相机滚动）。 */
+  private hazardGfx?: Phaser.GameObjects.Graphics;
+
+  // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
+  /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
+  private hud!: Hud;
+  /** 受击闪红覆盖层（世界坐标跟随 body，depth = 栗宝+1）。 */
+  private flashGfx?: Phaser.GameObjects.Graphics;
+  /** 受击闪红计时（ms，hud-spec §5.1）：ON_HURT 时置 150。 */
+  private hitFlashTimer = 0;
+  /** 重生淡入计时（ms，hud-spec §5.3）：ON_RESPAWN 时置 200，期间压制无敌闪烁。 */
+  private respawnFadeTimer = 0;
+  /** Game Over 冻结标志（update 早退，暂停仿真）。 */
+  private gameOver = false;
+  /** ON_RESTART 订阅 off（场景 shutdown 时解绑）。 */
+  private offRestart?: () => void;
+  /** 微信原生触摸重试 handler（restartGame 清理，避免重复监听）。 */
+  private restartTouchHandler?: () => void;
 
   constructor() {
     super('Game');
@@ -106,6 +159,7 @@ export class GameScene extends Phaser.Scene {
 
     // 出生点初始化：body 左上角贴地面顶（spawn.y 已为脚底贴地），grounded=true、sizeScale=1，无开场掉穿
     const spawn = this.runtime.spawn;
+    this.spawn = { x: spawn.x, y: spawn.y };
     this.body = { x: spawn.x, y: spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
     this.controller = new CharacterController(characterConfig, {
       x: spawn.x,
@@ -113,16 +167,59 @@ export class GameScene extends Phaser.Scene {
       grounded: true,
     });
 
+    // C3：受伤状态机 + 击退计时（initialLives 取自 damageConfig，Economy/06 接入后可覆盖）
+    this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
+    this.hitstunTimer = 0;
+
     // 占位精灵（Graphics 运行时绘制，不依赖 PNG —— 见 art/placeholder-spec.md）
     this.sprite = this.add.graphics();
+    this.sprite.setDepth(10); // 高于世界层（drawLevel 其后 add，hud-spec §8.3），避免被地形遮挡
     this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
     this.drawSprite();
+
+    // ── HUD + 受伤 juice 接线（hud-spec §8.4 / 实现合同）──
+    // 受击闪红覆盖层（世界坐标跟随 body，depth = 栗宝+1，不进 HUD 层）。
+    this.flashGfx = this.add.graphics().setDepth(11);
+    // Hud 用 getter 读最新 damage：重生/重启会 new DamageStateMachine，避免读到过期实例（关键陷阱）。
+    this.hud = new Hud(this, this.bus, () => this.damage, damageConfig.initialLives);
+    this.hud.redraw(); // 初始绘制（3 实心心形 + FULL 形态）
+
+    // ON_RESTART：干净 reset（场景内重开，非 scene.restart，状态更可控）。
+    this.offRestart = this.bus.on(ON_RESTART, () => this.restartGame());
+
+    // 受伤 juice 计时（game-scene 自管，与 Hud 并存）：受击闪红 / 重生淡入。
+    this.bus.on(ON_HURT, () => { this.hitFlashTimer = HIT_FLASH_MS; });
+    this.bus.on(ON_RESPAWN, () => { this.respawnFadeTimer = RESPAWN_FADE_MS; });
+
+    // Game Over：冻结 + 覆盖层 + 跨端重试触发（hud-spec §6.2）。
+    this.bus.on(ON_GAME_OVER, () => this.onGameOver());
+
+    // 场景 shutdown（若未来 scene.restart）清理订阅与 HUD（hud-spec §8.1，可选但稳妥）。
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.offRestart?.();
+      this.offRestart = undefined;
+      this.hud.destroy();
+    });
 
     // 真实关卡渲染（tile 世界坐标，相机滚动时自动偏移）
     // levelW/levelH 提前计算：供 drawLevel 诊断日志与相机跟随共用（纯顺序上移，无逻辑变更）。
     const levelW = this.runtime.data.width * this.runtime.data.tileSize;
     const levelH = this.runtime.data.height * this.runtime.data.tileSize;
     this.drawLevel();
+
+    // C3 占位伤害源：放在关卡中段、踩在地面 tile 顶，供「碰敌受伤 → 击退 → 重生/GameOver」管线验证（非 MVP 敌）。
+    const hzW = 24;
+    const hzH = 24;
+    const hzX = levelW * 0.5 - hzW / 2;
+    const hzCol = Math.floor((levelW * 0.5) / this.world.tileSize);
+    let groundRow = this.runtime.data.height - 1;
+    for (let r = 0; r < this.runtime.data.height; r++) {
+      if (this.world.isSolidTile(hzCol, r)) { groundRow = r; break; }
+    }
+    const hzY = groundRow * this.world.tileSize - hzH; // 坐在地面顶
+    this.hazard = new PlaceholderHazard(hzX, hzY, hzW, hzH);
+    this.hazardGfx = this.add.graphics();
+    this.hazard.draw(this.hazardGfx);
 
     // 输入布局：结构性检测 input 是否为手势提供方（实现 PointerSink）→ gesture；否则 virtual 四钮。
     // 微信 ?buttons=1 / 配置 layout:"virtual" 回退四钮；gesture 为默认（见 click-to-move-design.md）。
@@ -155,12 +252,34 @@ export class GameScene extends Phaser.Scene {
       this.bus.emit(ON_PAUSE, { source: 'gesture-action' });
     }
 
-    // C1 同步协议：controller.consume 输出真实驱动 body（含水平/跳跃/二段跳/coyote/buffer/短跳）
+    // ── C3 同步协议补充：每固定步 tick 受伤状态机（无敌帧衰减）──
+    this.damage.update(dt * 1000);
+
+    // sizeScale → controller.state + body.h（+y 下推保持脚底 y+h 不变，避免瞬沉）
+    this.controller.state.sizeScale = this.damage.sizeScale;
+    const newH = PLAYER_H * this.damage.sizeScale;
+    if (newH !== this.body.h) {
+      const oldH = this.body.h;
+      this.body.y += oldH - newH;
+      this.body.h = newH;
+    }
+
+    // ── C3 hitstun：击退期间吞掉方向输入 + 跳过 consume（R3，integration-plan §5.3）──
+    let effectiveInput: InputState = input;
+    const skipConsume = this.hitstunTimer > 0;
+    if (skipConsume) {
+      this.hitstunTimer -= dt * 1000;
+      effectiveInput = NEUTRAL_INPUT;
+    }
+
+    // C1 同步协议：controller.consume 输出真实驱动 body（含水平/跳跃/二段跳/coyote/buffer/短跳）；
+    // hitstun 期间 skipConsume → 仅 stepBody 积分击退。
     const res = runStepSim(
       { body: this.body, controller: this.controller, world: this.world },
-      input,
+      effectiveInput,
       this.lastGrounded,
       dt,
+      skipConsume,
     );
 
     // 落地边沿 → 发 ON_LAND（juice/音频预留，C2）
@@ -168,10 +287,33 @@ export class GameScene extends Phaser.Scene {
 
     this.lastGrounded = res.grounded;
 
+    // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
+    this.resolveHazards();
+
     // C5 终点检测：body AABB 与凯旋之门 AABB 重叠 → ON_LEVEL_COMPLETE（无敌人也可达）
     this.resolveGoal();
 
     this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
+  }
+
+  /**
+   * C3 伤害接触解算（委托给共享纯函数，单一真实实现 → 集成测试即证据）。
+   * 命中 → 根据状态转换发 ON_HURT/ON_DEATH/ON_RESPAWN/ON_GAME_OVER，施加击退，设 hitstun；
+   * 重生 → 用返回的新 controller 替换（spawn 处满血复位）。
+   */
+  private resolveHazards(): void {
+    const r = resolveHazardContact({
+      damage: this.damage,
+      hazard: this.hazard,
+      body: this.body,
+      bus: this.bus,
+      cfg: damageConfig,
+      spawn: this.spawn,
+      playerW: PLAYER_W,
+      playerH: PLAYER_H,
+    });
+    if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
+    if (r.controller) this.controller = r.controller;
   }
 
   /** 每固定步检测玩家 AABB 与凯旋之门 AABB 重叠，命中发 ON_LEVEL_COMPLETE（仅一次）。 */
@@ -185,6 +327,48 @@ export class GameScene extends Phaser.Scene {
       this.levelComplete = true;
       this.bus.emit(ON_LEVEL_COMPLETE, { levelId: this.runtime.data.id });
     }
+  }
+
+  /**
+   * ON_GAME_OVER 处理（hud-spec §6.2）：冻结 + 显示覆盖层 + 注册跨端重试触发。
+   * 仿真已在 update 顶部因 gameOver 标志冻结；此处只负责覆盖层与输入。
+   */
+  private onGameOver(): void {
+    this.gameOver = true;
+    this.hud.showOverlay();
+    // web：一次性点击覆盖层任意处 → 发 ON_RESTART（热区=全屏，≥48×48，§9.2）。
+    this.input.once('pointerdown', () => this.bus.emit(ON_RESTART));
+    // wechat：原生触摸（typeof wx 守卫）；一次即可，restartGame 会清理监听。
+    if (typeof wx !== 'undefined' && wx.onTouchStart) {
+      const h = () => { this.bus.emit(ON_RESTART); };
+      wx.onTouchStart(h);
+      this.restartTouchHandler = h;
+    }
+  }
+
+  /**
+   * ON_RESTART 处理（hud-spec §6.2）：干净 reset（重建 damage / body / controller，隐藏覆盖层，恢复仿真）。
+   * 不调用 scene.restart，状态更可控（ADR：ON_RESTART 方案）。
+   */
+  private restartGame(): void {
+    this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
+    this.body = { x: this.spawn.x, y: this.spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
+    this.controller = new CharacterController(characterConfig, { x: this.spawn.x, y: this.spawn.y, grounded: true });
+    this.lastGrounded = true;
+    this.levelComplete = false;
+    this.gameOver = false;
+    this.hitstunTimer = 0;
+    this.hitFlashTimer = 0;
+    this.respawnFadeTimer = 0;
+    this.sprite.setAlpha(1);
+    this.flashGfx?.clear();
+    // 清理微信原生触摸监听（避免重复触发 ON_RESTART）。
+    if (this.restartTouchHandler && typeof wx !== 'undefined' && wx.offTouchStart) {
+      wx.offTouchStart(this.restartTouchHandler);
+      this.restartTouchHandler = undefined;
+    }
+    this.hud.hideOverlay();
+    this.hud.redraw();
   }
 
   /** 真实关卡渲染：实心 tile / 单向平台 / 凯旋之门，全部世界坐标（相机偏移）。 */
@@ -270,7 +454,10 @@ export class GameScene extends Phaser.Scene {
     return typeof (this.platform.input as { pointerDown?: unknown }).pointerDown === 'function';
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
+    // Game Over：冻结仿真，仅保留已渲染画面与覆盖层；点击重试由 onGameOver 注册的触发器处理（hud-spec §6.2）。
+    if (this.gameOver) return;
+
     if (this.loop) this.loop.update(delta);
     // C5 相机跟随：用玩家中心驱动 scroll（微信 CANVAS/NONE 下走内部 transform，非 CSS）
     if (this.camera) {
@@ -283,6 +470,34 @@ export class GameScene extends Phaser.Scene {
     const sx = (this.body.x + this.body.w / 2 - cam.scrollX) * cam.zoom;
     const sy = (this.body.y + this.body.h / 2 - cam.scrollY) * cam.zoom;
     this.platform.setPlayerScreenPos?.(sx, sy);
+
+    // ── 受伤 juice 驱动（hud-spec §5.1–5.3，建议 loop 后）──
+    let alpha = 1;
+    if (this.respawnFadeTimer > 0) {
+      // 重生淡入（200ms，0→1）；期间压制无敌闪烁（§5.3）。
+      this.respawnFadeTimer -= delta;
+      const t = Math.max(0, this.respawnFadeTimer) / RESPAWN_FADE_MS;
+      alpha = 1 - t;
+    } else if (this.damage.invincibleTimer > 0) {
+      // 无敌闪烁 ~10Hz（明 50ms / 暗 50ms），永不彻底消失（§5.2，光敏安全）。
+      alpha = Math.floor(time / 50) % 2 === 0 ? 1.0 : 0.4;
+    }
+    this.sprite.setAlpha(alpha);
+
+    // 受击闪红覆盖（150ms，跟随 body 世界坐标，depth 11，§5.1）。
+    const fg = this.flashGfx;
+    if (fg) {
+      if (this.hitFlashTimer > 0) {
+        this.hitFlashTimer -= delta;
+        const a = 0.85 * Math.max(0, this.hitFlashTimer) / HIT_FLASH_MS;
+        fg.clear();
+        fg.fillStyle(0xe8483b, a);
+        fg.fillRect(this.body.x, this.body.y, this.body.w, this.body.h);
+      } else {
+        fg.clear();
+      }
+    }
+
     this.drawSprite();
   }
 }

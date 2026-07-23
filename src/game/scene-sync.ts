@@ -37,12 +37,15 @@ export interface StepSimResult {
 /**
  * 单固定步同步协议。不改任何 core 逻辑，仅做场景层桥接。
  * @param lastGrounded 上一帧 stepBody 解算出的着地状态（首帧传 true）。
+ * @param skipConsume 击退 hitstun 期间为 true：跳过 controller.consume，仅做 in/out 同步与
+ *   stepBody 积分，使击退冲量不被摩擦吃掉（R3，见 integration-plan §5.3）。默认 false 向后兼容。
  */
 export function runStepSim(
   ctx: StepSimContext,
   input: InputState,
   lastGrounded: boolean,
   dt: number,
+  skipConsume = false,
 ): StepSimResult {
   const { body, controller, world } = ctx;
   const s = controller.state;
@@ -54,7 +57,8 @@ export function runStepSim(
   s.grounded = lastGrounded;
 
   // —— consume：控制器算 vx/vy（跳跃/二段跳/coyote/buffer/短跳）——
-  controller.consume(input, dt);
+  //   hitstun 期间跳过：body 仅由 stepBody 积分击退（重力+阻尼+碰撞），击退干净可见。
+  if (!skipConsume) controller.consume(input, dt);
 
   // —— out（速度回灌 body）：controller 的水平/跳跃输出真实驱动物理体 ——
   body.vx = s.vx;

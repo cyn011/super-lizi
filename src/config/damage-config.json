@@ -1,5 +1,9 @@
 {
   "invincibleMs": 1500,
   "fullScale": 1,
-  "smallScale": 0.6
+  "smallScale": 0.6,
+  "knockbackSpeed": 200,
+  "knockbackUp": 250,
+  "hitstunMs": 250,
+  "initialLives": 3
 }

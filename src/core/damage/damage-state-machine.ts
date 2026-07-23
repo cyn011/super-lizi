@@ -16,6 +16,14 @@ export interface DamageConfig {
   invincibleMs: number;
   fullScale: number;
   smallScale: number;
+  /** 命中后水平击退速度（px/s，远离源）。 */
+  knockbackSpeed: number;
+  /** 命中后向上冲量（px/s，取负为向上）。 */
+  knockbackUp: number;
+  /** 击退后短暂失控时长（ms）：期间跳过 controller.consume，仅物理积分击退（R3）。 */
+  hitstunMs: number;
+  /** 初始命数（由场景取用，经 Economy/06 接入后可被 economyConfig 覆盖）。 */
+  initialLives: number;
 }
 
 export type DamageState = 'FULL' | 'SMALL' | 'DEAD';

@@ -66,4 +66,21 @@ describe('E2.S4 受伤状态机 (GDD 07)', () => {
     expect(dsm.invincibleTimer).toBe(0);
     expect(dsm.isGameOver).toBe(false);
   });
+
+  it('hitstun/无敌帧窗口内（invincibleTimer>0）再次 hit 无效：状态与命数不变', () => {
+    // 受伤进入 SMALL 即进入无敌帧（该窗口与击退 hitstun 重叠），
+    // 重复接触（占位 hazard 持续重叠）必须被忽略，不能二次触发。
+    const dsm = new DamageStateMachine(3, damageConfig);
+    dsm.hit(); // FULL→SMALL，进入无敌帧
+    expect(dsm.state).toBe('SMALL');
+    expect(dsm.invincibleTimer).toBeGreaterThan(0);
+    const livesBefore = dsm.lives;
+    const t = dsm.invincibleTimer;
+
+    // 窗口内重复受击：忽略
+    dsm.hit();
+    expect(dsm.state).toBe('SMALL'); // 仍是 SMALL
+    expect(dsm.lives).toBe(livesBefore); // 命数不减
+    expect(dsm.invincibleTimer).toBe(t); // 无敌帧未刷新/未归零
+  });
 });
