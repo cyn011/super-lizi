@@ -124,6 +124,8 @@ export class GameScene extends Phaser.Scene {
   private economy!: EconomyController;
   /** S04-4 economy 事件订阅 off 集合（shutdown 解绑）。 */
   private economyOffs: Array<() => void> = [];
+  /** S04-5：HUD 已同步的连击倍率；用于检测连击窗超时（economy.update 内部清零）后仅发一次 ON_SCORE_CHANGED。 */
+  private prevComboMult = 1;
 
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
@@ -525,6 +527,7 @@ export class GameScene extends Phaser.Scene {
    */
   private emitScoreChange(): void {
     const s = this.economy.state;
+    this.prevComboMult = s.comboMult; // 同步追踪，避免 update 比较误判（见下）
     this.bus.emit(ON_SCORE_CHANGED, {
       score: s.score,
       coins: s.coins,
@@ -631,8 +634,16 @@ export class GameScene extends Phaser.Scene {
     // Game Over：冻结仿真，仅保留已渲染画面与覆盖层；点击重试由 onGameOver 注册的触发器处理（hud-spec §6.2）。
     if (this.gameOver) return;
 
-    // S04-4 连击窗口倒计时（帧 delta）；超时由 EconomyController 内部清零连击。
+    // S04-4 连击窗口倒计时（帧 delta）；超时由 EconomyController 内部清零连击（comboMult→1）。
     this.economy.update(delta);
+
+    // S04-5：连击窗超时（economy.update 内部清零）需反映到 HUD，否则 combo 指示会残留。
+    // 仅在 mult 变化的那一帧发 ON_SCORE_CHANGED（事件触发式 redraw，非每帧重绘）；
+    // prevComboMult 已随 emitScoreChange 同步，踩怪/币/死亡/重启的 emit 不会误触发此处。
+    if (this.economy.state.comboMult !== this.prevComboMult) {
+      this.prevComboMult = this.economy.state.comboMult;
+      this.emitScoreChange();
+    }
 
     if (this.loop) this.loop.update(delta);
     // C5 相机跟随：用玩家中心驱动 scroll（微信 CANVAS/NONE 下走内部 transform，非 CSS）

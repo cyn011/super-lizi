@@ -1,8 +1,9 @@
 /**
- * ui/hud — 命数 HUD + 形态指示 + Game Over 覆盖层（design/ux/hud-spec.md）。
+ * ui/hud — 命数 HUD + 形态指示 + 经济字段（分数/金币/连击）+ Game Over 覆盖层（design/ux/hud-spec.md）。
  *
  * 架构定位：ui 层，允许 Phaser；**绝不引入平台 API 到 core**（红线 §6.5 / §8.5）。
  * 颜色全部引用美术圣经 §3 色板；中文文本用系统字体 'sans-serif'（禁用位图字体，ADR-004）。
+ * 经济字段格式化走纯函数 src/ui/hud-economy.ts（零 Phaser，可单测）；本文件负责 Graphics 矢量图标 + Text 绘制。
  *
  * 关键陷阱（hud-spec §8.4 / 实现合同）：
  *   Hud **不持有** DamageStateMachine 实例，而是通过注入的 getDamage() getter 读取「最新」实例。
@@ -22,6 +23,12 @@ import {
 } from '../core/events/event-bus';
 import type { DamageStateMachine, DamageState } from '../core/damage/damage-state-machine';
 import { computeHeartSlots } from './hud-hearts';
+import {
+  formatScore,
+  formatCoins,
+  formatCombo,
+  shouldShowCombo,
+} from './hud-economy';
 
 // ---- 颜色（美术圣经 §3 / placeholder-spec §0，禁止硬编码语义外的色）----
 const COLOR_HEART_FULL = 0xf26d8b; // 生命粉红 #F26D8B（与警示红解耦，§9.1）
@@ -37,6 +44,18 @@ const HEART_X0 = 8;
 const HEART_Y0 = 8;
 const FORM_X = 72; // 心形右侧，间隔 8px（slot2 末 64 + 8）
 const FORM_Y = 8;
+
+// ---- 经济字段（S04-5，hud-spec 未覆盖 / 08-ui-hud §3 中上分数金币）----
+// 布局：顶部右侧（与左上心形+形态镜像，margin 8，512×288 坐标系）。
+const COLOR_COIN = 0xf2c94c; // 经济金（与 coin-view.ts 同色，双编码：形状+色，色盲安全）
+const COLOR_COMBO_TEXT = '#F2994A'; // 警示橙（连击文本，醒目，区别于分数石灰白/金币金）
+const ECON_MARGIN = 8; // 距右边距（与心形左 margin 对称）
+const ECON_Y = 8; // 与心形同行
+const ECON_GAP = 8; // 分数 ↔ 金币组 间距
+const SCORE_FONT_SIZE = '14px'; // 中文 ≥14px 等效（accessibility §9.2）
+const COIN_ICON_SIZE = 12; // 金币图标 ~12×12（参考 coin-view 16×16 缩版）
+const COIN_TEXT_GAP = 3; // 金币图标 ↔ 数字 间距
+const ECON_LINE_H = 18; // 连击行相对分数行下移（font 14 + 间距）
 
 // ---- Game Over 覆盖层（hud-spec §6）----
 const LOGICAL_W = 512;
@@ -54,12 +73,12 @@ export class Hud {
   private readonly getDamage: () => DamageStateMachine;
   private readonly initialLives: number;
 
-  // ── S04-4 经济字段预留（S04-5 才绘制 HUD 分数/金币/连击）──
-  /** 当前分数（来自 ON_SCORE_CHANGED，仅存，不绘制）。 */
+  // ── S04-4 经济字段（S04-5 绘制 HUD 分数/金币/连击）──
+  /** 当前分数（来自 ON_SCORE_CHANGED，setScore 写字段并触发 redraw 绘制）。 */
   private score = 0;
-  /** 当前金币数（仅存，不绘制）。 */
+  /** 当前金币数（setCoins 写字段并触发 redraw 绘制）。 */
   private coins = 0;
-  /** 当前连击倍率（仅存，不绘制）。 */
+  /** 当前连击倍率（setCombo 写字段并触发 redraw；comboMult>1 时才显示）。 */
   private comboMult = 1;
 
   /** 心形 + 形态图标 Graphics（固定相机层，depth 1000）。 */
@@ -68,6 +87,11 @@ export class Hud {
   private overlay?: Phaser.GameObjects.Rectangle;
   private titleText?: Phaser.GameObjects.Text;
   private hintText?: Phaser.GameObjects.Text;
+
+  /** 经济文本对象（系统字体 'sans-serif'，固定相机层 depth 1000，与 gfx 对齐）。 */
+  private scoreText!: Phaser.GameObjects.Text; // 分数「分数 N」（右对齐）
+  private coinText!: Phaser.GameObjects.Text; // 金币「×N」（右对齐，位金币图标右侧）
+  private comboText!: Phaser.GameObjects.Text; // 连击「xN」（仅 comboMult>1 显示，右对齐，分数下方）
 
   /** bus.on 返回的 off 函数集合，destroy 时统一解绑（hud-spec §8.1）。 */
   private readonly offs: Array<() => void> = [];
@@ -94,6 +118,40 @@ export class Hud {
     if (this.gfx) return; // 幂等保护
     this.gfx = this.scene.add.graphics().setScrollFactor(0).setDepth(1000);
 
+    // 经济文本（系统字体，固定相机层 depth 1000，与 gfx 对齐）：分数 / 金币 / 连击。
+    // 禁用位图字体（ADR-004）：fontFamily 取运行时系统 sans-serif；中文 ≥14px 等效 + 高对比描边。
+    this.scoreText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: TEXT_FONT,
+        fontSize: SCORE_FONT_SIZE,
+        color: COLOR_TEXT,
+        stroke: COLOR_TEXT_STROKE,
+        strokeThickness: 2,
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.coinText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: TEXT_FONT,
+        fontSize: SCORE_FONT_SIZE,
+        color: COLOR_TEXT,
+        stroke: COLOR_TEXT_STROKE,
+        strokeThickness: 2,
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.comboText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: TEXT_FONT,
+        fontSize: SCORE_FONT_SIZE,
+        color: COLOR_COMBO_TEXT,
+        stroke: COLOR_TEXT_STROKE,
+        strokeThickness: 2,
+      })
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setVisible(false); // comboMult===1 默认隐藏
+
     // 重同步 + 瞬态：每个事件回调都先读最新 damage（getter），再叠加瞬态（§4）。
     this.offs.push(this.bus.on(ON_HURT, () => this.redraw())); // form 切 SMALL
     this.offs.push(this.bus.on(ON_DEATH, () => this.redraw())); // 心形出现空心槽
@@ -102,8 +160,17 @@ export class Hud {
   }
 
   /**
-   * 重绘 HUD（心形 + 形态图标）。仅在事件/初始时调用（开销低，见 hud-spec §8.3）。
+   * 重绘 HUD（心形 + 形态图标 + 经济字段）。仅在事件/初始时调用（开销低，见 hud-spec §8.3）。
    * 形状区分（可访问性 §7）：满=实心填充，空=空心描边轮廓——不靠颜色。
+   *
+   * 布局（512×288 逻辑坐标系，margin 8；hud-spec §2 扩展经济字段到顶部右侧）：
+   * ```
+   * (0,0)┌───────────────────────────────────────────────┐(512,0)
+   *      │ ♥ ♥ ♥   🌰       分数 1234 ×12   (左上命数/形态)│(右上经济，右对齐 x=504)
+   *      │ (8,8)  (72,8)              x2    (连击，mult>1 才显示，分数下一行)│
+   *      └───────────────────────────────────────────────┘
+   * ```
+   * 经济文本/图标固定相机层（scrollFactor 0, depth 1000），不与心形+形态（同层左上）重叠。
    */
   redraw(): void {
     const damage = this.getDamage();
@@ -115,24 +182,29 @@ export class Hud {
       this.drawHeart(g, x, HEART_Y0, i < slots.filled);
     }
     this.drawForm(g, damage.state);
+    // S04-5：经济字段（分数/金币/连击）绘制在 gfx(金币图标) + Text(数字)，事件触发式重绘。
+    this.drawEconomy();
   }
 
   /**
-   * S04-4 经济预留接口：写入当前分数（来自 ON_SCORE_CHANGED）。
-   * 本 Story 仅存字段，屏幕分数绘制留 S04-5。ui 不持有游戏状态，只读事件注入值。
+   * S04-5：写入当前分数（来自 ON_SCORE_CHANGED）并触发 redraw 绘制。
+   * ui 不持有游戏状态，只读事件注入值（架构铁律）。事件触发式重绘，非每帧。
    */
   setScore(score: number): void {
     this.score = score;
+    this.redraw();
   }
 
-  /** S04-4 经济预留接口：写入当前金币数（仅存，S04-5 绘制）。 */
+  /** S04-5：写入当前金币数并触发 redraw 绘制（金币图标 + ×N）。 */
   setCoins(coins: number): void {
     this.coins = coins;
+    this.redraw();
   }
 
-  /** S04-4 经济预留接口：写入当前连击倍率（仅存，S04-5 绘制）。 */
+  /** S04-5：写入当前连击倍率并触发 redraw 绘制（comboMult>1 才显示 xN）。 */
   setCombo(mult: number): void {
     this.comboMult = mult;
+    this.redraw();
   }
 
   /** Game Over 覆盖层（hud-spec §6）：暗罩 + 居中系统字体文案。仅渲染，不绑输入。 */
@@ -178,11 +250,14 @@ export class Hud {
     this.hintText = undefined;
   }
 
-  /** 解绑所有事件订阅 + 隐藏覆盖层（场景 shutdown / 重启时调用，见 hud-spec §8.1）。 */
+  /** 解绑所有事件订阅 + 隐藏覆盖层 + 销毁经济文本（场景 shutdown / 重启时调用，见 hud-spec §8.1）。 */
   destroy(): void {
     for (const off of this.offs) off();
     this.offs.length = 0;
     this.hideOverlay();
+    this.scoreText?.destroy();
+    this.coinText?.destroy();
+    this.comboText?.destroy();
   }
 
   // ---- 内部绘制 ----
@@ -239,5 +314,62 @@ export class Hud {
       g.lineStyle(1, COLOR_OUTLINE, 1);
       g.strokeRoundedRect(x, y, s, s, 3);
     }
+  }
+
+  /**
+   * S04-5 经济字段绘制：金币图标（Graphics 矢量，绘在共享 gfx 上）+ 分数/金币/连击（Text 系统字体）。
+   * 全部右对齐到 x = LOGICAL_W - ECON_MARGIN (504)；金币组置于分数左侧。
+   * 连击「xN」仅在 comboMult > 1 时显示（=1 常态隐藏，避免常驻干扰）。
+   * 禁用位图字体（ADR-004）：Text 用运行时系统 'sans-serif'。
+   */
+  private drawEconomy(): void {
+    const g = this.gfx;
+    // 文本（纯格式化走 hud-economy.ts，零 Phaser）
+    this.scoreText.setText(formatScore(this.score));
+    this.coinText.setText(formatCoins(this.coins));
+
+    const right = LOGICAL_W - ECON_MARGIN; // 504
+    const y = ECON_Y; // 8
+
+    // 分数：右对齐到右边距
+    this.scoreText.setOrigin(1, 0).setPosition(right, y);
+    const scoreW = this.scoreText.width;
+
+    // 金币组（图标 + 数字）置于分数左侧：组右沿 = right - 分数宽 - 间距
+    const coinTextW = this.coinText.width;
+    const coinGroupW = COIN_ICON_SIZE + COIN_TEXT_GAP + coinTextW;
+    const coinGroupRight = right - scoreW - ECON_GAP;
+    this.coinText.setOrigin(1, 0).setPosition(coinGroupRight, y);
+    // 金币图标在金币数字左侧（垂直相对分数文本居中）
+    const iconX = coinGroupRight - coinTextW - COIN_TEXT_GAP;
+    const iconY = y + Math.max(0, Math.floor((this.scoreText.height - COIN_ICON_SIZE) / 2));
+    this.drawCoinIcon(g, iconX, iconY, COIN_ICON_SIZE);
+
+    // 连击：仅 mult>1 显示，右对齐到右边距、分数下一行
+    if (shouldShowCombo(this.comboMult)) {
+      this.comboText.setText(formatCombo(this.comboMult));
+      this.comboText.setVisible(true).setOrigin(1, 0).setPosition(right, y + ECON_LINE_H);
+    } else {
+      this.comboText.setVisible(false);
+    }
+  }
+
+  /** 矢量金币图标（参考 coin-view.ts：经济金圆币 + 中心竖纹，双编码色盲安全）；size≈12。 */
+  private drawCoinIcon(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    size: number,
+  ): void {
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size / 2 - 1;
+    g.fillStyle(COLOR_COIN, 1);
+    g.fillCircle(cx, cy, r);
+    g.lineStyle(1, COLOR_OUTLINE, 1);
+    g.strokeCircle(cx, cy, r);
+    // 中心竖纹（不依赖颜色即可辨识为「币」）
+    g.fillStyle(COLOR_OUTLINE, 0.8);
+    g.fillRect(cx - 1, cy - r + 2, 2, r);
   }
 }
