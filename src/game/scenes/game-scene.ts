@@ -38,11 +38,14 @@ import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
 import { drawEnemy } from '../render/enemy-view';
+import { drawProjectile } from '../render/projectile-view';
 import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
 import { drawCheckpoint } from '../render/checkpoint-view';
 import { resolvePickups } from '../pickup-resolution';
 import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
+import { Projectile } from '../../core/enemy/projectile';
+import type { HazardSource } from '../../core/damage/hazard-source';
 import { EconomyController } from '../../core/economy/economy';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
 import { createPlatform } from '../../platform';
@@ -99,6 +102,10 @@ export class GameScene extends Phaser.Scene {
   private spawn!: { x: number; y: number };
   /** 敌人渲染 Graphics（世界坐标，随相机滚动）。 */
   private enemyGfx?: Phaser.GameObjects.Graphics;
+  /** S04-2：石炮发射的弹丸列表（独立 hazard，碰玩家受伤），每步积分移动，dead 后移除。 */
+  private projectiles: Projectile[] = [];
+  /** S04-2：弹丸占位渲染 Graphics（世界坐标，随相机滚动，depth 对齐 enemy）。 */
+  private projectileGfx?: Phaser.GameObjects.Graphics;
 
   // ── S04-3 实体 / 检查点（coin/seed/checkpoint 生成 + 拾取 + 重生）──
   /** 检查点重生点（S04-3）：触碰 checkpoint 后更新；死亡重生 / restart 落此。初始化为出生点。 */
@@ -256,6 +263,10 @@ export class GameScene extends Phaser.Scene {
     this.enemies = createEnemies(this.runtime.entities);
     this.enemyGfx = this.add.graphics().setDepth(9);
 
+    // S04-2：弹丸列表（石炮 fire 时 push；不可踩独立 hazard），及占位渲染层。
+    this.projectiles = [];
+    this.projectileGfx = this.add.graphics().setDepth(9);
+
     // S04-3：由关卡实体生成 coin/seed/checkpoint 占位渲染 + 去重集合初始化。
     this.collectedCoins = new Set<number>();
     this.collectedSeeds = new Set<number>();
@@ -332,9 +343,18 @@ export class GameScene extends Phaser.Scene {
 
     this.lastGrounded = res.grounded;
 
-    // S04-1：推进敌人 AI（表驱动；core 零平台，碰撞世界来自关卡 CollisionWorld）。
+    // S04-1/S04-2：推进敌人 AI（表驱动；core 零平台，碰撞世界来自关卡 CollisionWorld）。
+    // chong_feng detect / shi_pao aim 需玩家位置（this.body）；石炮 fire 产出弹丸 → projectiles。
     for (const e of this.enemies) {
-      if (!e.dead) e.update(dt, this.world);
+      if (!e.dead) {
+        const spawned = e.update(dt, this.world, this.body);
+        for (const p of spawned) this.projectiles.push(p);
+      }
+    }
+
+    // S04-2：弹丸每步积分移动（飞出边界/撞墙 → dead，resolveHazards 后移除）。
+    for (const p of this.projectiles) {
+      if (!p.dead) p.update(dt, this.world);
     }
 
     // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
@@ -351,15 +371,19 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * C3 伤害接触解算（委托给共享纯函数，单一真实实现 → 集成测试即证据）。
-   * 遍历全部存活敌人：命中 → 根据状态（踩踏 / 受伤）转换发对应事件，施加击退/反弹，设 hitstun；
+   * 遍历全部存活敌人 + 存活弹丸（均实现 HazardSource，不可踩 → 受伤分支）：
+   * 命中 → 根据状态（踩踏 / 受伤）转换发对应事件，施加击退/反弹，设 hitstun；
    * 重生 → 用返回的新 controller 替换（spawn 处满血复位）。踩踏与受伤在同帧互斥。
+   * 解算后移除已 dead 的弹丸（飞出边界/撞墙/已结算）。
    */
   private resolveHazards(): void {
-    for (const e of this.enemies) {
-      if (e.dead) continue;
+    const sources: HazardSource[] = [];
+    for (const e of this.enemies) if (!e.dead) sources.push(e);
+    for (const p of this.projectiles) if (!p.dead) sources.push(p);
+    for (const h of sources) {
       const r = resolveHazardContact({
         damage: this.damage,
-        hazard: e,
+        hazard: h,
         body: this.body,
         bus: this.bus,
         cfg: damageConfig,
@@ -370,6 +394,10 @@ export class GameScene extends Phaser.Scene {
       });
       if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
       if (r.controller) this.controller = r.controller;
+    }
+    // S04-2：移除已 dead 的弹丸（飞出边界/撞墙/已结算），避免持续重叠误伤。
+    if (this.projectiles.length > 0) {
+      this.projectiles = this.projectiles.filter((p) => !p.dead);
     }
   }
 
@@ -474,6 +502,8 @@ export class GameScene extends Phaser.Scene {
     this.collectedSeeds.clear();
     this.drawCoins();
     this.drawSeeds();
+    // S04-2：清空瞬时弹丸（无敌人拥有，重开不应残留上一局飞行中的弹丸）。
+    this.projectiles = [];
     this.drawCheckpoints();
     // S04-4：新一局分数/连击归零（HUD 字段经 ON_SCORE_CHANGED 同步归零，留 S04-5 绘制）。
     this.economy = new EconomyController(economyConfig);
@@ -648,6 +678,12 @@ export class GameScene extends Phaser.Scene {
     if (this.enemyGfx) {
       this.enemyGfx.clear();
       for (const e of this.enemies) drawEnemy(this.enemyGfx, e);
+    }
+
+    // S04-2：每帧重绘弹丸（位置由 stepSim 积分，世界坐标随相机偏移）。
+    if (this.projectileGfx) {
+      this.projectileGfx.clear();
+      for (const p of this.projectiles) drawProjectile(this.projectileGfx, p);
     }
 
     this.drawSprite();

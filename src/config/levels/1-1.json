@@ -539,7 +539,9 @@
   "entities": [
     { "type": "ci_li", "x": 320, "y": 200 },
     { "type": "ci_li", "x": 560, "y": 200 },
+    { "type": "chong_feng", "x": 880, "y": 200 },
     { "type": "du_fu", "x": 720, "y": 120 },
+    { "type": "shi_pao", "x": 704, "y": 100 },
     { "type": "coin", "x": 200, "y": 200 },
     { "type": "coin", "x": 400, "y": 200 },
     { "type": "coin", "x": 480, "y": 200 },
