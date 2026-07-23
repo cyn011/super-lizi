@@ -32,7 +32,7 @@
 
 ## CONCERNS（不阻塞，带入 Phase 3 / Phase 4）
 1. 6 项次要开放问题（评审 §8）：下穿单向平台、MVP 关卡长度/parTime、结算星级权重、节拍时钟纯逻辑 vs AudioContext、音频占位 vs 静音、元循环地图 vs 直进。均不阻塞 MVP 启动，后续拍板。
-2. 美术圣经 v1.1 §4.3 已含冲锋怪"锥冲"剪影规范（钢蓝 #3D6FB4、长条楔形、不可踩）；真实缺口仅为其**像素资产未产出**，归入 Phase 4 资产规格（entity-inventory/asset-manifest）补齐，不属美术圣经规范缺失。
+2. 美术圣经 v1.1 §4.3 已含冲锋怪"锥冲"剪影规范（警示红 #E8483B、长条楔形、不可踩）；真实缺口仅为其**像素资产未产出**，归入 Phase 4 资产规格（entity-inventory/asset-manifest）补齐，不属美术圣经规范缺失。
 
 ## 下一步
 进入 Phase 3 技术搭建：并行调度 engineering-lead（主架构文档 + ≥3 ADR + 架构评审 + 控制清单）与 art-director（可访问性分级 Basic/Standard/Comprehensive 与特性矩阵）。GDD 的接口契约（InputState / LevelData / BeatClock / EntityDef / DamageState）直接作为工程架构输入。

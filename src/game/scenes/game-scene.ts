@@ -29,14 +29,19 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
+import { PauseMenu } from '../../ui/pause-menu';
+import { ResultScreen, evaluateStars, type StarResult } from '../../ui/result-screen';
 import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
+import { RunStateMachineImpl, type RunStateMachine } from '../../core/state/run-state-machine';
+import { RunLifecycle } from '../../core/state/run-lifecycle';
+import { resolveActiveMenu } from '../../core/state/menu-tap';
 import { drawEnemy } from '../render/enemy-view';
 import { drawProjectile } from '../render/projectile-view';
 import { drawCoin } from '../render/coin-view';
@@ -56,6 +61,12 @@ const PLAYER_H = 34;
 // 受伤 juice 时长（hud-spec §5.1 / §5.3，来自规格、非命数/无敌时长/缩放，允许字面量）。
 const HIT_FLASH_MS = 150; // 受击闪红（§5.1）
 const RESPAWN_FADE_MS = 200; // 重生淡入（§5.3）
+
+/**
+ * 结算星级「目标时间」兜底（ms）。GDD 05 parTime 未定，先在关卡 metadata 加 `parTimeMs`，
+ * 缺省回退此值（待主理人拍板，见回传 ③）。1-1.json 已写入 60000ms（60s）作占位。
+ */
+const DEFAULT_PAR_TIME_MS = 60000;
 
 /**
  * 中性输入（全 false）：击退 hitstun 期间替换玩家输入，使 controller 不消费方向/跳跃，
@@ -127,6 +138,20 @@ export class GameScene extends Phaser.Scene {
   /** S04-5：HUD 已同步的连击倍率；用于检测连击窗超时（economy.update 内部清零）后仅发一次 ON_SCORE_CHANGED。 */
   private prevComboMult = 1;
 
+  // ── S05-2 暂停/结算/RunState 机（架构 §6.2）──
+  /** 顶层 RUN 状态机（与实体 DamageState 正交，互不写字段）。 */
+  private runState!: RunStateMachine;
+  /** E7.S3 / S05-5：微信生命周期闭环策略（零平台，包装 RunStateMachine + 事件）。 */
+  private lifecycle!: RunLifecycle;
+  /** 暂停冻结标志：update/stepSim 顶部早退，仿真冻结、输入不丢。 */
+  private paused = false;
+  /** 本次游玩计时（ms）：仅在 PLAYING 每固定步累加，暂停/结算/GameOver 不涨。 */
+  private elapsedMs = 0;
+  /** 暂停遮罩 + 继续/重玩（PauseMenu）。 */
+  private pauseMenu?: PauseMenu;
+  /** 通关结算 + 星级（ResultScreen）。 */
+  private resultScreen?: ResultScreen;
+
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
   private hud!: Hud;
@@ -142,6 +167,22 @@ export class GameScene extends Phaser.Scene {
   private offRestart?: () => void;
   /** 微信原生触摸重试 handler（restartGame 清理，避免重复监听）。 */
   private restartTouchHandler?: () => void;
+  /**
+   * S05-5：原生菜单点击路由（由 Platform.setNativeMenuTap 注入，仅微信端生效）。
+   * 把逻辑坐标派发给当前可见菜单的 handleTap（PauseMenu / ResultScreen，S05-2 已暴露）。
+   * 仅当菜单激活（resolveActiveMenu 非 null）时才点中按钮，否则交给 gameplay 输入。
+   * 坐标系同 input-abstraction：逻辑分辨率 512×288（handleTap 命中盒同坐标系）。
+   */
+  private readonly routeMenuTap = (x: number, y: number): void => {
+    const target = resolveActiveMenu({
+      paused: this.paused,
+      levelComplete: this.levelComplete,
+      pauseBuilt: this.pauseMenu?.isBuilt ?? false,
+      resultBuilt: this.resultScreen?.isBuilt ?? false,
+    });
+    if (target === 'pause') this.pauseMenu?.handleTap(x, y);
+    else if (target === 'result') this.resultScreen?.handleTap(x, y);
+  };
 
   constructor() {
     super('Game');
@@ -221,6 +262,13 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this, this.bus, () => this.damage, damageConfig.initialLives);
     this.hud.redraw(); // 初始绘制（3 实心心形 + FULL 形态）
 
+    // S05-2：RunState 机 + 暂停/结算 UI（架构 §6.2，与 DamageState 正交）。
+    this.runState = new RunStateMachineImpl('PLAYING');
+    // S05-5：微信生命周期闭环策略（仅 PLAYING 后台暂停、仅后台暂停才恢复、不碰输入）。
+    this.lifecycle = new RunLifecycle(this.runState, (name, payload) => this.bus.emit(name, payload));
+    this.pauseMenu = new PauseMenu(this, this.bus);
+    this.resultScreen = new ResultScreen(this, this.bus);
+
     // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。
     // 不破坏 S04-1 已落地的踩敌链路（ON_STOMP 由 damage-resolution 发放）；此处仅订阅/计算。
     this.economy = new EconomyController(economyConfig);
@@ -243,6 +291,18 @@ export class GameScene extends Phaser.Scene {
     // Game Over：冻结 + 覆盖层 + 跨端重试触发（hud-spec §6.2）。
     this.bus.on(ON_GAME_OVER, () => this.onGameOver());
 
+    // S05-2：暂停/结算/继续 事件接线（RunState 机驱动流转，单一事实来源）。
+    this.bus.on(ON_PAUSE, (p) => this.onPause(p));
+    this.bus.on(ON_RESUME, () => this.onResume());
+    this.bus.on(ON_LEVEL_COMPLETE, (p) => this.onLevelComplete(p));
+
+    // S05-2 最小钩子 + S05-5 深适配：微信 onHide→后台暂停、onShow→恢复（RunLifecycle 闭环）。
+    // 策略（仅后台暂停才 onShow 恢复、输入不碰 → 连续）在 core/state/run-lifecycle。
+    this.platform.lifecycle?.onHide?.(() => this.lifecycle.onHide());
+    this.platform.lifecycle?.onShow?.(() => this.lifecycle.onShow());
+    // S05-5：注入原生菜单点击路由（微信端把触摸逻辑坐标派发给 PauseMenu/ResultScreen.handleTap）。
+    this.platform.setNativeMenuTap?.(this.routeMenuTap);
+
     // 场景 shutdown（若未来 scene.restart）清理订阅与 HUD（hud-spec §8.1，可选但稳妥）。
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.offRestart?.();
@@ -252,6 +312,8 @@ export class GameScene extends Phaser.Scene {
       this.coinGfx?.destroy();
       this.seedGfx?.destroy();
       this.checkpointGfx?.destroy();
+      this.pauseMenu?.destroy();
+      this.resultScreen?.destroy();
       this.hud.destroy();
     });
 
@@ -296,6 +358,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepSim(dt: number, simTimeMs: number): void {
+    // S05-2：暂停/GameOver/已通关 早退——仿真冻结（剩余固定步不再推进，避免同帧续步）。
+    if (this.paused || this.gameOver || this.levelComplete) return;
+    // 本次游玩计时（仅 PLAYING 累加；暂停/结算/GameOver 由上面早退保证不涨）。
+    this.elapsedMs += dt * 1000;
+
     // 推进手势计时器（仿真时钟驱动；virtual 提供方无 advance → 安全跳过）。
     const inputPort = this.platform.input as RawInputProvider & Partial<PointerSink> & { advance?(dt: number): void };
     inputPort.advance?.(dt * 1000);
@@ -474,6 +541,10 @@ export class GameScene extends Phaser.Scene {
    */
   private onGameOver(): void {
     this.gameOver = true;
+    // S05-2：RunState 流转（PLAYING→GAME_OVER；与 DamageState 正交，不写其字段）。
+    this.runState.transition('GAME_OVER');
+    // S05-5：门开 → 屏蔽 gameplay 原生输入转发（Game Over 期间仿真冻结）。
+    this.platform.setMenuActive?.(true);
     this.hud.showOverlay();
     // web：一次性点击覆盖层任意处 → 发 ON_RESTART（热区=全屏，≥48×48，§9.2）。
     this.input.once('pointerdown', () => this.bus.emit(ON_RESTART));
@@ -486,10 +557,57 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * ON_PAUSE 处理（S05-2）：RunState PLAYING→PAUSED（非法态忽略，防重入/误暂停），
+   * 冻结仿真（update/stepSim 顶部早退）+ 显示暂停遮罩。输入不丢（每固定步恢复采样）。
+   */
+  private onPause(_payload?: unknown): void {
+    if (!this.runState.transition('PAUSED')) return;
+    this.paused = true;
+    this.pauseMenu?.show();
+    // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击改走菜单路由。
+    this.platform.setMenuActive?.(true);
+  }
+
+  /** ON_RESUME 处理（S05-2）：RunState PAUSED→PLAYING，隐藏遮罩，恢复仿真。 */
+  private onResume(): void {
+    if (!this.runState.transition('PLAYING')) return;
+    this.paused = false;
+    this.pauseMenu?.hide();
+    // S05-5：门关 → gameplay 原生输入恢复转发（后台暂停期间仍按住的手指原样保留 → 连续）。
+    this.platform.setMenuActive?.(false);
+  }
+
+  /**
+   * ON_LEVEL_COMPLETE 处理（S05-2）：RunState PLAYING→LEVEL_COMPLETE（防重入），
+   * 冻结仿真 + 结算星级（时间≤parTime 得时间星 + 金币收集率≥50% 得金币星）→ 显示 ResultScreen。
+   * 失败（命耗尽）走 onGameOver，不进此处。
+   * parTime 来源：关卡 metadata.parTimeMs（1-1.json 已加，占位 60s），缺省回退 DEFAULT_PAR_TIME_MS（待主理人拍板）。
+   */
+  private onLevelComplete(_payload?: unknown): void {
+    if (!this.runState.transition('LEVEL_COMPLETE')) return;
+    const md = this.runtime.data.metadata as unknown as Record<string, unknown>;
+    const parTimeMs = (md.parTimeMs as number | undefined) ?? DEFAULT_PAR_TIME_MS;
+    const totalCoins = this.runtime.coins.length;
+    const result: StarResult = evaluateStars({
+      elapsedMs: this.elapsedMs,
+      parTimeMs,
+      collectedCoins: this.collectedCoins.size,
+      totalCoins,
+    });
+    this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins);
+    // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击走结算路由（再玩一次）。
+    this.platform.setMenuActive?.(true);
+  }
+
+  /**
    * ON_RESTART 处理（hud-spec §6.2）：干净 reset（重建 damage / body / controller，隐藏覆盖层，恢复仿真）。
    * 不调用 scene.restart，状态更可控（ADR：ON_RESTART 方案）。
    */
   private restartGame(): void {
+    // S05-5：清后台暂停标记（避免上局后台暂停态污染新局 → 误 auto-resume）。
+    this.lifecycle.reset();
+    // S05-5：门关 → gameplay 原生输入恢复转发。
+    this.platform.setMenuActive?.(false);
     this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
     this.body = { x: this.respawnPoint.x, y: this.respawnPoint.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
     this.controller = new CharacterController(characterConfig, { x: this.respawnPoint.x, y: this.respawnPoint.y, grounded: true });
@@ -497,6 +615,13 @@ export class GameScene extends Phaser.Scene {
     this.levelComplete = false;
     this.gameOver = false;
     this.hitstunTimer = 0;
+    // S05-2：RunState 回 PLAYING（PAUSED/LEVEL_COMPLETE/GAME_OVER 均合法→PLAYING）；
+    // 清暂停/结算 UI 与计时，确保重开干净。
+    this.runState.transition('PLAYING');
+    this.paused = false;
+    this.elapsedMs = 0;
+    this.pauseMenu?.hide();
+    this.resultScreen?.hide();
     this.hitFlashTimer = 0;
     this.respawnFadeTimer = 0;
     // S04-3：重置拾取去重（与 economy 重置一致，使关卡实体可重新拾取），并重绘图层。
@@ -631,8 +756,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    // Game Over：冻结仿真，仅保留已渲染画面与覆盖层；点击重试由 onGameOver 注册的触发器处理（hud-spec §6.2）。
-    if (this.gameOver) return;
+    // Game Over / 暂停 / 已通关：冻结仿真（暂停遮罩/结算面板为独立 Phaser 对象，照常渲染）。
+    // 暂停时 Phaser 输入系统仍派发 pointer 事件 → 暂停/结算按钮可点；仿真不推进（输入不丢）。
+    if (this.gameOver || this.paused || this.levelComplete) return;
 
     // S04-4 连击窗口倒计时（帧 delta）；超时由 EconomyController 内部清零连击（comboMult→1）。
     this.economy.update(delta);

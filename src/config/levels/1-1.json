@@ -570,7 +570,8 @@
   },
   "metadata": {
     "name": "翠野序章",
-    "theme": "grass"
+    "theme": "grass",
+    "parTimeMs": 60000
   },
   "spawn": {
     "x": 64,
