@@ -1,0 +1,26 @@
+{
+  "web": {
+    "left":  ["ArrowLeft", "KeyA", "touch:left"],
+    "right": ["ArrowRight", "KeyD", "touch:right"],
+    "jump":  ["Space", "ArrowUp", "KeyW", "touch:jump"],
+    "action": ["KeyJ", "ShiftLeft", "touch:action"]
+  },
+  "wechat": {
+    "layout": "gesture",
+    "buttons": {
+      "left":   { "x": 0.08, "y": 0.82, "r": 0.07 },
+      "right":  { "x": 0.22, "y": 0.82, "r": 0.07 },
+      "jump":   { "x": 0.82, "y": 0.82, "r": 0.08 },
+      "action": { "x": 0.92, "y": 0.70, "r": 0.07 }
+    },
+    "gesture": {
+      "horizontalDeadzoneX": 24,
+      "playerDeadzone": 16,
+      "jumpZoneTop": 100,
+      "jumpSwipeSlope": 0.5,
+      "swipeMinDist": 16,
+      "walkSegmentMs": 280,
+      "jumpHoldMs": 300
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-wechat/
+
+# WorkBuddy session artifacts
+.workbuddy/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

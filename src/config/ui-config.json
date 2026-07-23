@@ -1,0 +1,7 @@
+{
+  "hudLayout": "top",
+  "font": "system",
+  "minFontSizePx": 14,
+  "touchButtonsFromInput": true,
+  "panelAlpha": 0.55
+}

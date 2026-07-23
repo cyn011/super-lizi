@@ -1,0 +1,63 @@
+/**
+ * core/config — 集中配置的类型化读取入口（架构 §10）。
+ * 所有可调数值来自 src/config/*.json（真理源），逻辑层经此读取，禁止硬编码。
+ * 本模块为纯 TS，零 Phaser / 零平台依赖。
+ */
+import physicsJson from '../../config/physics-config.json';
+import characterJson from '../../config/character-config.json';
+import enemyJson from '../../config/enemy-config.json';
+import economyJson from '../../config/economy-config.json';
+import damageJson from '../../config/damage-config.json';
+import inputJson from '../../config/input-config.json';
+import uiJson from '../../config/ui-config.json';
+import audioJson from '../../config/audio-config.json';
+import level1_1Json from '../../config/levels/1-1.json';
+
+import type { InputMapping } from '../input/input-abstraction';
+
+// ---- 物理常量（E2.S1 / 架构 §10）----
+export const TILE = physicsJson.tile as number;
+export const GRAVITY = physicsJson.gravity as number;
+export const MAX_FALL = physicsJson.maxFall as number;
+
+// ---- 固定步长（ADR-005）----
+export const STEP_MS = 1000 / 60;
+export const STEP_DT = STEP_MS / 1000;
+
+// ---- 各系统配置（直接透传 JSON，强类型由消费方断言）----
+export const physicsConfig = physicsJson;
+export const characterConfig = characterJson;
+export const enemyConfig = enemyJson;
+export const economyConfig = economyJson;
+export const damageConfig = damageJson;
+export const inputConfig = inputJson as {
+  web: { left: string[]; right: string[]; jump: string[]; action: string[] };
+  wechat: { layout: string; buttons: Record<string, { x: number; y: number; r: number }> };
+};
+export const uiConfig = uiJson;
+export const audioConfig = audioJson;
+export const level1_1 = level1_1Json;
+
+// ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----
+// Web：物理信号 = 键码。
+export const webInputConfig: InputMapping = {
+  left: inputConfig.web.left,
+  right: inputConfig.web.right,
+  jump: inputConfig.web.jump,
+  action: inputConfig.web.action,
+};
+// 微信：物理信号 = 虚拟按钮 id（由 wechat-touch 产出）。
+export const wechatInputConfig: InputMapping = {
+  left: ['touch:left'],
+  right: ['touch:right'],
+  jump: ['touch:jump'],
+  action: ['touch:action'],
+};
+
+// ---- 聚合（供调试/快照）----
+export const GameConfig = {
+  step: { ms: STEP_MS, dt: STEP_DT },
+  tile: TILE,
+  gravity: GRAVITY,
+  maxFall: MAX_FALL,
+};

@@ -1,0 +1,14 @@
+{
+  "moveSpeed": 140,
+  "accelGround": 1200,
+  "accelAir": 800,
+  "friction": 1600,
+  "gravity": 1800,
+  "jumpVelocity": -480,
+  "coyoteMs": 100,
+  "jumpBufferMs": 120,
+  "doubleJumpScale": 0.93,
+  "stompBounce": -300,
+  "shortHopCut": 0.7,
+  "airJumps": 1
+}

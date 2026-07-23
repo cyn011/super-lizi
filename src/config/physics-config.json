@@ -1,0 +1,5 @@
+{
+  "tile": 32,
+  "gravity": 1800,
+  "maxFall": 900
+}

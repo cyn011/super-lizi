@@ -1,0 +1,8 @@
+{
+  "initialLives": 3,
+  "stompScore": 100,
+  "coinScore": 10,
+  "goalScore": 500,
+  "comboWindowMs": 1500,
+  "maxMult": 4
+}

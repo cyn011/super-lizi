@@ -1,0 +1,563 @@
+{
+  "id": "1-1",
+  "version": 1,
+  "tileSize": 32,
+  "width": 40,
+  "height": 9,
+  "tiles": [
+    {
+      "tx": 0,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 1,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 1,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 2,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 2,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 3,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 3,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 4,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 4,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 5,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 5,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 6,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 6,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 7,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 7,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 8,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 8,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 9,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 9,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 10,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 10,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 11,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 11,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 12,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 12,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 13,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 13,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 14,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 14,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 15,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 15,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 16,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 16,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 17,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 17,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 18,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 18,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 19,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 19,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 20,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 20,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 21,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 21,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 22,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 22,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 23,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 23,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 24,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 24,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 25,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 25,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 26,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 26,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 27,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 27,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 28,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 28,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 29,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 29,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 30,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 30,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 31,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 31,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 32,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 32,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 33,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 33,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 34,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 34,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 35,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 35,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 36,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 36,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 37,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 37,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 38,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 38,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 0,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 0,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 1,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 1,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 2,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 2,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 3,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 3,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 4,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 4,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 5,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 5,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 6,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 6,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 14,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 15,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 16,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 29,
+      "ty": 6,
+      "kind": "oneway"
+    },
+    {
+      "tx": 30,
+      "ty": 6,
+      "kind": "oneway"
+    },
+    {
+      "tx": 31,
+      "ty": 6,
+      "kind": "oneway"
+    },
+    {
+      "tx": 22,
+      "ty": 4,
+      "kind": "solid"
+    },
+    {
+      "tx": 23,
+      "ty": 4,
+      "kind": "solid"
+    }
+  ],
+  "entities": [],
+  "props": [],
+  "checkpoints": [],
+  "goal": {
+    "type": "triumph_gate",
+    "x": 1184,
+    "y": 160,
+    "w": 32,
+    "h": 64
+  },
+  "beat": {
+    "enabled": false,
+    "bpm": 120,
+    "grid": 8,
+    "tracks": []
+  },
+  "metadata": {
+    "name": "翠野序章",
+    "theme": "grass"
+  },
+  "spawn": {
+    "x": 64,
+    "y": 190
+  }
+}

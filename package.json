@@ -1,0 +1,32 @@
+{
+  "name": "super-mali",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "super-mali — 原创马里奥式横版跳跃微信小游戏（Sprint 1 底座）",
+  "scripts": {
+    "dev": "vite --mode web",
+    "dev:web": "vite --mode web",
+    "build": "npm run build:web",
+    "build:web": "vite build --mode web",
+    "build:wechat": "vite build --mode wechat && node scripts/copy-wechat.mjs",
+    "preview": "vite preview --mode web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:smoke": "vitest run tests/smoke",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
+    "@babel/preset-typescript": "^7.29.7",
+    "@rollup/plugin-babel": "^6.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9",
+    "weapp-adapter": "^1.0.0"
+  }
+}
