@@ -13,9 +13,11 @@
 通用 `EnemyState{ id, type, hp:1, state, x,y,vx,vy, stompable, dead }`。可踩判定由 03/04 协作：角色 `v.y>0` 且角色底接触敌顶且 `enemy.stompable` → `ON_STOMP`；否则接触且 `!stompable` → `ON_ENEMY_HIT_PLAYER`。
 
 - **刺栗 ci_li**（地面慢/可踩/圆+刺/警示红）：`patrol` 左右巡走 `SPEED=40`；遇墙或前方无地面（边缘检测）掉头；`stompable=true`；被踩→`dead` + `ON_ENEMY_DEATH`。
-- **冲锋怪 chong_feng**（地面冲锋/不可踩/长条楔形/钢蓝）：`idle`→`detect`（玩家在 `DETECT_X=160` 内且高度差 `<48`）→`charge`（朝玩家方向 `CHARGE_SPEED=220` 直线，不可踩）→`wallHit`（撞墙眩晕 `STUN=1000ms` 回 idle）。踩它→玩家受伤。`stompable=false`。
+- **冲锋怪 chong_feng**（地面冲锋/不可踩/长条楔形/**警示红 `#E8483B`**）：`idle`→`detect`（玩家在 `DETECT_X=160` 内且高度差 `<48`）→`charge`（朝玩家方向 `CHARGE_SPEED=220` 直线，不可踩）→`wallHit`（撞墙眩晕 `STUN=1000ms` 回 idle）。踩它→玩家受伤。`stompable=false`。
 - **嘟浮 du_fu**（飞行/可踩/带翅/蓝紫）：`float` 沿 `path` 或原地正弦浮动 `FLOAT_SPEED=60, AMP=24`；`stompable=true`；可踩死。
 - **石炮 shi_pao**（固定炮台/不可踩/方+灰）：`aim`（每 `FIRE_INTERVAL=2000ms` 朝玩家方向）→`fire`（发射弹丸 `PROJECTILE_SPEED=180`，弹丸 hazard 碰玩家受伤）→`cooldown`。`stompable=false`；弹丸为独立 hazard 实体。
+
+> **配色权威（supersede）**：`chong_feng` 权威配色 = **警示红 `#E8483B`**（主理人拍板，S04-2 渲染已落地；与可踩敌 soft 圆顶形成危险对比）。**原"钢蓝 `#3D6FB4`"规格已撤销（superseded）。** 与 `ci_li` 同为警示红，靠**形状双编码**区分（刺栗=圆球带刺 soft 顶 / 冲锋怪=长条楔形 hard 顶）；剪影即可辨能否踩，色盲安全，无歧义。
 
 ## 4. 依赖系统
 - **02 Physics**（移动/碰撞）、**03 Character**（玩家位置/踩踏）、**05 Level**（spawn/边界）、**07 Damage**（受伤事件）。

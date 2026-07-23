@@ -56,3 +56,14 @@
 
 ## 9. 评审结论
 11 个系统 GDD 在**命名 / 数据格式 / 状态机 / IP** 四个维度一致、无冲突、可落地。MVP 边界清晰（4 敌、单关、节拍仅接口、混合 UI）。建议主理人就 §8 八项开放问题拍板后进入工程实现（Phase 3）。
+
+## 10. 配色变更登记（supersede 记录）
+
+### 10.1 chong_feng 钢蓝 → 警示红 #E8483B（主理人拍板，S04-2 落地）
+- **决策**：冲锋怪 `chong_feng` 权威配色由"钢蓝 `#3D6FB4`"改为**警示红 `#E8483B`**（强化不可踩危险感，与可踩敌 soft 圆顶对比）。渲染（S04-2 `enemy-view.ts`）已落地验证。
+- **撤销范围（本次修订）**：
+  - `design/gdd/04-enemy-ai.md` §3：原"钢蓝"→ 警示红 #E8483B，附 supersede 说明（形状双编码 + 色盲安全）。
+  - `art/asset-spec.md` §2.2 / §2.5：chong_feng 主体 钢蓝→警示红 #E8483B，原钢蓝规格标记 superseded。
+- **已知权衡（非阻断）**：`ci_li` 与 `chong_feng` 同为警示红 #E8483B，辨识靠**形状双编码**（刺栗=圆球带刺 soft 顶 / 冲锋怪=长条楔形 hard 顶）；剪影即可辨能否踩，色盲安全。不引入新主导策略/认知过载。
+- **待清理（超出本次范围，建议后续统一）**：其余仍写"钢蓝"的文档——`art/art-bible.md` §4.3 / §3.2、`art/asset-manifest.md` §2.3 / §3 / §6.5、`art/accessibility.md` GAP-1、`art/placeholder-spec.md` 敌表 / 色板清单、`docs/architecture/control-list.md` §敌人造型、`docs/phase-gates/phase2-quality-gate.md` §2。其中 `art-bible.md` 的"锥冲用钢蓝=冷蓝危险语义"论述已失效，建议同步改写（涉及上游视觉身份文档，需主理人确认）。
+- **四敌配色自洽核对**：ci_li=警示红 #E8483B / du_fu=蓝紫 #6E7BF2 / chong_feng=警示红 #E8483B / shi_pao=灰。两红靠形状区分；du_fu 蓝紫避开增益紫 #9B6CF2；无新增冲突。✅
