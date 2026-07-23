@@ -17,6 +17,7 @@ import {
   wechatInputConfig,
   characterConfig,
   damageConfig,
+  economyConfig,
   inputConfig,
   STEP_MS,
   STEP_DT,
@@ -28,7 +29,7 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
@@ -38,6 +39,7 @@ import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
 import { drawEnemy } from '../render/enemy-view';
 import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
+import { EconomyController } from '../../core/economy/economy';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
 import { createPlatform } from '../../platform';
 
@@ -93,6 +95,12 @@ export class GameScene extends Phaser.Scene {
   private spawn!: { x: number; y: number };
   /** 敌人渲染 Graphics（世界坐标，随相机滚动）。 */
   private enemyGfx?: Phaser.GameObjects.Graphics;
+
+  // ── S04-4 经济 / 分数（core 零平台 API）──
+  /** 经济控制器：踩怪/金币/通关计分 + 连击倍率（GDD 06）。 */
+  private economy!: EconomyController;
+  /** S04-4 economy 事件订阅 off 集合（shutdown 解绑）。 */
+  private economyOffs: Array<() => void> = [];
 
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
@@ -186,6 +194,18 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this, this.bus, () => this.damage, damageConfig.initialLives);
     this.hud.redraw(); // 初始绘制（3 实心心形 + FULL 形态）
 
+    // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。
+    // 不破坏 S04-1 已落地的踩敌链路（ON_STOMP 由 damage-resolution 发放）；此处仅订阅/计算。
+    this.economy = new EconomyController(economyConfig);
+    this.economyOffs.push(
+      this.bus.on(ON_STOMP, () => { this.economy.onStomp(); this.emitScoreChange(); }),
+      this.bus.on(ON_COIN, () => { this.economy.onCoin(); this.emitScoreChange(); }), // S04-3 实体放置后触发；此处仅订阅/预留
+      this.bus.on(ON_LEVEL_COMPLETE, () => { this.economy.onLevelComplete(); this.emitScoreChange(); }),
+      this.bus.on(ON_DEATH, () => { this.economy.onDeath(); this.emitScoreChange(); }), // 死亡仅重置连击
+      // HUD 预留（S04-5 绘制）：订阅 ON_SCORE_CHANGED 写字段，不绘制分数。
+      this.bus.on(ON_SCORE_CHANGED, (p) => this.onScoreChanged(p)),
+    );
+
     // ON_RESTART：干净 reset（场景内重开，非 scene.restart，状态更可控）。
     this.offRestart = this.bus.on(ON_RESTART, () => this.restartGame());
 
@@ -200,6 +220,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.offRestart?.();
       this.offRestart = undefined;
+      for (const off of this.economyOffs) off();
+      this.economyOffs.length = 0;
       this.hud.destroy();
     });
 
@@ -361,6 +383,9 @@ export class GameScene extends Phaser.Scene {
     this.hitstunTimer = 0;
     this.hitFlashTimer = 0;
     this.respawnFadeTimer = 0;
+    // S04-4：新一局分数/连击归零（HUD 字段经 ON_SCORE_CHANGED 同步归零，留 S04-5 绘制）。
+    this.economy = new EconomyController(economyConfig);
+    this.emitScoreChange();
     this.sprite.setAlpha(1);
     this.flashGfx?.clear();
     // 清理微信原生触摸监听（避免重复触发 ON_RESTART）。
@@ -370,6 +395,31 @@ export class GameScene extends Phaser.Scene {
     }
     this.hud.hideOverlay();
     this.hud.redraw();
+  }
+
+  /**
+   * S04-4 经济变化广播：把当前 EconomyState 的 {score, coins, comboMult} 发 ON_SCORE_CHANGED。
+   * 供 S04-5 HUD 订阅渲染；本 Story 仅确保数据流转正确。
+   */
+  private emitScoreChange(): void {
+    const s = this.economy.state;
+    this.bus.emit(ON_SCORE_CHANGED, {
+      score: s.score,
+      coins: s.coins,
+      comboMult: s.comboMult,
+    });
+  }
+
+  /** S04-4 ON_SCORE_CHANGED 处理器：写 HUD 预留字段（S04-5 才绘制）。 */
+  private onScoreChanged(p: unknown): void {
+    const { score, coins, comboMult } = p as {
+      score: number;
+      coins: number;
+      comboMult: number;
+    };
+    this.hud.setScore(score);
+    this.hud.setCoins(coins);
+    this.hud.setCombo(comboMult);
   }
 
   /** 真实关卡渲染：实心 tile / 单向平台 / 凯旋之门，全部世界坐标（相机偏移）。 */
@@ -458,6 +508,9 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     // Game Over：冻结仿真，仅保留已渲染画面与覆盖层；点击重试由 onGameOver 注册的触发器处理（hud-spec §6.2）。
     if (this.gameOver) return;
+
+    // S04-4 连击窗口倒计时（帧 delta）；超时由 EconomyController 内部清零连击。
+    this.economy.update(delta);
 
     if (this.loop) this.loop.update(delta);
     // C5 相机跟随：用玩家中心驱动 scroll（微信 CANVAS/NONE 下走内部 transform，非 CSS）

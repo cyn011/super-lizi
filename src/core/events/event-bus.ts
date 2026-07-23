@@ -17,6 +17,8 @@ export const ON_RESPAWN = 'ON_RESPAWN';
 export const ON_GAME_OVER = 'ON_GAME_OVER';
 export const ON_COIN = 'ON_COIN';
 export const ON_SCORE = 'ON_SCORE';
+/** 经济变化广播（S04-4）：payload `{ score, coins, comboMult }`，供 HUD(S04-5) 订阅。 */
+export const ON_SCORE_CHANGED = 'ON_SCORE_CHANGED';
 export const ON_LIFE_LOST = 'ON_LIFE_LOST';
 export const ON_LEVEL_COMPLETE = 'ON_LEVEL_COMPLETE';
 export const ON_CHECKPOINT = 'ON_CHECKPOINT';

@@ -54,6 +54,14 @@ export class Hud {
   private readonly getDamage: () => DamageStateMachine;
   private readonly initialLives: number;
 
+  // ── S04-4 经济字段预留（S04-5 才绘制 HUD 分数/金币/连击）──
+  /** 当前分数（来自 ON_SCORE_CHANGED，仅存，不绘制）。 */
+  private score = 0;
+  /** 当前金币数（仅存，不绘制）。 */
+  private coins = 0;
+  /** 当前连击倍率（仅存，不绘制）。 */
+  private comboMult = 1;
+
   /** 心形 + 形态图标 Graphics（固定相机层，depth 1000）。 */
   private gfx!: Phaser.GameObjects.Graphics;
   /** Game Over 覆盖层元素（仅渲染，不绑输入）。 */
@@ -107,6 +115,24 @@ export class Hud {
       this.drawHeart(g, x, HEART_Y0, i < slots.filled);
     }
     this.drawForm(g, damage.state);
+  }
+
+  /**
+   * S04-4 经济预留接口：写入当前分数（来自 ON_SCORE_CHANGED）。
+   * 本 Story 仅存字段，屏幕分数绘制留 S04-5。ui 不持有游戏状态，只读事件注入值。
+   */
+  setScore(score: number): void {
+    this.score = score;
+  }
+
+  /** S04-4 经济预留接口：写入当前金币数（仅存，S04-5 绘制）。 */
+  setCoins(coins: number): void {
+    this.coins = coins;
+  }
+
+  /** S04-4 经济预留接口：写入当前连击倍率（仅存，S04-5 绘制）。 */
+  setCombo(mult: number): void {
+    this.comboMult = mult;
   }
 
   /** Game Over 覆盖层（hud-spec §6）：暗罩 + 居中系统字体文案。仅渲染，不绑输入。 */
