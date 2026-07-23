@@ -12,6 +12,7 @@
  */
 import type { LevelData, EntityDef, TileDef } from './level-data';
 import type { CollisionWorld } from '../physics/collision';
+import { createEnemies, type EnemyAI } from '../enemy/enemy-ai';
 
 /** 轴对齐包围盒（goal / 任意命中判定共用）。 */
 export interface AABB {
@@ -35,6 +36,8 @@ export class RuntimeLevel {
   readonly goal: AABB;
   /** 实体列表（C5 为空，供 E3/E4 复用）。 */
   readonly entities: EntityDef[];
+  /** S04-1：由 entities 生成的真实可踩敌人实例（替代 C3 占位刺栗，经 damage-resolution 管线）。 */
+  readonly enemies: EnemyAI[];
 
   private readonly solid: boolean[][];
   private readonly oneWay: boolean[][];
@@ -62,6 +65,7 @@ export class RuntimeLevel {
     this.spawn = data.spawn ?? RuntimeLevel.defaultSpawn(data);
     this.goal = RuntimeLevel.buildGoal(data);
     this.entities = data.entities ?? [];
+    this.enemies = createEnemies(data.entities ?? []);
   }
 
   private setTile(t: TileDef, w: number, h: number): void {

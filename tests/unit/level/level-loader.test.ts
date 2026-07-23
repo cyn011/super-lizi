@@ -82,8 +82,13 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(rt.goal.y + rt.goal.h).toBeCloseTo(7 * 32, 3); // 底贴地面
   });
 
-  it('entities 透传（C5 为空，供 E3/E4 复用）', () => {
-    expect(rt.entities).toEqual([]);
+  it('entities 透传 + S04-1 敌人由实体生成 EnemyAI', () => {
+    expect(rt.entities.length).toBe(3);
+    expect(rt.enemies.length).toBe(3);
+    expect(rt.enemies[0].type).toBe('ci_li');
+    expect(rt.enemies[1].type).toBe('ci_li');
+    expect(rt.enemies[2].type).toBe('du_fu');
+    expect(rt.enemies.every((e) => e.isStompable)).toBe(true);
   });
 
   it('beat.enabled:false 不驱动机制（仅透传，无逻辑消费）', () => {

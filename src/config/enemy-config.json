@@ -1,6 +1,6 @@
 {
-  "ci_li":   { "speed": 40,  "stompable": true },
-  "chong_feng": { "detect": 160, "attackRange": 48, "charge": 220, "stun": 1000, "stompable": false },
-  "du_fu":   { "float": 60,  "amp": 24, "stompable": true },
-  "shi_pao": { "fire": 2000, "proj": 180, "stompable": false }
+  "ci_li":   { "speed": 40, "stompable": true, "width": 24, "height": 24 },
+  "chong_feng": { "detect": 160, "attackRange": 48, "charge": 220, "stun": 1000, "stompable": false, "width": 28, "height": 24 },
+  "du_fu":   { "float": 60, "amp": 24, "stompable": true, "width": 24, "height": 24 },
+  "shi_pao": { "fire": 2000, "proj": 180, "stompable": false, "width": 28, "height": 28 }
 }

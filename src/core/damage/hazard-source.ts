@@ -16,3 +16,18 @@ export interface HazardSource {
   /** 是否可被踩消灭（未来 E3 用；C3 占位刺栗为 false，仅伤害）。 */
   isStompable: boolean;
 }
+
+/**
+ * 可踩敌人额外契约（表驱动 EnemyAI 实现，S04-1）。
+ * 供 damage-resolution 做「玩家底触敌顶」踩踏判定与消灭回调。
+ * 仅在 HazardSource.isStompable 为 true 且同时具备 getBounds/markStomped 时，踩踏分支生效；
+ * 非可踩源（如 C3 占位刺栗）无需实现本契约。
+ */
+export interface StompableHazard extends HazardSource {
+  /** 当前 AABB（供踩踏顶触判定）。 */
+  getBounds(): { x: number; y: number; w: number; h: number };
+  /** 被踩消灭（从世界移除 / 不再作为 hazard）。 */
+  markStomped(): void;
+  /** 敌人类型（事件 payload 用，可选）。 */
+  readonly enemyType?: string;
+}

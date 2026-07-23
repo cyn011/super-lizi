@@ -19,6 +19,7 @@ import {
   damageConfig,
   inputConfig,
   STEP_MS,
+  STEP_DT,
   level1_1,
 } from '../../core/config';
 import { CharacterController } from '../../core/character/character-controller';
@@ -34,8 +35,9 @@ import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
 import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
-import { PlaceholderHazard } from '../debug/placeholder-hazard';
 import { FollowCamera } from '../camera/follow-camera';
+import { drawEnemy } from '../render/enemy-view';
+import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
 import { createPlatform } from '../../platform';
 
@@ -85,12 +87,12 @@ export class GameScene extends Phaser.Scene {
   private damage!: DamageStateMachine;
   /** 击退失控计时（ms）：>0 期间跳过 consume，仅物理积分击退（R3）。 */
   private hitstunTimer = 0;
-  /** C3 占位伤害源（静态刺栗，仅验证管线，非 MVP 敌）。 */
-  private hazard!: PlaceholderHazard;
+  /** S04-1 真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。 */
+  private enemies: EnemyAI[] = [];
   /** 检查点（出生点），重生落点。 */
   private spawn!: { x: number; y: number };
-  /** 占位 hazard 渲染 Graphics（世界坐标，随相机滚动）。 */
-  private hazardGfx?: Phaser.GameObjects.Graphics;
+  /** 敌人渲染 Graphics（世界坐标，随相机滚动）。 */
+  private enemyGfx?: Phaser.GameObjects.Graphics;
 
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
@@ -207,19 +209,9 @@ export class GameScene extends Phaser.Scene {
     const levelH = this.runtime.data.height * this.runtime.data.tileSize;
     this.drawLevel();
 
-    // C3 占位伤害源：放在关卡中段、踩在地面 tile 顶，供「碰敌受伤 → 击退 → 重生/GameOver」管线验证（非 MVP 敌）。
-    const hzW = 24;
-    const hzH = 24;
-    const hzX = levelW * 0.5 - hzW / 2;
-    const hzCol = Math.floor((levelW * 0.5) / this.world.tileSize);
-    let groundRow = this.runtime.data.height - 1;
-    for (let r = 0; r < this.runtime.data.height; r++) {
-      if (this.world.isSolidTile(hzCol, r)) { groundRow = r; break; }
-    }
-    const hzY = groundRow * this.world.tileSize - hzH; // 坐在地面顶
-    this.hazard = new PlaceholderHazard(hzX, hzY, hzW, hzH);
-    this.hazardGfx = this.add.graphics();
-    this.hazard.draw(this.hazardGfx);
+    // S04-1：由关卡实体生成真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。
+    this.enemies = createEnemies(this.runtime.entities);
+    this.enemyGfx = this.add.graphics().setDepth(9);
 
     // 输入布局：结构性检测 input 是否为手势提供方（实现 PointerSink）→ gesture；否则 virtual 四钮。
     // 微信 ?buttons=1 / 配置 layout:"virtual" 回退四钮；gesture 为默认（见 click-to-move-design.md）。
@@ -287,6 +279,11 @@ export class GameScene extends Phaser.Scene {
 
     this.lastGrounded = res.grounded;
 
+    // S04-1：推进敌人 AI（表驱动；core 零平台，碰撞世界来自关卡 CollisionWorld）。
+    for (const e of this.enemies) {
+      if (!e.dead) e.update(dt, this.world);
+    }
+
     // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
     this.resolveHazards();
 
@@ -298,22 +295,26 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * C3 伤害接触解算（委托给共享纯函数，单一真实实现 → 集成测试即证据）。
-   * 命中 → 根据状态转换发 ON_HURT/ON_DEATH/ON_RESPAWN/ON_GAME_OVER，施加击退，设 hitstun；
-   * 重生 → 用返回的新 controller 替换（spawn 处满血复位）。
+   * 遍历全部存活敌人：命中 → 根据状态（踩踏 / 受伤）转换发对应事件，施加击退/反弹，设 hitstun；
+   * 重生 → 用返回的新 controller 替换（spawn 处满血复位）。踩踏与受伤在同帧互斥。
    */
   private resolveHazards(): void {
-    const r = resolveHazardContact({
-      damage: this.damage,
-      hazard: this.hazard,
-      body: this.body,
-      bus: this.bus,
-      cfg: damageConfig,
-      spawn: this.spawn,
-      playerW: PLAYER_W,
-      playerH: PLAYER_H,
-    });
-    if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
-    if (r.controller) this.controller = r.controller;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const r = resolveHazardContact({
+        damage: this.damage,
+        hazard: e,
+        body: this.body,
+        bus: this.bus,
+        cfg: damageConfig,
+        spawn: this.spawn,
+        playerW: PLAYER_W,
+        playerH: PLAYER_H,
+        dt: STEP_DT,
+      });
+      if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
+      if (r.controller) this.controller = r.controller;
+    }
   }
 
   /** 每固定步检测玩家 AABB 与凯旋之门 AABB 重叠，命中发 ON_LEVEL_COMPLETE（仅一次）。 */
@@ -496,6 +497,12 @@ export class GameScene extends Phaser.Scene {
       } else {
         fg.clear();
       }
+    }
+
+    // S04-1：每帧重绘敌人（位置由 stepSim 更新，世界坐标随相机偏移）。
+    if (this.enemyGfx) {
+      this.enemyGfx.clear();
+      for (const e of this.enemies) drawEnemy(this.enemyGfx, e);
     }
 
     this.drawSprite();

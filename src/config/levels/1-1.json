@@ -536,7 +536,11 @@
       "kind": "solid"
     }
   ],
-  "entities": [],
+  "entities": [
+    { "type": "ci_li", "x": 320, "y": 200 },
+    { "type": "ci_li", "x": 560, "y": 200 },
+    { "type": "du_fu", "x": 720, "y": 120 }
+  ],
   "props": [],
   "checkpoints": [],
   "goal": {

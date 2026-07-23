@@ -14,6 +14,14 @@ export interface EntityDef {
   y: number;
 }
 
+/** S04-1 敌人实体 schema（E3.S1）：可由关卡 JSON 生成真实可踩敌人（替代 C3 占位刺栗）。 */
+export type EnemyEntityType = 'ci_li' | 'du_fu';
+export interface EnemyEntityDef {
+  type: EnemyEntityType;
+  x: number;
+  y: number;
+}
+
 export interface PropDef {
   type: string;
   x: number;
