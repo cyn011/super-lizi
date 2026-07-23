@@ -539,7 +539,17 @@
   "entities": [
     { "type": "ci_li", "x": 320, "y": 200 },
     { "type": "ci_li", "x": 560, "y": 200 },
-    { "type": "du_fu", "x": 720, "y": 120 }
+    { "type": "du_fu", "x": 720, "y": 120 },
+    { "type": "coin", "x": 200, "y": 200 },
+    { "type": "coin", "x": 400, "y": 200 },
+    { "type": "coin", "x": 480, "y": 200 },
+    { "type": "coin", "x": 620, "y": 150 },
+    { "type": "coin", "x": 760, "y": 96 },
+    { "type": "coin", "x": 840, "y": 200 },
+    { "type": "coin", "x": 1080, "y": 200 },
+    { "type": "seed", "x": 380, "y": 200, "seedId": "seed_01" },
+    { "type": "seed", "x": 1010, "y": 200, "seedId": "seed_02" },
+    { "type": "checkpoint", "x": 960, "y": 176 }
   ],
   "props": [],
   "checkpoints": [],

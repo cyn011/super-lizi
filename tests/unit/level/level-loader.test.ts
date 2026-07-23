@@ -82,13 +82,21 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(rt.goal.y + rt.goal.h).toBeCloseTo(7 * 32, 3); // 底贴地面
   });
 
-  it('entities 透传 + S04-1 敌人由实体生成 EnemyAI', () => {
-    expect(rt.entities.length).toBe(3);
+  it('entities 透传 + S04-1 敌人由实体生成 EnemyAI + S04-3 实体分桶', () => {
+    // 3 敌 + 7 币 + 2 种子 + 1 检查点 = 13
+    expect(rt.entities.length).toBe(13);
     expect(rt.enemies.length).toBe(3);
     expect(rt.enemies[0].type).toBe('ci_li');
     expect(rt.enemies[1].type).toBe('ci_li');
     expect(rt.enemies[2].type).toBe('du_fu');
     expect(rt.enemies.every((e) => e.isStompable)).toBe(true);
+    // S04-3：coin/seed/checkpoint 由 entities 按 type 过滤分桶（不污染 enemies）
+    expect(rt.coins.length).toBe(7);
+    expect(rt.seeds.length).toBe(2);
+    expect(rt.seeds[0].seedId).toBe('seed_01');
+    expect(rt.seeds[1].seedId).toBe('seed_02');
+    expect(rt.checkpoints.length).toBe(1);
+    expect(rt.checkpoints[0]).toEqual({ type: 'checkpoint', x: 960, y: 176 });
   });
 
   it('beat.enabled:false 不驱动机制（仅透传，无逻辑消费）', () => {

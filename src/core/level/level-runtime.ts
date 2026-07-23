@@ -10,7 +10,14 @@
  *   - 仅网格内（0<=tx<width, 0<=ty<height）参与瓦片查询；越界瓦片在构建期被忽略（健壮性）
  * 关卡左右墙同时由瓦片（col0 / colLast 全高实心）显式表达，与封边语义一致、便于断言。
  */
-import type { LevelData, EntityDef, TileDef } from './level-data';
+import type {
+  LevelData,
+  EntityDef,
+  TileDef,
+  CoinEntityDef,
+  SeedEntityDef,
+  CheckpointEntityDef,
+} from './level-data';
 import type { CollisionWorld } from '../physics/collision';
 import { createEnemies, type EnemyAI } from '../enemy/enemy-ai';
 
@@ -38,6 +45,12 @@ export class RuntimeLevel {
   readonly entities: EntityDef[];
   /** S04-1：由 entities 生成的真实可踩敌人实例（替代 C3 占位刺栗，经 damage-resolution 管线）。 */
   readonly enemies: EnemyAI[];
+  /** S04-3：由 entities 过滤生成的金币实例（碰玩家 → ON_COIN，联动 S04-4 经济）。 */
+  readonly coins: CoinEntityDef[];
+  /** S04-3：由 entities 过滤生成的种子实例（碰玩家 → ON_SEED_COLLECTED，GDD 12）。 */
+  readonly seeds: SeedEntityDef[];
+  /** S04-3：由 entities 过滤生成的检查点实例（碰玩家 → 更新 respawnPoint + ON_CHECKPOINT）。 */
+  readonly checkpoints: CheckpointEntityDef[];
 
   private readonly solid: boolean[][];
   private readonly oneWay: boolean[][];
@@ -66,6 +79,16 @@ export class RuntimeLevel {
     this.goal = RuntimeLevel.buildGoal(data);
     this.entities = data.entities ?? [];
     this.enemies = createEnemies(data.entities ?? []);
+    // S04-3：按 type 过滤分桶（coin/seed/checkpoint），与敌人共用 entities[] 来源。
+    this.coins = (data.entities ?? []).filter(
+      (e): e is CoinEntityDef => e.type === 'coin',
+    );
+    this.seeds = (data.entities ?? []).filter(
+      (e): e is SeedEntityDef => e.type === 'seed',
+    );
+    this.checkpoints = (data.entities ?? []).filter(
+      (e): e is CheckpointEntityDef => e.type === 'checkpoint',
+    );
   }
 
   private setTile(t: TileDef, w: number, h: number): void {

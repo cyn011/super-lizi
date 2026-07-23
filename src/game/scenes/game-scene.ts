@@ -38,6 +38,10 @@ import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
 import { drawEnemy } from '../render/enemy-view';
+import { drawCoin } from '../render/coin-view';
+import { drawSeed } from '../render/seed-view';
+import { drawCheckpoint } from '../render/checkpoint-view';
+import { resolvePickups } from '../pickup-resolution';
 import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
 import { EconomyController } from '../../core/economy/economy';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
@@ -95,6 +99,18 @@ export class GameScene extends Phaser.Scene {
   private spawn!: { x: number; y: number };
   /** 敌人渲染 Graphics（世界坐标，随相机滚动）。 */
   private enemyGfx?: Phaser.GameObjects.Graphics;
+
+  // ── S04-3 实体 / 检查点（coin/seed/checkpoint 生成 + 拾取 + 重生）──
+  /** 检查点重生点（S04-3）：触碰 checkpoint 后更新；死亡重生 / restart 落此。初始化为出生点。 */
+  private respawnPoint: { x: number; y: number } = { x: 0, y: 0 };
+  /** 已拾取金币去重集合（索引 → 防重复计数 / 重复事件）。 */
+  private collectedCoins = new Set<number>();
+  /** 已拾取种子去重集合（索引 → 防重复事件）。 */
+  private collectedSeeds = new Set<number>();
+  /** 金币 / 种子 / 检查点占位渲染 Graphics（世界坐标，随相机滚动）。 */
+  private coinGfx?: Phaser.GameObjects.Graphics;
+  private seedGfx?: Phaser.GameObjects.Graphics;
+  private checkpointGfx?: Phaser.GameObjects.Graphics;
 
   // ── S04-4 经济 / 分数（core 零平台 API）──
   /** 经济控制器：踩怪/金币/通关计分 + 连击倍率（GDD 06）。 */
@@ -170,6 +186,8 @@ export class GameScene extends Phaser.Scene {
     // 出生点初始化：body 左上角贴地面顶（spawn.y 已为脚底贴地），grounded=true、sizeScale=1，无开场掉穿
     const spawn = this.runtime.spawn;
     this.spawn = { x: spawn.x, y: spawn.y };
+    // S04-3：检查点重生点初始化为出生点（触碰 checkpoint 后更新）。
+    this.respawnPoint = { x: spawn.x, y: spawn.y };
     this.body = { x: spawn.x, y: spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
     this.controller = new CharacterController(characterConfig, {
       x: spawn.x,
@@ -222,6 +240,9 @@ export class GameScene extends Phaser.Scene {
       this.offRestart = undefined;
       for (const off of this.economyOffs) off();
       this.economyOffs.length = 0;
+      this.coinGfx?.destroy();
+      this.seedGfx?.destroy();
+      this.checkpointGfx?.destroy();
       this.hud.destroy();
     });
 
@@ -234,6 +255,16 @@ export class GameScene extends Phaser.Scene {
     // S04-1：由关卡实体生成真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。
     this.enemies = createEnemies(this.runtime.entities);
     this.enemyGfx = this.add.graphics().setDepth(9);
+
+    // S04-3：由关卡实体生成 coin/seed/checkpoint 占位渲染 + 去重集合初始化。
+    this.collectedCoins = new Set<number>();
+    this.collectedSeeds = new Set<number>();
+    this.coinGfx = this.add.graphics().setDepth(8);
+    this.seedGfx = this.add.graphics().setDepth(8);
+    this.checkpointGfx = this.add.graphics().setDepth(7);
+    this.drawCoins();
+    this.drawSeeds();
+    this.drawCheckpoints();
 
     // 输入布局：结构性检测 input 是否为手势提供方（实现 PointerSink）→ gesture；否则 virtual 四钮。
     // 微信 ?buttons=1 / 配置 layout:"virtual" 回退四钮；gesture 为默认（见 click-to-move-design.md）。
@@ -312,6 +343,9 @@ export class GameScene extends Phaser.Scene {
     // C5 终点检测：body AABB 与凯旋之门 AABB 重叠 → ON_LEVEL_COMPLETE（无敌人也可达）
     this.resolveGoal();
 
+    // S04-3：实体拾取 / 检查点解算（委托单一真实实现 resolvePickups）。
+    this.resolvePickups();
+
     this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
   }
 
@@ -329,7 +363,7 @@ export class GameScene extends Phaser.Scene {
         body: this.body,
         bus: this.bus,
         cfg: damageConfig,
-        spawn: this.spawn,
+        spawn: this.respawnPoint,
         playerW: PLAYER_W,
         playerH: PLAYER_H,
         dt: STEP_DT,
@@ -349,6 +383,58 @@ export class GameScene extends Phaser.Scene {
     if (overlap) {
       this.levelComplete = true;
       this.bus.emit(ON_LEVEL_COMPLETE, { levelId: this.runtime.data.id });
+    }
+  }
+
+  /**
+   * S04-3 实体拾取 / 检查点解算（委托 src/game/pickup-resolution 的单一真实实现）。
+   * 金币/种子重叠 → 发 ON_COIN / ON_SEED_COLLECTED + 标记 collected；检查点重叠 → 更新
+   * respawnPoint + 发 ON_CHECKPOINT（去重，仅首次/移动到新点）。按返回结果定向重绘对应图层。
+   */
+  private resolvePickups(): void {
+    const r = resolvePickups({
+      runtime: this.runtime,
+      body: this.body,
+      collectedCoins: this.collectedCoins,
+      collectedSeeds: this.collectedSeeds,
+      respawnPoint: this.respawnPoint,
+      bus: this.bus,
+    });
+    if (r.coinHits.length > 0) this.drawCoins();
+    if (r.seedHits.length > 0) this.drawSeeds();
+    if (r.checkpointUpdated) this.drawCheckpoints();
+  }
+
+  /** S04-3 重绘未拾取金币（已 collected 的不绘制，实现移除渲染）。 */
+  private drawCoins(): void {
+    const g = this.coinGfx;
+    if (!g) return;
+    g.clear();
+    for (let i = 0; i < this.runtime.coins.length; i++) {
+      if (this.collectedCoins.has(i)) continue;
+      drawCoin(g, this.runtime.coins[i]);
+    }
+  }
+
+  /** S04-3 重绘未拾取种子（已 collected 的不绘制）。 */
+  private drawSeeds(): void {
+    const g = this.seedGfx;
+    if (!g) return;
+    g.clear();
+    for (let i = 0; i < this.runtime.seeds.length; i++) {
+      if (this.collectedSeeds.has(i)) continue;
+      drawSeed(g, this.runtime.seeds[i]);
+    }
+  }
+
+  /** S04-3 重绘检查点；若某检查点 == 当前 respawnPoint 则点亮（已抵达反馈）。 */
+  private drawCheckpoints(): void {
+    const g = this.checkpointGfx;
+    if (!g) return;
+    g.clear();
+    for (const cp of this.runtime.checkpoints) {
+      const active = this.respawnPoint.x === cp.x && this.respawnPoint.y === cp.y;
+      drawCheckpoint(g, cp, active);
     }
   }
 
@@ -375,14 +461,20 @@ export class GameScene extends Phaser.Scene {
    */
   private restartGame(): void {
     this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
-    this.body = { x: this.spawn.x, y: this.spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
-    this.controller = new CharacterController(characterConfig, { x: this.spawn.x, y: this.spawn.y, grounded: true });
+    this.body = { x: this.respawnPoint.x, y: this.respawnPoint.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
+    this.controller = new CharacterController(characterConfig, { x: this.respawnPoint.x, y: this.respawnPoint.y, grounded: true });
     this.lastGrounded = true;
     this.levelComplete = false;
     this.gameOver = false;
     this.hitstunTimer = 0;
     this.hitFlashTimer = 0;
     this.respawnFadeTimer = 0;
+    // S04-3：重置拾取去重（与 economy 重置一致，使关卡实体可重新拾取），并重绘图层。
+    this.collectedCoins.clear();
+    this.collectedSeeds.clear();
+    this.drawCoins();
+    this.drawSeeds();
+    this.drawCheckpoints();
     // S04-4：新一局分数/连击归零（HUD 字段经 ON_SCORE_CHANGED 同步归零，留 S04-5 绘制）。
     this.economy = new EconomyController(economyConfig);
     this.emitScoreChange();
