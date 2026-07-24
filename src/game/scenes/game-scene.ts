@@ -35,7 +35,7 @@ import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
 import { PauseMenu } from '../../ui/pause-menu';
-import { ResultScreen, evaluateStars, type StarResult } from '../../ui/result-screen';
+import { ResultScreen, evaluateRanks, type RankResult } from '../../ui/result-screen';
 import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
@@ -579,7 +579,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * ON_LEVEL_COMPLETE 处理（S05-2）：RunState PLAYING→LEVEL_COMPLETE（防重入），
-   * 冻结仿真 + 结算星级（时间≤parTime 得时间星 + 金币收集率≥50% 得金币星）→ 显示 ResultScreen。
+   * 冻结仿真 + 结算评级（时间≤parTime 得时间评级 + 金币收集率≥50% 得金币评级）→ 显示 ResultScreen。
    * 失败（命耗尽）走 onGameOver，不进此处。
    * parTime 来源：关卡 metadata.parTimeMs（1-1.json 已加，占位 60s），缺省回退 DEFAULT_PAR_TIME_MS（待主理人拍板）。
    */
@@ -588,7 +588,7 @@ export class GameScene extends Phaser.Scene {
     const md = this.runtime.data.metadata as unknown as Record<string, unknown>;
     const parTimeMs = (md.parTimeMs as number | undefined) ?? DEFAULT_PAR_TIME_MS;
     const totalCoins = this.runtime.coins.length;
-    const result: StarResult = evaluateStars({
+    const result: RankResult = evaluateRanks({
       elapsedMs: this.elapsedMs,
       parTimeMs,
       collectedCoins: this.collectedCoins.size,

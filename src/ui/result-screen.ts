@@ -1,14 +1,17 @@
 /**
- * ui/result-screen — 通关结算 + 星级（GDD 08 §3 / S05-2）。
+ * ui/result-screen — 通关结算 + 评级菱形星（GDD 08 §3 / S05-2）。
  *
  * 本文件两层：
- *   1) 纯函数 `evaluateStars` / `computeStars`（零 Phaser / 零平台 API，可被 Node 单测，
- *      tests/unit/ui/result-screen.test.ts）。星级映射为 S05-2 拍板：
- *        时间维度（elapsedMs ≤ parTimeMs 得时间星）+ 金币收集率（≥50% 得金币星）
- *        → 双达标=3★、单达标=2★、完成但未达标=1★（失败不进结算，走 GameOver）。
- *   2) `ResultScreen` Phaser 视图：遮罩 + 星级 + 用时/金币 + 「再玩一次」大圆角按钮
+ *   1) 纯函数 `evaluateRanks` / `computeRanks`（零 Phaser / 零平台 API，可被 Node 单测，
+ *      tests/unit/ui/result-screen.test.ts）。评级映射为 S05-2 拍板：
+ *        时间维度（elapsedMs ≤ parTimeMs 得时间评级）+ 金币收集率（≥50% 得金币评级）
+ *        → 双达标=3 评级、单达标=2 评级、完成但未达标=1 评级（失败不进结算，走 GameOver）。
+ *   2) `ResultScreen` Phaser 视图：遮罩 + 评级菱形星 + 用时/金币 + 「再玩一次」大圆角按钮
  *      + 最小凯旋动画（面板 scale/alpha 弹入）。矢量 + 系统字体（ADR-004），禁位图字体；
  *      中文 ≥14px；按钮热区 ≥48×48（control-list §4）。
+ *
+ * 评级星以**矢量菱形星**绘制（Graphics 路径：旋转 45° 的菱形轮廓 + 填充），
+ * 对齐 art-bible §7.2「原创菱形星（非五角星）」，替代原系统字体五角星 `★`(U+2605)。
  *
  * 关键约束：本文件对 Phaser 仅用 `import type`（编译期类型，运行时被擦除），
  * 故 Node 单测 import 本文件不会拉起 Phaser / canvas。运行期 Phaser 调用全部走
@@ -23,11 +26,11 @@ import { pointInRect } from '../core/util/hit-test';
 
 // ── 纯函数层（零 Phaser / 零平台 API，可单测）──
 
-/** 星级计算的输入。 */
-export interface StarInput {
+/** 评级计算的输入。 */
+export interface RankInput {
   /** 本次通关用时（ms）。 */
   elapsedMs: number;
-  /** 目标时间（ms）：elapsedMs ≤ parTimeMs 得时间星；≤0 视为未定（不达标）。 */
+  /** 目标时间（ms）：elapsedMs ≤ parTimeMs 得时间评级；≤0 视为未定（不达标）。 */
   parTimeMs: number;
   /** 已拾取金币数。 */
   collectedCoins: number;
@@ -35,22 +38,22 @@ export interface StarInput {
   totalCoins: number;
 }
 
-/** 星级评估结果（供 UI 展示 + 纯计数）。 */
-export interface StarResult {
-  /** 最终星级 1..3（完成至少 1★）。 */
-  stars: number;
+/** 评级评估结果（供 UI 展示 + 纯计数）。 */
+export interface RankResult {
+  /** 最终评级 1..3（完成至少 1 评级）。 */
+  ranks: number;
   /** 时间维度是否达标（≤parTime）。 */
   timeMet: boolean;
-  /** 金币维度是否达标（收集率 ≥ STAR_COIN_COLLECT_RATE）。 */
+  /** 金币维度是否达标（收集率 ≥ RANK_COIN_COLLECT_RATE）。 */
   coinMet: boolean;
   /** 金币收集率 0..1。 */
   coinRate: number;
 }
 
-/** 金币收集率阈值：≥50% 得金币星（S05-2 拍板，GDD 08 §3 权重各 50%）。 */
-export const STAR_COIN_COLLECT_RATE = 0.5;
-/** 完成即得的基础星数（保证「完成但未达标」也至少 1★）。 */
-export const BASE_STARS_ON_CLEAR = 1;
+/** 金币收集率阈值：≥50% 得金币评级（S05-2 拍板，GDD 08 §3 权重各 50%）。 */
+export const RANK_COIN_COLLECT_RATE = 0.5;
+/** 完成即得的基础评级数（保证「完成但未达标」也至少 1 评级）。 */
+export const BASE_RANKS_ON_CLEAR = 1;
 
 function clamp01(v: number): number {
   if (v < 0) return 0;
@@ -59,24 +62,24 @@ function clamp01(v: number): number {
 }
 
 /**
- * 评估星级（纯函数）。
+ * 评估评级（纯函数）。
  *   coinRate = totalCoins>0 ? collected/total : 1（无金币视为全收集）
  *   coinMet  = coinRate ≥ 0.5
  *   timeMet  = parTimeMs>0 && elapsedMs ≤ parTimeMs
- *   stars    = 1（基础）+ (timeMet?1:0) + (coinMet?1:0)   → 范围 [1,3]
+ *   ranks    = 1（基础）+ (timeMet?1:0) + (coinMet?1:0)   → 范围 [1,3]
  */
-export function evaluateStars(input: StarInput): StarResult {
+export function evaluateRanks(input: RankInput): RankResult {
   const coinRate =
     input.totalCoins > 0 ? clamp01(input.collectedCoins / input.totalCoins) : 1;
-  const coinMet = coinRate >= STAR_COIN_COLLECT_RATE;
+  const coinMet = coinRate >= RANK_COIN_COLLECT_RATE;
   const timeMet = input.parTimeMs > 0 && input.elapsedMs <= input.parTimeMs;
-  const stars = BASE_STARS_ON_CLEAR + (timeMet ? 1 : 0) + (coinMet ? 1 : 0);
-  return { stars, timeMet, coinMet, coinRate };
+  const ranks = BASE_RANKS_ON_CLEAR + (timeMet ? 1 : 0) + (coinMet ? 1 : 0);
+  return { ranks, timeMet, coinMet, coinRate };
 }
 
-/** 仅取星级数（= evaluateStars(input).stars）。 */
-export function computeStars(input: StarInput): number {
-  return evaluateStars(input).stars;
+/** 仅取评级数（= evaluateRanks(input).ranks）。 */
+export function computeRanks(input: RankInput): number {
+  return evaluateRanks(input).ranks;
 }
 
 // ── Phaser 视图层 ──
@@ -92,8 +95,8 @@ const OVERLAY_ALPHA = 0.6;
 const COLOR_PANEL = 0x4a3a2f; // 暖棕面板
 const COLOR_OUTLINE = 0x2a1a12; // 近黑棕描边
 const COLOR_TITLE = '#F4EFE6'; // 石灰白
-const COLOR_STAR_ON = '#F2C94C'; // 经济金（星达标）
-const COLOR_STAR_OFF = '#6A5A3F'; // 暗化（星未达）
+const COLOR_RANK_ON = 0xf2c94c; // 经济金（评级达标，矢量菱形星填充）
+const COLOR_RANK_OFF = 0x6a5a3f; // 暗化（评级未达，矢量菱形星填充）
 const COLOR_BTN = 0xb5763e; // 栗色按钮
 const TEXT_FONT = 'sans-serif'; // 运行时系统字体（ADR-004：禁位图字体）
 
@@ -104,10 +107,35 @@ const PANEL_H = 168;
 const BTN_W = 160;
 const BTN_H = 52;
 
+// 评级菱形星（矢量，art-bible §7.2 原创菱形星，非五角星）
+const RANK_ROW_Y = -PANEL_H / 2 + 56; // 评级行局部 Y
+const RANK_GAP = 34; // 三个评级横向间距
+const RANK_R = 13; // 菱形半对角线（≈26px 高，对齐原 26px 五角星）
+
+/**
+ * 绘制一个矢量菱形星（旋转 45° 的正方形轮廓 + 填充），中心 (cx,cy)，半对角线 r。
+ * 颜色按 on/off 取 COLOR_RANK_ON / COLOR_RANK_OFF；描边统一 COLOR_OUTLINE。
+ * 纯矢量路径，无 unicode 字符、无位图（满足 art-bible §7.2 + ADR-004）。
+ */
+function drawRank(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, on: boolean): void {
+  const fill = on ? COLOR_RANK_ON : COLOR_RANK_OFF;
+  g.fillStyle(fill, 1);
+  g.lineStyle(2, COLOR_OUTLINE, 1);
+  g.beginPath();
+  g.moveTo(cx, cy - r);
+  g.lineTo(cx + r, cy);
+  g.lineTo(cx, cy + r);
+  g.lineTo(cx - r, cy);
+  g.closePath();
+  g.fillPath();
+  g.strokePath();
+}
+
 export class ResultScreen {
   private readonly scene: Phaser.Scene;
   private readonly bus: { emit: (name: string, payload?: unknown) => void };
   private container?: Phaser.GameObjects.Container;
+  private rankGfx?: Phaser.GameObjects.Graphics; // 评级菱形星（单个 Graphics 绘制全部三个）
   private built = false;
 
   /** 「再玩一次」按钮的逻辑坐标命中盒（供 S05-5 handleTap 钩子；scale 弹入后约为 1，近似足够）。 */
@@ -126,17 +154,19 @@ export class ResultScreen {
   }
 
   /**
-   * 显示结算：遮罩 + 星级 + 用时/金币 + 「再玩一次」。
+   * 显示结算：遮罩 + 评级菱形星 + 用时/金币 + 「再玩一次」。
    * 幂等：已构建则更新内容并重新弹入，不重复建对象。
    */
-  show(result: StarResult, elapsedMs: number, collectedCoins: number, totalCoins: number): void {
+  show(result: RankResult, elapsedMs: number, collectedCoins: number, totalCoins: number): void {
     if (!this.built) this.build();
     const c = this.container!;
 
-    // 星级（3 个，filled 数 = result.stars）
-    for (let i = 0; i < 3; i++) {
-      const t = c.getByName(`star${i}`) as Phaser.GameObjects.Text | null;
-      if (t) t.setColor(i < result.stars ? COLOR_STAR_ON : COLOR_STAR_OFF);
+    // 评级菱形星（filled 数 = result.ranks）；矢量重绘，与服务端无关
+    if (this.rankGfx) {
+      this.rankGfx.clear();
+      for (let i = 0; i < 3; i++) {
+        drawRank(this.rankGfx, (i - 1) * RANK_GAP, RANK_ROW_Y, RANK_R, i < result.ranks);
+      }
     }
     // 信息行
     const info1 = c.getByName('info1') as Phaser.GameObjects.Text | null;
@@ -167,6 +197,7 @@ export class ResultScreen {
   destroy(): void {
     this.container?.destroy();
     this.container = undefined;
+    this.rankGfx = undefined;
     this.built = false;
     this.buttonRect = undefined;
   }
@@ -213,19 +244,13 @@ export class ResultScreen {
       .setOrigin(0.5);
     title.setName('title');
 
-    // 三星（横排，居中）
-    const starY = -PANEL_H / 2 + 56;
-    const gap = 34;
+    // 评级菱形星（矢量，横排三个，居中；初始全 off，show() 按 result.ranks 重绘）
+    const rankG = this.scene.add.graphics();
+    rankG.setName('rankGlyphs');
     for (let i = 0; i < 3; i++) {
-      const t = this.scene.add
-        .text((i - 1) * gap, starY, '★', {
-          fontFamily: TEXT_FONT,
-          fontSize: '26px',
-          color: COLOR_STAR_OFF,
-        })
-        .setOrigin(0.5);
-      t.setName(`star${i}`);
+      drawRank(rankG, (i - 1) * RANK_GAP, RANK_ROW_Y, RANK_R, false);
     }
+    this.rankGfx = rankG;
 
     // 信息行
     const info1 = this.scene.add
@@ -262,7 +287,7 @@ export class ResultScreen {
       })
       .setOrigin(0.5);
 
-    c.add([g, title, info1, info2, btn, btnText]);
+    c.add([g, title, rankG, info1, info2, btn, btnText]);
     // 遮罩不入容器（覆盖全屏，独立 depth），但随容器显隐同步
     c.add(overlay);
     overlay.setDepth(2499);
