@@ -80,11 +80,42 @@ export interface GoalDef {
   h?: number;
 }
 
+/** 节拍相位：平台可踩/可碰撞(solid) vs 虚化/可穿过(ghost)。 */
+export type BeatPhase = 'solid' | 'ghost';
+
+/** 节拍平台实体：一块由若干 tile 组成的「节拍平台」，由 tracks[].target 用 id 引用。 */
+export interface BeatPlatformDef {
+  /** 实例唯一 id；tracks[].target 引用此 id（无匹配 → 加载期 fail-fast）。 */
+  id: string;
+  /** 组成平台的瓦片坐标（逻辑 tile 网格，tx/ty 为整数）。可多块连成一条平台。 */
+  tiles: Array<{ tx: number; ty: number }>;
+  /** 第 0 拍之前（未触发任何 track 时）的保底相位；缺省 'ghost'（S05-1 实现口径）。 */
+  initial?: BeatPhase;
+}
+
+/** 谱面一条目（BeatDef.tracks 的元素）。pattern 周期模式与 (beat+action) 单点模式二选一。 */
+export interface BeatTrackEntry {
+  /** 目标平台 id（引用 BeatPlatformDef.id）。无匹配 id → 加载期 fail-fast 抛错。 */
+  target: string;
+  /**
+   * 周期模式：状态串，按 `beatIndex % pattern.length` 取字符映射：
+   *   'S'=solid，'G'=ghost，'T'=toggle（相对上一拍相位取反，首拍取 initial 的反）。
+   * MVP 仅用 S/G；T 留 Could 表现。非法字符 → 保持上一拍相位 + dev warn（不抛错）。
+   */
+  pattern?: string;
+  /** 单点模式：精确拍号（0 起）；仅当 pattern 缺省且 beat===当前拍号时生效。 */
+  beat?: number;
+  /** 单点模式目标相位（pattern 缺省时生效）。 */
+  action?: BeatPhase;
+  /** 预留扩展（Could）：如 { hold:N } 表示触发后保持 N 拍再回到 default。MVP 不用。 */
+  params?: Record<string, unknown>;
+}
+
 export interface BeatDef {
   enabled: boolean;
   bpm: number;
   grid: number;
-  tracks: unknown[];
+  tracks: BeatTrackEntry[]; // S05-1：原 unknown[] → 真实谱面 schema
 }
 
 export interface LevelData {
@@ -101,6 +132,8 @@ export interface LevelData {
   /** 出生点（逻辑 px）；缺省时由 Loader 按地面推算。 */
   spawn?: SpawnDef;
   beat: BeatDef;
+  /** 节拍平台实体声明（S05-1）：独立于 entities/props，tracks[].target 用 id 引用一组 tile。 */
+  beatPlatforms?: BeatPlatformDef[];
   metadata: { name: string; theme: string };
 }
 

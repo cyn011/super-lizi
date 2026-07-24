@@ -28,6 +28,7 @@ import { Projectile } from '../enemy/projectile';
 import { EconomyController } from '../economy/economy';
 import { DamageStateMachine } from '../damage/damage-state-machine';
 import { BeatClock, type BeatDef } from '../beat/beat-clock';
+import { advanceBeat } from '../beat/advance-beat';
 import { EventBus, ON_LAND, ON_JUMP, ON_BEAT, ON_LEVEL_COMPLETE } from '../events/event-bus';
 import { characterConfig, level1_1, STEP_DT, damageConfig, webInputConfig } from '../config';
 
@@ -197,11 +198,10 @@ export class HeadlessSim {
           if (p.dead) this.projectiles.splice(pi, 1);
         }
 
-        // —— 节拍门控（enabled=false 时 crossedBeat 恒 false → 0 触发）——
-        if (this.beatEnabled && this.beat.crossedBeat(simTimeMs)) {
-          this.beatEvents++;
-          this.bus.emit(ON_BEAT);
-        }
+        // —— 节拍门控（统一 advanceBeat：enabled=false 时返回 -1 → 0 触发）——
+        // 与 game-scene 同源逻辑：跨拍 emit ON_BEAT（headless 不驱动 BeatDrivenSystem，仅记录事件）。
+        const beatIdx = advanceBeat(this.beat, simTimeMs, this.bus);
+        if (beatIdx >= 0) this.beatEvents++;
 
         // —— 经济 / 伤害计时推进（冒烟中仅跑计时，无碰撞驱动数值变化）——
         this.economy.update(STEP_DT * 1000);

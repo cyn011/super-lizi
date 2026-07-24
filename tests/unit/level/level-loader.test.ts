@@ -103,7 +103,27 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(rt.checkpoints[0]).toEqual({ type: 'checkpoint', x: 960, y: 176 });
   });
 
-  it('beat.enabled:false 不驱动机制（仅透传，无逻辑消费）', () => {
-    expect(rt.data.beat.enabled).toBe(false);
+  it('beat 已点亮（S05-1）：enabled=true 且 tracks 含脉冲 track + beatPlatforms', () => {
+    expect(rt.data.beat.enabled).toBe(true);
+    expect(rt.data.beat.tracks.length).toBe(1);
+    expect(rt.data.beat.tracks[0]).toMatchObject({
+      target: 'bp_pulse_a',
+      pattern: 'SSSSSSSSGGGGGGGG',
+    });
+    const plats = rt.data.beatPlatforms ?? [];
+    expect(plats.length).toBe(1);
+    expect(plats[0]).toMatchObject({ id: 'bp_pulse_a', initial: 'solid' });
+    expect(plats[0].tiles).toEqual([
+      { tx: 17, ty: 4 },
+      { tx: 18, ty: 4 },
+    ]);
+  });
+
+  it('节拍平台初始 solid：动态实心集登记（S05-1 不走静态 solid 网格）', () => {
+    // bp_pulse_a initial:'solid' → 两 tile 在 isSolidTile 中可踩；相邻空 tile 仍非实心
+    expect(rt.world.isSolidTile(17, 4)).toBe(true);
+    expect(rt.world.isSolidTile(18, 4)).toBe(true);
+    expect(rt.world.isSolidTile(16, 4)).toBe(false);
+    expect(rt.world.isSolidTile(19, 4)).toBe(false);
   });
 });

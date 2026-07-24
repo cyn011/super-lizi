@@ -29,8 +29,11 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
+import { BeatClock } from '../../core/beat/beat-clock';
+import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
+import { advanceBeat } from '../../core/beat/advance-beat';
 import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
@@ -95,6 +98,10 @@ export class GameScene extends Phaser.Scene {
   private body!: Body;
   private world!: CollisionWorld;
   private runtime!: RuntimeLevel;
+  /** S05-1 节拍时钟：从关卡 beat 建；enabled 时每固定步门控。 */
+  private beatClock?: BeatClock;
+  /** S05-1 节拍驱动系统：按 tracks 在跨拍瞬间切平台 solid/ghost；无平台/无 track 时为 undefined。 */
+  private beatSystem?: BeatDrivenSystem;
   private goal!: { x: number; y: number; w: number; h: number };
   private camera!: FollowCamera;
   private bus!: EventBus;
@@ -243,6 +250,17 @@ export class GameScene extends Phaser.Scene {
     this.runtime = LevelLoader.load(level1_1);
     this.world = this.runtime.world;
     this.goal = this.runtime.goal;
+
+    // S05-1 节拍：持有 BeatClock + BeatDrivenSystem（对齐 headless 门控）。
+    // 仅当 beat.enabled 且有平台+track 时建系统；禁用时自然冻结（simTimeMs 不推进）。
+    const beatDef = this.runtime.data.beat;
+    if (beatDef.enabled) {
+      this.beatClock = new BeatClock(beatDef);
+      const platforms = this.runtime.data.beatPlatforms ?? [];
+      if (platforms.length > 0 && beatDef.tracks.length > 0) {
+        this.beatSystem = new BeatDrivenSystem(this.runtime, this.beatClock, beatDef.tracks);
+      }
+    }
 
     // 出生点初始化：body 左上角贴地面顶（spawn.y 已为脚底贴地），grounded=true、sizeScale=1，无开场掉穿
     const spawn = this.runtime.spawn;
@@ -457,6 +475,13 @@ export class GameScene extends Phaser.Scene {
 
     // S04-3：实体拾取 / 检查点解算（委托单一真实实现 resolvePickups）。
     this.resolvePickups();
+
+    // S05-1 节拍门控：对齐 headless——每固定步只调一次 advanceBeat（内部 crossedBeat）。
+    // 跨拍时先刷平台相位、再 emit ON_BEAT（让音频/juice 读到新相位）。
+    // 禁用时 advanceBeat 直接返回 -1 不 emit；暂停/通关/GameOver 由顶部早退保证 simTimeMs 不推进 → 自然冻结。
+    if (this.beatClock) {
+      advanceBeat(this.beatClock, simTimeMs, this.bus, (idx) => this.beatSystem?.applyBeat(idx));
+    }
 
     this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
   }

@@ -563,11 +563,16 @@
     "h": 64
   },
   "beat": {
-    "enabled": false,
+    "enabled": true,
     "bpm": 120,
     "grid": 8,
-    "tracks": []
+    "tracks": [
+      { "target": "bp_pulse_a", "pattern": "SSSSSSSSGGGGGGGG" }
+    ]
   },
+  "beatPlatforms": [
+    { "id": "bp_pulse_a", "initial": "solid", "tiles": [ { "tx": 17, "ty": 4 }, { "tx": 18, "ty": 4 } ] }
+  ],
   "metadata": {
     "name": "翠野序章",
     "theme": "grass",

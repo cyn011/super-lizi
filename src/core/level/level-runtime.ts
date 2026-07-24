@@ -17,6 +17,7 @@ import type {
   CoinEntityDef,
   SeedEntityDef,
   CheckpointEntityDef,
+  BeatPhase,
 } from './level-data';
 import type { CollisionWorld } from '../physics/collision';
 import { createEnemies, type EnemyAI } from '../enemy/enemy-ai';
@@ -55,6 +56,16 @@ export class RuntimeLevel {
   private readonly solid: boolean[][];
   private readonly oneWay: boolean[][];
 
+  /**
+   * 节拍动态实心集（S05-1）：key = `${tx},${ty}` 的字符串键。
+   * 由 BeatDrivenSystem 经 setBeatTileSolid 翻转——物理唯一真相源不变，仅 OR 此集。
+   * 越界 tile 永不入此集；isSolid 仅对网格内查询它，封边语义不受破坏。
+   */
+  private readonly dynamicSolid = new Set<string>();
+
+  /** 节拍平台 initial 缺省相位（与设计契约 / 实现口径一致）。 */
+  private static readonly BEAT_INITIAL_DEFAULT: BeatPhase = 'ghost';
+
   constructor(data: LevelData) {
     this.data = data;
     const w = data.width;
@@ -65,6 +76,14 @@ export class RuntimeLevel {
     this.solid = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
     this.oneWay = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
     for (const t of data.tiles) this.setTile(t, w, h);
+
+    // 节拍平台初始相位登记：initial ?? 'ghost' === 'solid' 的 tile 写入动态实心集
+    // （边界 3/4：beat 禁用时平台锁在 initial，与「普通实心 tile」行为一致）。
+    for (const p of data.beatPlatforms ?? []) {
+      if ((p.initial ?? RuntimeLevel.BEAT_INITIAL_DEFAULT) === 'solid') {
+        for (const t of p.tiles) this.dynamicSolid.add(this.beatKey(t.tx, t.ty));
+      }
+    }
 
     // 注入碰撞世界：仅网格内查询，越界一律非实心（由瓦片表达墙）
     this.world = {
@@ -101,11 +120,27 @@ export class RuntimeLevel {
     return tx >= 0 && tx < this.world.width && ty >= 0 && ty < this.world.height;
   }
 
-  /** 实心查询：越界左/右/底=墙（封边防走出/掉穿）、越界顶=开放；网格内查 solid 网格。 */
+  /** 实心查询：越界左/右/底=墙（封边防走出/掉穿）、越界顶=开放；网格内查 solid 网格 OR 节拍动态实心集。 */
   private isSolid(tx: number, ty: number): boolean {
     if (ty < 0) return false; // 顶部开放（允许起跳越顶）
     if (!this.inBounds(tx, ty)) return true; // 左/右/底封边（ty>=0 前提下的越界）
-    return this.solid[ty][tx];
+    return this.solid[ty][tx] || this.dynamicSolid.has(this.beatKey(tx, ty));
+  }
+
+  /** 节拍 tile 键（字符串，避免数字键在宽高变化时歧义）。 */
+  private beatKey(tx: number, ty: number): string {
+    return `${tx},${ty}`;
+  }
+
+  /**
+   * 节拍动态翻转（S05-1）：core 层（BeatDrivenSystem）据跨拍相位调用。
+   * 增/删 dynamicSolid；越界 tile 不登记（isSolid 对越界走封边语义）。
+   * @param solid true=登记为可踩实心，false=退出碰撞（ghost）。
+   */
+  setBeatTileSolid(tx: number, ty: number, solid: boolean): void {
+    const k = this.beatKey(tx, ty);
+    if (solid) this.dynamicSolid.add(k);
+    else this.dynamicSolid.delete(k);
   }
 
   /** 单向平台查询：仅网格内、且 kind===oneway 的 tile。 */
