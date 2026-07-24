@@ -29,7 +29,7 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
@@ -44,6 +44,8 @@ import { FollowCamera } from '../camera/follow-camera';
 import { RunStateMachineImpl, type RunStateMachine } from '../../core/state/run-state-machine';
 import { RunLifecycle } from '../../core/state/run-lifecycle';
 import { resolveActiveMenu } from '../../core/state/menu-tap';
+// S05-4 薄音频总线：订阅事件总线 → platform.audio.play(name)；仅依赖 AudioPort 类型，不反向依赖平台实现。
+import { AudioBus } from '../audio/audio-bus';
 import { drawEnemy } from '../render/enemy-view';
 import { drawProjectile } from '../render/projectile-view';
 import { drawCoin } from '../render/coin-view';
@@ -96,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   private goal!: { x: number; y: number; w: number; h: number };
   private camera!: FollowCamera;
   private bus!: EventBus;
+  /** S05-4 薄音频总线：把真实游戏事件转发到 platform.audio.play(name)；shutdown 时 destroy。 */
+  private audioBus?: AudioBus;
   private loop!: FixedStep;
   private sprite!: Phaser.GameObjects.Graphics;
   private touchButtons?: TouchButtons;
@@ -227,6 +231,9 @@ export class GameScene extends Phaser.Scene {
     this.registry.set('platform', this.platform);
     this.registry.set('events', this.bus);
 
+    // S05-4：尽早订阅音频总线（事件→play name）。本游戏无首帧必需音效，早注册安全。
+    this.audioBus = new AudioBus(this.bus, this.platform.audio);
+
     // 输入归一器（按平台选映射）
     this.abstraction = new InputAbstraction(
       this.platform.env === 'wechat' ? wechatInputConfig : webInputConfig,
@@ -313,6 +320,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.offRestart?.();
       this.offRestart = undefined;
+      this.audioBus?.destroy();
+      this.audioBus = undefined;
       for (const off of this.economyOffs) off();
       this.economyOffs.length = 0;
       this.coinGfx?.destroy();
@@ -413,6 +422,10 @@ export class GameScene extends Phaser.Scene {
       skipConsume,
     );
 
+    // D1：真实跳跃路径补 emit ON_JUMP（headless 已有，真实 game-scene 原缺）。
+    // lastJumped 由 consume 设置；hitstun 跳过 consume 时不应误发（skipConsume 守卫）。
+    if (this.controller.lastJumped && !skipConsume) this.bus.emit(ON_JUMP, {});
+
     // 落地边沿 → 发 ON_LAND（juice/音频预留，C2）
     if (!res.prevGrounded && res.grounded) this.bus.emit(ON_LAND, {});
 
@@ -423,7 +436,11 @@ export class GameScene extends Phaser.Scene {
     for (const e of this.enemies) {
       if (!e.dead) {
         const spawned = e.update(dt, this.world, this.body);
-        for (const p of spawned) this.projectiles.push(p);
+        if (spawned.length > 0) {
+          // D3：石炮（shi_pao）开火产出弹丸时补 emit ON_PROJECTILE_SPAWN → sfx:projectile_fire。
+          for (const p of spawned) this.projectiles.push(p);
+          this.bus.emit(ON_PROJECTILE_SPAWN, { count: spawned.length });
+        }
       }
     }
 

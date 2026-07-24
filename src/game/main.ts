@@ -59,6 +59,16 @@ export function startGame(parent?: string | HTMLElement): Phaser.Game {
   // 首次交互解锁音频（自动播放限制）
   platform.audio.unlock();
 
+  // 真实手势内再次 resume（绕过自动播放限制；boot 时调用因无手势无效）。
+  // 守卫 window：main.ts 同时被 index.html 与微信 game.js 引用，微信端无 window；
+  // 微信端跳过监听（WechatAudio.unlock() 仅置 flag，boot 调用已够，无需手势 resume）。
+  if (typeof window !== 'undefined') {
+    const resumeAudio = () => platform.audio.unlock();
+    window.addEventListener('pointerdown', resumeAudio, { once: true });
+    window.addEventListener('keydown', resumeAudio, { once: true });
+    window.addEventListener('touchstart', resumeAudio, { once: true });
+  }
+
   return game;
 }
 

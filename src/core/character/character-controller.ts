@@ -59,6 +59,9 @@ export class CharacterController {
   /** 短跳截断标志：保证「每个跳跃只切一次」 vy，避免上升段反复乘 shortHopCut。 */
   private shortHopApplied = false;
 
+  /** 最近一次 consume 是否执行了跳跃（供 game-scene 在真实运行路径补 emit ON_JUMP，D1）。每步 consume 重算。 */
+  lastJumped = false;
+
   constructor(
     private readonly config: CharacterConfig = characterConfig,
     initial?: Partial<CharacterState>,
@@ -148,6 +151,9 @@ export class CharacterController {
       s.vy *= cfg.shortHopCut;
       this.shortHopApplied = true;
     }
+
+    // 记录本步是否发生跳跃（供真实运行路径发 ON_JUMP；headless 独立仿真，不依赖此字段）。
+    this.lastJumped = jumped;
   }
 
   /** 踩踏反弹：被踩敌人顶消灭时由场景碰撞判定后调用，设向上速度 = stompBounce。 */

@@ -76,6 +76,8 @@
 
 **卡点**：前两项（零平台分支 + 同手势同 InputState）为架构铁律，CI 必跑；其余在微信最小 demo（R2）与真机回归验证。
 
+**S05-4 音频分层（补充）**：薄 `audio-bus` 落在 `src/game/audio/`，仅依赖 `core/events`（常量 + `EventBus` 类型）与 `platform` 的 `AudioPort` 类型，订阅事件总线 → `platform.audio.play(name)`；core 仍只 emit 事件、绝不 import 音频实现（`core-no-platform` 0 命中保持不变）。SFX 合成零素材（WebAudio `OscillatorNode`+`GainNode`；微信 `name→CDN URL` 流式，缺素材静默 no-op）。音量 = `audioConfig.master * audioConfig.sfx * SFX_BASE_GAIN[name]`。
+
 ---
 
 ## §5 实现前总闸（Phase 4 启动顺序建议）
