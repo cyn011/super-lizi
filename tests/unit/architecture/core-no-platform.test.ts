@@ -15,6 +15,14 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 
+// ── G7 修复 · 方案③：局部 Node 类型声明（最小侵入，不破坏 core 零平台）──
+// 约束：@types/node 不得进入 src/core 编译、也不得全局污染。
+// - 不安装 @types/node、不改 tsconfig 的 `types` 数组；
+// - `fs`/`path` 的模块声明放到 tests/node-stubs.d.ts（.d.ts 环境声明，非增强，
+//   故不触发 TS2664，且只对 import 'fs'/'path' 的文件可见，core 零泄漏）；
+// - `__dirname` 仅在本文（模块作用域）局部 declare，绝不提升为全局。
+declare const __dirname: string;
+
 const CORE_DIR = join(__dirname, '../../../src/core');
 
 /** 递归收集目录下所有 .ts 文件。 */
