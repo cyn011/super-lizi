@@ -35,7 +35,9 @@ import { drawLibaoPlaceholder } from '../../ui/placeholder';
 import { Hud } from '../../ui/hud';
 import { TouchButtons } from '../../ui/touch-buttons';
 import { PauseMenu } from '../../ui/pause-menu';
-import { ResultScreen, evaluateRanks, type RankResult } from '../../ui/result-screen';
+import { ResultScreen, evaluateRanks } from '../../ui/result-screen';
+// RankResult 类型归属 core（S05-3）；SaveManager 消费平台注入的 storage 落盘（core 零平台 API）。
+import { SaveManager, type RankResult } from '../../core/meta/save-data';
 import { runStepSim } from '../scene-sync';
 import { resolveHazardContact } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
@@ -151,6 +153,8 @@ export class GameScene extends Phaser.Scene {
   private pauseMenu?: PauseMenu;
   /** 通关结算 + 星级（ResultScreen）。 */
   private resultScreen?: ResultScreen;
+  /** S05-3：存档管理器（经平台注入 storage，core 零平台 API）。通关时落盘最优成绩。 */
+  private saveManager!: SaveManager;
 
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
@@ -268,6 +272,8 @@ export class GameScene extends Phaser.Scene {
     this.lifecycle = new RunLifecycle(this.runState, (name, payload) => this.bus.emit(name, payload));
     this.pauseMenu = new PauseMenu(this, this.bus);
     this.resultScreen = new ResultScreen(this, this.bus);
+    // S05-3：存档管理器（经平台注入 storage；levelOrder 留空 → 仅记录成绩，真实关卡顺序由后续进度 Story 注入）。
+    this.saveManager = new SaveManager(this.platform.storage);
 
     // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。
     // 不破坏 S04-1 已落地的踩敌链路（ON_STOMP 由 damage-resolution 发放）；此处仅订阅/计算。
@@ -595,6 +601,8 @@ export class GameScene extends Phaser.Scene {
       totalCoins,
     });
     this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins);
+    // S05-3：通关落盘最优成绩（ranks/bestTimes/bestCoins 取历史最优；V4 结算流程统一在此存档）。
+    this.saveManager.recordClear(this.runtime.data.id, result);
     // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击走结算路由（再玩一次）。
     this.platform.setMenuActive?.(true);
   }

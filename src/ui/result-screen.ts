@@ -23,6 +23,8 @@
 import type Phaser from 'phaser';
 import { ON_RESTART } from '../core/events/event-bus';
 import { pointInRect } from '../core/util/hit-test';
+// RankResult 类型已上移至 core/meta/save-data（S05-3：core 不依赖 ui 铁律收口）。
+import type { RankResult } from '../core/meta/save-data';
 
 // ── 纯函数层（零 Phaser / 零平台 API，可单测）──
 
@@ -38,17 +40,11 @@ export interface RankInput {
   totalCoins: number;
 }
 
-/** 评级评估结果（供 UI 展示 + 纯计数）。 */
-export interface RankResult {
-  /** 最终评级 1..3（完成至少 1 评级）。 */
-  ranks: number;
-  /** 时间维度是否达标（≤parTime）。 */
-  timeMet: boolean;
-  /** 金币维度是否达标（收集率 ≥ RANK_COIN_COLLECT_RATE）。 */
-  coinMet: boolean;
-  /** 金币收集率 0..1。 */
-  coinRate: number;
-}
+/**
+ * 评级评估结果（供 UI 展示 + 纯计数）。
+ * 注意：RankResult 类型定义已迁至 src/core/meta/save-data（本文件仅 import type），
+ * 避免 core 反向依赖 ui 层。
+ */
 
 /** 金币收集率阈值：≥50% 得金币评级（S05-2 拍板，GDD 08 §3 权重各 50%）。 */
 export const RANK_COIN_COLLECT_RATE = 0.5;
@@ -74,7 +70,8 @@ export function evaluateRanks(input: RankInput): RankResult {
   const coinMet = coinRate >= RANK_COIN_COLLECT_RATE;
   const timeMet = input.parTimeMs > 0 && input.elapsedMs <= input.parTimeMs;
   const ranks = BASE_RANKS_ON_CLEAR + (timeMet ? 1 : 0) + (coinMet ? 1 : 0);
-  return { ranks, timeMet, coinMet, coinRate };
+  // S05-3：携带 elapsedMs / collectedCoins，供 game-scene 直接交给 SaveManager.recordClear 落盘。
+  return { ranks, timeMet, coinMet, coinRate, elapsedMs: input.elapsedMs, collectedCoins: input.collectedCoins };
 }
 
 /** 仅取评级数（= evaluateRanks(input).ranks）。 */
