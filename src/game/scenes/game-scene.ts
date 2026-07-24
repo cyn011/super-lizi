@@ -58,7 +58,7 @@ import { drawSeed } from '../render/seed-view';
 import { drawCheckpoint } from '../render/checkpoint-view';
 import { resolvePickups } from '../pickup-resolution';
 import { createSeedRuntime, accumulateOnCollect } from '../../core/seed/seed-runtime';
-import { drawMaliTopper, playMetamorphAura } from '../render/mali-topper';
+import { drawMaliTopper, playMetamorphAura, drawSeedAura } from '../render/mali-topper';
 import type { Stage, SeedRuntimeState } from '../../core/seed/seed-types';
 import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
 import { Projectile } from '../../core/enemy/projectile';
@@ -159,6 +159,12 @@ export class GameScene extends Phaser.Scene {
   private currentSeedStage: Stage = 'sprout';
   /** 头顶蜕变物 Graphics（世界坐标，depth 高于角色；仅视觉，不改碰撞）。 */
   private topperGfx?: Phaser.GameObjects.Graphics;
+  /** topper 几何是否已随 stage 重绘（stage 不变则每帧仅移动 Graphics，避免重建几何）。 */
+  private topperDirty = true;
+  /** 稳态暖黄光晕 Graphics（世界坐标，depth 介于身体(10)与 topper(12) 间；每帧跟随 body 重绘）。 */
+  private auraGfx?: Phaser.GameObjects.Graphics;
+  /** 减少动态（D3）：跳过蜕变光晕脉冲 tween，仅保留静态稳态光晕。来源 platform.reduceMotion。 */
+  private reduceMotion = false;
 
   // ── S04-4 经济 / 分数（core 零平台 API）──
   /** 经济控制器：踩怪/金币/通关计分 + 连击倍率（GDD 06）。 */
@@ -257,6 +263,8 @@ export class GameScene extends Phaser.Scene {
 
     // S05-4：尽早订阅音频总线（事件→play name）。本游戏无首帧必需音效，早注册安全。
     this.audioBus = new AudioBus(this.bus, this.platform.audio);
+    // D3 Reduce Motion：来源 platform 注入（默认 false），game-scene 据此跳过光晕脉冲 tween。
+    this.reduceMotion = this.platform.reduceMotion ?? false;
 
     // 输入归一器（按平台选映射）
     this.abstraction = new InputAbstraction(
@@ -324,9 +332,12 @@ export class GameScene extends Phaser.Scene {
     // 蜕变跨阈值：更新头顶 topper 阶段 + 播放暖黄光晕（仅视觉反馈，不改任何玩法状态）。
     this.bus.on(ON_SEED_METAMORPHOSIS, (stage) => {
       this.currentSeedStage = stage as Stage;
+      this.topperDirty = true; // 阶段切换才重绘 topper 几何（节流）
       const cx = this.body.x + PLAYER_W / 2;
-      const cy = this.body.y + PLAYER_H / 2;
-      playMetamorphAura(this, cx, cy);
+      const topY = this.body.y;
+      // 光晕中心=头顶上方 6px（spec §2/§10.2，S2 中心修正：body 中部→头顶上方）；
+      // Reduce Motion 跳过脉冲 tween，仅稳态光晕（D3）。
+      if (!this.reduceMotion) playMetamorphAura(this, cx, topY - 6);
     });
 
     // S05-2：暂停/结算/继续 事件接线（RunState 机驱动流转，单一事实来源）。
@@ -353,6 +364,7 @@ export class GameScene extends Phaser.Scene {
       this.seedGfx?.destroy();
       this.checkpointGfx?.destroy();
       this.topperGfx?.destroy();
+      this.auraGfx?.destroy();
       this.levelGfx?.destroy();
       this.pauseMenu?.destroy();
       this.resultScreen?.destroy();
@@ -427,6 +439,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.enemyGfx) this.enemyGfx = this.add.graphics().setDepth(9);
     else this.enemyGfx.clear();
     // S04-2：弹丸列表（石炮 fire 时 push；不可踩独立 hazard），及占位渲染层。
+    // 切换关卡前先把残留弹丸归还对象池，避免稳态泄漏（候选②）。
+    for (const p of this.projectiles) if (!p.dead) Projectile.release(p);
     this.projectiles = [];
     if (!this.projectileGfx) this.projectileGfx = this.add.graphics().setDepth(9);
     else this.projectileGfx.clear();
@@ -441,8 +455,11 @@ export class GameScene extends Phaser.Scene {
     // GDD 12：本局种子 runtime 重置（growthPct=0 → sprout，保证本局即时反馈，§3.1）。
     this.seedRun = createSeedRuntime();
     this.currentSeedStage = 'sprout';
+    this.topperDirty = true; // 新一局重置 topper 几何（sprout）
     if (!this.topperGfx) this.topperGfx = this.add.graphics().setDepth(12); // 高于角色(sprite=10)
     else this.topperGfx.clear();
+    if (!this.auraGfx) this.auraGfx = this.add.graphics().setDepth(11); // 稳态光晕，压身体(10)上、topper(12)下
+    else this.auraGfx.clear();
 
     this.drawCoins();
     this.drawSeeds();
@@ -577,19 +594,17 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * C3 伤害接触解算（委托给共享纯函数，单一真实实现 → 集成测试即证据）。
-   * 遍历全部存活敌人 + 存活弹丸（均实现 HazardSource，不可踩 → 受伤分支）：
+   * 遍历存活敌人 + 存活弹丸（均实现 HazardSource，不可踩 → 受伤分支）：
    * 命中 → 根据状态（踩踏 / 受伤）转换发对应事件，施加击退/反弹，设 hitstun；
    * 重生 → 用返回的新 controller 替换（spawn 处满血复位）。踩踏与受伤在同帧互斥。
-   * 解算后移除已 dead 的弹丸（飞出边界/撞墙/已结算）。
+   * 解算后原地压缩弹丸列表并归还对象池（候选④ GC：避免每固定步新建数组）。
    */
   private resolveHazards(): void {
-    const sources: HazardSource[] = [];
-    for (const e of this.enemies) if (!e.dead) sources.push(e);
-    for (const p of this.projectiles) if (!p.dead) sources.push(p);
-    for (const h of sources) {
+    for (const e of this.enemies) {
+      if (e.dead) continue;
       const r = resolveHazardContact({
         damage: this.damage,
-        hazard: h,
+        hazard: e,
         body: this.body,
         bus: this.bus,
         cfg: damageConfig,
@@ -601,10 +616,35 @@ export class GameScene extends Phaser.Scene {
       if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
       if (r.controller) this.controller = r.controller;
     }
-    // S04-2：移除已 dead 的弹丸（飞出边界/撞墙/已结算），避免持续重叠误伤。
-    if (this.projectiles.length > 0) {
-      this.projectiles = this.projectiles.filter((p) => !p.dead);
+    for (const p of this.projectiles) {
+      if (p.dead) continue;
+      const r = resolveHazardContact({
+        damage: this.damage,
+        hazard: p,
+        body: this.body,
+        bus: this.bus,
+        cfg: damageConfig,
+        spawn: this.respawnPoint,
+        playerW: PLAYER_W,
+        playerH: PLAYER_H,
+        dt: STEP_DT,
+      });
+      if (r.hitstunMs > 0) this.hitstunTimer = r.hitstunMs;
+      if (r.controller) this.controller = r.controller;
     }
+    this.compactProjectiles();
+  }
+
+  /** 原地压缩弹丸列表：移除 dead 并归还对象池，避免每固定步新建数组（候选②/④）。 */
+  private compactProjectiles(): void {
+    const arr = this.projectiles;
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const p = arr[i];
+      if (p.dead) Projectile.release(p);
+      else arr[w++] = p;
+    }
+    arr.length = w;
   }
 
   /** 每固定步检测玩家 AABB 与凯旋之门 AABB 重叠，命中发 ON_LEVEL_COMPLETE（仅一次）。 */
@@ -673,17 +713,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * GDD 12：每帧重绘头顶蜕变物（世界坐标跟随 body；stage 取 currentSeedStage，METAMORPHOSIS 时切换）。
-   * 仅视觉：topperGfx 与 sprite 完全分离，绝不修改 body / sizeScale / form / 碰撞盒（§3.4/§3.5 红线）。
+   * GDD 12：每帧跟随 body 重绘头顶蜕变物（仅视觉，不改碰撞盒/尺寸/形态 §3.4/§3.5 红线）。
+   * 性能：topper 几何只随 stage 变化（候选① 节流）——stage 不变时仅移动 Graphics 对象
+   * （setPosition，廉价 transform），不再每帧 clear()+重建几何（Phaser Graphics 几何重建是 CPU 热点）。
    * 锚点：cx = body.x + PLAYER_W/2（头中心 x），topY = body.y（头顶 y = 碰撞盒顶）；配件向上生长。
    */
   private drawTopper(): void {
     const g = this.topperGfx;
     if (!g) return;
-    g.clear();
+    if (this.topperDirty) {
+      g.clear();
+      drawMaliTopper(g, 0, 0, this.currentSeedStage); // 本地原点绘制几何，stage 变更才重绘
+      this.topperDirty = false;
+    }
     const cx = this.body.x + PLAYER_W / 2;
     const topY = this.body.y; // 头顶 y（碰撞盒顶）
-    drawMaliTopper(g, cx, topY, this.currentSeedStage);
+    g.setPosition(cx, topY); // 仅移动对象跟随 body，避免每帧重建几何
+  }
+
+  /**
+   * GDD 12 / seed-topper-spec §2：每帧跟随 body 重绘稳态暖黄光晕（仅视觉）。
+   * 中心=头顶上方 6px，α/r 按当前 stage 阶梯（sprout 无）；与蜕变脉冲（playMetamorphAura）叠加。
+   * 静态绘制（无 tween），Reduce Motion 下仍呈现（无动画，防光敏 §9.3）。
+   */
+  private drawAura(): void {
+    const g = this.auraGfx;
+    if (!g) return;
+    g.clear();
+    if (this.reduceMotion) return; // D3：Reduce Motion 字面落实 task D「跳过光晕」（连稳态光晕一并跳过）
+    drawSeedAura(g, this.body.x + PLAYER_W / 2, this.body.y, this.currentSeedStage);
   }
 
   /**
@@ -956,5 +1014,6 @@ export class GameScene extends Phaser.Scene {
 
     this.drawSprite();
     this.drawTopper();
+    this.drawAura();
   }
 }

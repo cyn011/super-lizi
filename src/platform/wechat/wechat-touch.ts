@@ -6,7 +6,7 @@
  * 触屏设备 px 经 device/logical 比例换算。
  */
 
-import type { RawInputFrame, RawInputProvider, SignalId } from '../../core/input/raw-input';
+import { refillFrame, type RawInputFrame, type RawInputProvider, type SignalId } from '../../core/input/raw-input';
 import { inputConfig } from '../../core/config';
 import { isMenuActive } from './input-gate';
 
@@ -34,6 +34,12 @@ export class WechatTouchProvider implements RawInputProvider {
   private readonly pressed = new Set<SignalId>();
   private readonly released = new Set<SignalId>();
   private readonly touchBtn = new Map<number, SignalId>();
+  /** 复用帧对象，避免每 sample() 新建三组 Set（稳态 GC 优化，见 Phase 6 报告候选④）。 */
+  private readonly frame: RawInputFrame = {
+    down: new Set<SignalId>(),
+    pressedEdge: new Set<SignalId>(),
+    releasedEdge: new Set<SignalId>(),
+  };
 
   private readonly onStart = (e: { changedTouches?: TouchPoint[] }): void => this.handle(e.changedTouches, 'start');
   private readonly onMove = (e: { changedTouches?: TouchPoint[] }): void => this.handle(e.changedTouches, 'move');
@@ -164,14 +170,10 @@ export class WechatTouchProvider implements RawInputProvider {
   }
 
   sample(): RawInputFrame {
-    const frame: RawInputFrame = {
-      down: new Set(this.down),
-      pressedEdge: new Set(this.pressed),
-      releasedEdge: new Set(this.released),
-    };
+    const f = refillFrame(this.frame, this.down, this.pressed, this.released);
     this.pressed.clear();
     this.released.clear();
-    return frame;
+    return f;
   }
 
   reset(): void {

@@ -22,6 +22,9 @@ interface ProjectileConfigEntry {
 export class Projectile implements HazardSource {
   /** 全局自增 id（渲染键 / 去重，保证跨实例唯一）。 */
   static nextId = 1;
+  /** 对象池：回收 dead 弹丸复用，避免石炮高频 fire 时持续新建（候选② GC 优化）。 */
+  private static pool: Projectile[] = [];
+
   readonly id: number;
   /** 弹丸不可踩（碰玩家即受伤，与踩踏互斥）。 */
   readonly isStompable = false;
@@ -51,6 +54,27 @@ export class Projectile implements HazardSource {
     this.y = y;
     this.vx = vx;
     this.vy = vy;
+  }
+
+  /**
+   * 从对象池取一枚弹丸（无空闲则新建）。重置位置/速度/dead，复用既有尺寸配置。
+   * 由 enemy-ai 的 shi_pao fire 调用；对应的 release 由 game-scene 在弹丸失效时调用。
+   */
+  static acquire(x: number, y: number, vx: number, vy: number): Projectile {
+    const p = Projectile.pool.pop() ?? new Projectile(0, 0, 0, 0);
+    p.x = x;
+    p.y = y;
+    p.vx = vx;
+    p.vy = vy;
+    p.dead = false;
+    return p;
+  }
+
+  /** 归还弹丸到对象池（幂等：重复 release 安全）。 */
+  static release(p: Projectile): void {
+    if (p.dead) return;
+    p.dead = true;
+    Projectile.pool.push(p);
   }
 
   /** 每固定步积分移动；越界（左/右/顶/底封边外）或撞墙 → dead。 */

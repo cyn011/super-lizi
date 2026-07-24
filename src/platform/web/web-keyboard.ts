@@ -4,7 +4,7 @@
  * 逻辑层只认信号 id，不感知键盘。
  */
 
-import type { RawInputFrame, RawInputProvider, SignalId } from '../../core/input/raw-input';
+import { refillFrame, type RawInputFrame, type RawInputProvider, type SignalId } from '../../core/input/raw-input';
 
 const PREVENT_DEFAULT_CODES = new Set<string>([
   'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
@@ -15,6 +15,12 @@ export class WebKeyboardProvider implements RawInputProvider {
   private readonly down = new Set<SignalId>();
   private readonly pressed = new Set<SignalId>();
   private readonly released = new Set<SignalId>();
+  /** 复用帧对象，避免每 sample() 新建三组 Set（稳态 GC 优化，见 Phase 6 报告候选④）。 */
+  private readonly frame: RawInputFrame = {
+    down: new Set<SignalId>(),
+    pressedEdge: new Set<SignalId>(),
+    releasedEdge: new Set<SignalId>(),
+  };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (PREVENT_DEFAULT_CODES.has(e.code)) e.preventDefault();
@@ -51,14 +57,10 @@ export class WebKeyboardProvider implements RawInputProvider {
   }
 
   sample(): RawInputFrame {
-    const frame: RawInputFrame = {
-      down: new Set(this.down),
-      pressedEdge: new Set(this.pressed),
-      releasedEdge: new Set(this.released),
-    };
+    const f = refillFrame(this.frame, this.down, this.pressed, this.released);
     this.pressed.clear();
     this.released.clear();
-    return frame;
+    return f;
   }
 
   reset(): void {

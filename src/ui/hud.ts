@@ -48,7 +48,7 @@ const FORM_Y = 8;
 // ---- 经济字段（S04-5，hud-spec 未覆盖 / 08-ui-hud §3 中上分数金币）----
 // 布局：顶部右侧（与左上心形+形态镜像，margin 8，512×288 坐标系）。
 const COLOR_COIN = 0xf2c94c; // 经济金（与 coin-view.ts 同色，双编码：形状+色，色盲安全）
-const COLOR_COMBO_TEXT = '#F2994A'; // 警示橙（连击文本，醒目，区别于分数石灰白/金币金）
+const COLOR_COMBO_TEXT = '#E8483B'; // 警示红（连击文本，双编码危险色，对齐敌人/弹丸；越界橙已归位锁色板 #E8483B，P6 整改 A）
 const ECON_MARGIN = 8; // 距右边距（与心形左 margin 对称）
 const ECON_Y = 8; // 与心形同行
 const ECON_GAP = 8; // 分数 ↔ 金币组 间距

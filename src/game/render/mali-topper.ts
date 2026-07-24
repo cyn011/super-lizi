@@ -18,7 +18,15 @@ const SPROUT_GREEN = 0x7cc242; // 草绿嫩芽
 const WARM_YELLOW = 0xffd23f; // 暖黄花瓣/花心
 const FRUIT_ORANGE = 0xf2933c; // 暖橙果（莓红/橙 → 取调色板暖橙；莓红非调色板色，留美术复审）
 const OUTLINE = 0x2a1a12; // 近黑棕描边
-const AURA_COLOR = 0xffd23f; // 蜕变光晕暖黄（art-bible §1.3 权威值 #FFD23F）
+export const AURA_COLOR = 0xffd23f; // 蜕变光晕暖黄（art-bible §1.3 权威值 #FFD23F）
+
+/** 每 stage 稳态光晕 α/r 阶梯（seed-topper-spec §1.4 / §10.2）。sprout 无光晕（0/0）。 */
+export const AURA_LADDER: Record<Stage, [number, number]> = {
+  sprout: [0, 0],
+  vine: [0.15, 18],
+  bloom: [0.3, 24],
+  fruit: [0.5, 30],
+};
 
 /** 在 (cx, topY)（topY=栗宝头顶 y）程序化绘制头顶蜕变物。每帧 redraw 用最新 stage 即可平滑跟随 body。 */
 export function drawMaliTopper(
@@ -103,6 +111,29 @@ function drawFruit(g: Phaser.GameObjects.Graphics, cx: number, topY: number): vo
   g.strokeCircle(cx, topY - 14, 5);
   g.fillStyle(WARM_YELLOW, 0.8);
   g.fillCircle(cx - 2, topY - 16, 1.5);
+}
+
+/**
+ * 稳态暖黄光晕（seed-topper-spec §2 / §10.2）：在头顶上方 6px 处绘制 3–4 层同心圆，
+ * 外→内 alpha 递增（最内最亮）模拟径向衰减。每帧由 game-scene.drawAura 跟随 body 调用，
+ * 与蜕变脉冲（playMetamorphAura）叠加构成完整光晕反馈。
+ * Reduce Motion 下脉冲被跳过，稳态光晕仍静态呈现（无动画，防光敏 §9.3）。
+ */
+export function drawSeedAura(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  topY: number,
+  stage: Stage,
+): void {
+  const [a, r] = AURA_LADDER[stage];
+  if (a <= 0 || r <= 0) return; // sprout：无光晕
+  const cy = topY - 6; // 头顶锚点上方约 6px（spec §2 中心）
+  for (let i = 0; i < 4; i++) {
+    const rr = r * (1 - i / 4); // 由外→内
+    const aa = a * (0.35 + 0.2 * i); // alpha 递增（最内最亮）
+    g.fillStyle(AURA_COLOR, aa);
+    g.fillCircle(cx, cy, rr);
+  }
 }
 
 /**

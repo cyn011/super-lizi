@@ -19,12 +19,6 @@ export function drawLibaoPlaceholder(g: Phaser.GameObjects.Graphics, facing: num
   g.lineStyle(1, COLOR_OUTLINE, 1);
   g.strokeRoundedRect(0, 0, 24, 34, 6);
 
-  // 嫩芽装饰（顶部）
-  g.fillStyle(COLOR_SPROUT, 1);
-  g.fillCircle(12, 4, 3);
-  g.lineStyle(1, COLOR_OUTLINE, 1);
-  g.strokeCircle(12, 4, 3);
-
   // 朝向眼睛点（facing>=0 朝右）
   const eyeX = facing >= 0 ? 16 : 8;
   g.fillStyle(COLOR_OUTLINE, 1);

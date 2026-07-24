@@ -51,8 +51,8 @@
 
 | # | 玩法意图 | 真实事件 (EventName) | SFX name | 设计意图（音色 / 时长 / 音高走向） | 真实性 | 备注 |
 |---|---|---|---|---|---|---|
-| 1 | 跳跃 | `ON_JUMP` | `sfx:jump` | 轻快上滑"whoop"：三角波 320→540Hz，140ms，attack 5ms/decay 135ms | ⚠ GAP | 当前仅 headless 仿真 emit，真实 game-scene 未 emit（D1） |
-| 2 | 二段跳（如有） | `ON_DOUBLE_JUMP` | `sfx:double_jump` | 跳跃的明亮回声：三角 480→700Hz，90ms | ⚠ GAP | 从未 emit（MVP 无二段跳事件源，D5） |
+| 1 | 跳跃 | `ON_JUMP` | `sfx:jump` | 轻快上滑"whoop"：三角波 320→540Hz，140ms，attack 5ms/decay 135ms | ✅ | game-scene:534 已 emit（D1 CLOSED） |
+| 2 | 二段跳（如有） | `ON_DOUBLE_JUMP` | `sfx:double_jump` | 跳跃的明亮回声：三角 480→700Hz，90ms | ⚠ GAP | 从未 emit（MVP 无二段跳事件源，D5）；`sfx:double_jump` 已合成、audio-bus 已接映射，仅待 emit |
 | 3 | 落地 | `ON_LAND` | `sfx:land` | 柔和"噗"：三角 150→110Hz 短衰减 70ms，低增益 | ✅ | game-scene.ts:417 |
 | 4 | 踩踏消灭敌人 | `ON_STOMP` + `ON_ENEMY_DEATH`（同源同帧） | `sfx:stomp` + `sfx:enemy_death` | `sfx:stomp`=方波 600→180Hz 下滑"啵"70ms；`sfx:enemy_death`=正弦 400→200Hz 轻"噗"100ms（低增益，避免叠加爆音） | ✅ | damage-resolution.ts:97/98 同帧；两音增益已错开 |
 | 5 | 拾取金币 | `ON_COIN` | `sfx:coin` | 经典双音上行：正弦 988→1319Hz（B5→E6）两声 60+60ms，明亮 | ✅ | pickup-resolution.ts:72 |
@@ -65,12 +65,12 @@
 | 12 | 重开 | `ON_RESTART` | `sfx:restart` | 轻快上扫：三角 440→880Hz 120ms，比 resume 更亮 | ✅ | result-screen.ts:145 / pause-menu.ts:58 / game-scene.ts:556 |
 | 13 | 检查点 | `ON_CHECKPOINT` | `sfx:checkpoint` | 温和铃：正弦 784Hz(G5) 软衰减 300ms 单音微光 | ✅ | pickup-resolution.ts:102 |
 | 14 | 种子采集 | `ON_SEED_COLLECTED` | `sfx:seed_collect` | 闪亮"叮"：正弦 1047→1568Hz(C6→G6) 两声 50+50ms，清脆有机 | ✅ | pickup-resolution.ts:85，payload `seedId` |
-| 15 | 种子蜕变 stage up | `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph`（原 GDD09 `SFX_POWERUP`） | 温暖上行"绽放"：正弦/三角 440→880Hz 300ms + 柔铃泛音，正向生长感 | ✅ | 已接总线（D4 CLOSED）；事件常量由工程主程补入 event-bus，seed growth **跨阈值** emit 时响（每次 GROWTH 不 emit） |
-| 16 | 石炮开火 | `ON_PROJECTILE_SPAWN` | `sfx:projectile_fire` | 短"啾"：方/锯齿 700→300Hz 80ms，安静 | ⚠ GAP | `shi_pao` 返回 `Projectile[]` 但未 emit 此事件（D3） |
+| 15 | 种子蜕变 stage up | `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph`（原 GDD09 `SFX_POWERUP`） | 温暖上行"绽放"：正弦/三角 440→880Hz 300ms + 柔铃泛音，正向生长感 | ✅ | 已接总线（D4 CLOSED）；event-bus 常量已就位、game-scene:321 跨阈值 emit（每次 GROWTH 不 emit） |
+| 16 | 石炮开火 | `ON_PROJECTILE_SPAWN` | `sfx:projectile_fire` | 短"啾"：方/锯齿 700→300Hz 80ms，安静 | ✅ | game-scene:549 已 emit（D3 CLOSED） |
 | 17 | 分数变化（可选，默认不发声） | `ON_SCORE_CHANGED` | （建议不映射 / 仅连击里程碑） | — | ✅ 但高频 | 每次踩/币/通关都发，默认不接音效避免 spam（D7） |
 
-**MVP 必接（真实事件已存在）**：#3–#14（含 #1 待 D1 修复后）；#15 种子蜕变已接总线（D4 CLOSED；事件常量由工程主程补入 event-bus，跨阈值 emit 生效）。
-**GAP / 延后（待决策点）**：#1、#2、#16。
+**MVP 必接（真实事件已存在）**：#1–#16 均已落地——#1 跳跃 game-scene:534 emit（D1 CLOSED）、#15 种子蜕变 game-scene:321 跨阈值 emit（D4 CLOSED）、#16 石炮 game-scene:549 emit（D3 CLOSED）。
+**GAP / 延后（待决策点）**：#2（二段跳 `ON_DOUBLE_JUMP`，D5，从未 emit，无二段跳玩法，低优先；`sfx:double_jump` 已合成且 audio-bus 已接映射）。
 **可选**：#17。
 
 ---
@@ -125,23 +125,27 @@
 - **映射表**（仅含本 Story 真实/计划接入事件；GAP 项注释标注）：
 
   ```
-  ON_JUMP            → sfx:jump              // ⚠ 待 D1 事件就位
-  ON_LAND            → sfx:land
-  ON_STOMP           → sfx:stomp
-  ON_ENEMY_DEATH     → sfx:enemy_death
-  ON_COIN            → sfx:coin
-  ON_HURT            → sfx:hurt
-  ON_DEATH           → sfx:death
-  ON_RESPAWN         → sfx:respawn
-  ON_GAME_OVER       → sfx:game_over
-  ON_LEVEL_COMPLETE  → sfx:level_clear
-  ON_PAUSE           → sfx:pause
-  ON_RESUME          → sfx:resume
-  ON_RESTART         → sfx:restart
-  ON_CHECKPOINT      → sfx:checkpoint
-  ON_SEED_COLLECTED  → sfx:seed_collect
-  ON_SEED_METAMORPHOSIS → sfx:seed_metamorph // ✅ 已接（D4 CLOSED）
-  ON_PROJECTILE_SPAWN   → sfx:projectile_fire // ⚠ 待 D3 事件就位
+  ON_JUMP                → sfx:jump              // ✅ game-scene:534 已 emit（D1 CLOSED）
+  ON_DOUBLE_JUMP         → sfx:double_jump       // ⚠ 未 emit（D5 延后，无二段跳玩法）；audio-bus 已接映射
+  ON_LAND                → sfx:land
+  ON_STOMP               → sfx:stomp
+  ON_ENEMY_DEATH         → sfx:enemy_death
+  ON_COIN                → sfx:coin
+  ON_HURT                → sfx:hurt
+  ON_LIFE_LOST           → sfx:hurt              // 复用 hurt（无独立 life_lost 合成）
+  ON_DEATH               → sfx:death
+  ON_RESPAWN             → sfx:respawn
+  ON_GAME_OVER           → sfx:game_over
+  ON_LEVEL_COMPLETE      → sfx:level_clear
+  ON_LEVEL_COMPLETE_UI   → sfx:level_clear       // UI 变体，复用 level_clear
+  ON_PAUSE               → sfx:pause
+  ON_RESUME              → sfx:resume
+  ON_RESTART             → sfx:restart
+  ON_CHECKPOINT          → sfx:checkpoint
+  ON_SEED_COLLECTED      → sfx:seed_collect
+  ON_SEED_METAMORPHOSIS  → sfx:seed_metamorph    // ✅ game-scene:321 跨阈值 emit（D4 CLOSED）
+  ON_FORM_CHANGED        → sfx:seed_metamorph    // GDD06 元气果（MVP 未 emit），暂复用绽放音
+  ON_PROJECTILE_SPAWN    → sfx:projectile_fire   // ✅ game-scene:549 已 emit（D3 CLOSED）
   // ON_SCORE_CHANGED 默认不映射（D7）
   ```
 - **初始化点**：`game-scene.ts` 的 `create()` 中，在 `this.bus` / `this.platform` 就绪后**最早订阅处**实例化 `this.audioBus = new AudioBus(this.bus, this.platform.audio)`；`shutdown()` 调 `this.audioBus.destroy()`。理由：`bus` 已挂 registry/globalThis（`main.ts:46-47`），`platform.audio` 由 `createPlatform(env)` 注入（web/wechat-platform 各自 `new WebAudio()/new WechatAudio()`）；audio-bus 在 game 层组装，core 不感知。
@@ -170,18 +174,18 @@
 4. **分层合规**：audio-bus 位于 `src/game/audio`；core 无 import audio；core 仅 emit 事件。
 5. **同帧双音不爆**：触发 `ON_STOMP` 时 `sfx:stomp` 与 `sfx:enemy_death` 同时发声但合成增益已错开（实测峰值 ≤ 1.0，无削波）。
 6. **无回归**：`core/sim/headless` 仿真仍通过——audio-bus 不在 headless 使用，事件照常 emit，仿真不受影响。
-7. **跳跃无声修复**（D1 落地后）：game-scene 起跳 emit `ON_JUMP` → `sfx:jump` 被 `play`。
+7. **跳跃音修复验证**（D1 CLOSED）：game-scene 起跳 emit `ON_JUMP`（game-scene:534）→ `sfx:jump` 被 `play`。
 8. **微信静默不崩**：缺 CDN map → 全事件 `play` no-op，无异常、无主线程阻塞。
 
 ---
 
 ## 6. 已知限制 / 待主理人拍板项（Decision Points）
 
-- **D1（跳跃音源缺口，高优先）**：`ON_JUMP` 当前**仅在 headless 仿真 emit**，真实 game-scene 未 emit（`CharacterController.consume` 只改 `vy` 不发事件；`scene-sync.runStepSim` 也不返回 jumped）。→ 推荐修复：**`CharacterController` 构造注入 `EventBus`，在 `consume` 中 `jumped===true` 时 `emit(ON_JUMP)`**（core 合法 emit，headless 已用此模式），使跳跃音有统一真实源。请主理人确认由 S05-4 顺带小改或单列 sub-task。
+- **D1（跳跃音源缺口）— ✅ CLOSED**：`ON_JUMP` 原仅在 headless 仿真 emit；现 `game-scene.ts:534` 在 `controller.lastJumped && !skipConsume` 时 `emit(ON_JUMP)`，跳跃音已有统一真实源（S05-4 实现期落地）。
 - **D2（BGM 接口扩展）**：是否本 Story 预接 BGM？建议否（`music=0`，仅锁基调）。若未来需 BGM，**是否扩展 `AudioPort`（新增 `playMusic`/`streamMusic`）还是另立 `BgmPort`**？请拍板（影响架构）。
-- **D3（石炮开火事件）**：`ON_PROJECTILE_SPAWN` 已定义但**从未 emit**（`shi_pao` 仅返回 `Projectile[]`）。→ 需 game-scene 在消费返回的弹丸时 `emit(ON_PROJECTILE_SPAWN)`，才能触发 `sfx:projectile_fire`。是否本 Story 补？建议补（小改）。
-- **D4（种子蜕变事件缺口，GDD↔代码不一致）— ✅ CLOSED（GDD 12 §5.1 已定义 `ON_SEED_*` 事件契约）**：`audio-bus.ts` 已接 `ON_SEED_METAMORPHOSIS → sfx:seed_metamorph`（与 `web-audio.ts` 合成 440→880Hz/0.30s 对齐）。事件常量 `ON_SEED_METAMORPHOSIS` 由工程主程补入 `event-bus.ts` 并在 seed growth **跨阈值**时 emit（每次 `ON_SEED_GROWTH` 不 emit，避免 spam）；`ON_SEED_GROWTH` 音频侧**不映射**（采集反馈已由 `ON_SEED_COLLECTED→sfx:seed_collect` 覆盖，避免每采双音）。
-- **D5（二段跳）**：`ON_DOUBLE_JUMP` 从未 emit；MVP 角色有 `airJumps` 但无对应事件。是否本 Story 接入二段跳音？建议暂不接（与跳跃共用 `sfx:jump` 也可），待二段跳玩法明确。
+- **D3（石炮开火事件）— ✅ CLOSED**：`ON_PROJECTILE_SPAWN` 现 `game-scene.ts:549` 在石炮产出弹丸时 `emit(ON_PROJECTILE_SPAWN)`，触发 `sfx:projectile_fire`（S05-4 实现期落地）。
+- **D4（种子蜕变事件缺口，GDD↔代码不一致）— ✅ CLOSED（GDD 12 §5.1 已定义 `ON_SEED_*` 事件契约）**：`audio-bus.ts` 已接 `ON_SEED_METAMORPHOSIS → sfx:seed_metamorph`（与 `web-audio.ts` 合成 440→880Hz/0.30s 对齐）。event-bus.ts 常量已就位；`game-scene.ts:319-321` 在 seed growth **跨阈值**时 emit `ON_SEED_METAMORPHOSIS`（每次 `ON_SEED_GROWTH` 不 emit，避免 spam）；`ON_SEED_GROWTH` 音频侧**不映射**（采集反馈已由 `ON_SEED_COLLECTED→sfx:seed_collect` 覆盖，避免每采双音）。
+- **D5（二段跳）**：`ON_DOUBLE_JUMP` 从未 emit；MVP 角色有 `airJumps` 但无对应事件。`sfx:double_jump` 已在 `web-audio.ts` 合成、`audio-bus` 已接映射，但无触发源 → **唯一孤儿 SFX**。建议暂不接（与跳跃共用 `sfx:jump` 也可），待二段跳玩法明确后由工程补 emit 即自动发声。
 - **D6（无敌帧结束音）**：用户要求"无敌帧结束"反馈，但当前无独立事件（`invincibleTimer` 归零不发事件）。建议用 `ON_RESPAWN` 触发 `sfx:respawn` 作为"重生/恢复"反馈；若需精准"无敌结束"提示，需新增 `ON_INVINCIBLE_END` 事件（建议不做以免琐碎）。
 - **D7（`ON_SCORE_CHANGED` 是否发声）**：该事件高频（每次踩/币/通关都发）。默认建议**不映射音效**（仅 HUD 视觉），避免 spam；如要听觉奖励，仅对连击里程碑（`comboMult` 跳变）触发轻音。请拍板。
 - **D8（新增 AudioPort 方法？）**：当前 `play`/`unlock` 够用（name→音效 由平台内部解释）。是否需 `setVolume(bus, v)` 或 `playMusic`？建议保持最小接口，音量统一走 `audio-config`；如未来 BGM 需要再扩展（关联 D2）。

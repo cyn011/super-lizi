@@ -57,6 +57,9 @@ export interface EnemyConfigEntry {
 const DEFAULT_ENEMY_W = 24;
 const DEFAULT_ENEMY_H = 24;
 
+/** 共享的空弹丸数组哨兵：update 非开火时返回它，避免每步新建空数组（候选④ GC 优化，只读不写）。 */
+const NO_PROJECTILES: Projectile[] = [];
+
 /**
  * 敌人 AI 实例（E3.S1）。一个实例 = 关卡一个敌人实体。
  * 表驱动：update 按 type 分派到对应行为；新增敌人类型只需扩表 + 扩 createEnemies。
@@ -164,15 +167,15 @@ export class EnemyAI implements StompableHazard {
     if (this.fireFlash > 0) this.fireFlash = Math.max(0, this.fireFlash - dt * 1000);
     if (this.type === 'ci_li') {
       this.updatePatrol(dt, world);
-      return [];
+      return NO_PROJECTILES;
     }
     if (this.type === 'du_fu') {
       this.updateFloat(dt);
-      return [];
+      return NO_PROJECTILES;
     }
     if (this.type === 'chong_feng') return this.updateChongFeng(dt, world, player);
     if (this.type === 'shi_pao') return this.updateShiPao(dt, player);
-    return [];
+    return NO_PROJECTILES;
   }
 
   // ── ci_li 巡逻：先探测前方边缘/墙，再移动（避免穿墙 / 掉坑）──
@@ -237,7 +240,7 @@ export class EnemyAI implements StompableHazard {
         this.stunTimer = 0;
       }
     }
-    return [];
+    return NO_PROJECTILES;
   }
 
   // ── shi_pao 固定炮台：定时 fireInterval 朝玩家方向发射一枚 Projectile（独立 hazard）──
@@ -268,9 +271,9 @@ export class EnemyAI implements StompableHazard {
       // 炮口外推一点出生，避免与炮台自身重叠误伤
       const mx = pcx + dx * (this.width / 2 + 2);
       const my = pcy + dy * (this.height / 2 + 2);
-      return [new Projectile(mx, my, dx * speed, dy * speed)];
+      return [Projectile.acquire(mx, my, dx * speed, dy * speed)];
     }
-    return [];
+    return NO_PROJECTILES;
   }
 
   private isSolidAt(world: CollisionWorld, px: number, py: number): boolean {

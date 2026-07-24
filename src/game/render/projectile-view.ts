@@ -1,14 +1,14 @@
 /**
  * game/render/projectile-view — S04-2 弹丸占位渲染（game/ 允许 Phaser；core 零平台铁律）。
  *
- * 弹丸为独立 hazard（碰玩家受伤），双编码：醒目橙 #F2994A（危险）+ 圆形主体带运动方向尖，
+ * 弹丸为独立 hazard（碰玩家受伤），双编码：警示红 #E8483B（危险）+ 圆形主体带运动方向尖，
  * 区别于可踩敌人的软顶圆角。统一 #2A1A12 描边，depth 对齐 enemy-view。
  * 逻辑（Projectile）在 core/，渲染经 getBounds() 解耦。
  */
 import type Phaser from 'phaser';
 import type { Projectile } from '../../core/enemy/projectile';
 
-const PROJECTILE_COLOR = 0xf2994a; // 醒目橙（危险弹丸）
+const PROJECTILE_COLOR = 0xe8483b; // 警示红（危险弹丸，双编码危险色，对齐敌人/闪光；越界色整改 A）
 const OUTLINE = 0x2a1a12; // 近黑棕描边
 
 /** 在世界坐标 Graphics 上绘制一枚弹丸（dead 则不绘制）。 */

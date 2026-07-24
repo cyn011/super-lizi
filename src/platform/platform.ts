@@ -31,6 +31,12 @@ export interface Platform {
   storage: StoragePort;
   lifecycle: LifecyclePort;
   /**
+   * 可选：减少动态（accessibility §9.3 / seed-topper-spec §2.1）。
+   * 开启时 game-scene 跳过蜕变光晕脉冲 tween（仅保留静态稳态光晕），防光敏。
+   * 默认 false；后续可由系统 prefers-reduced-motion / 设置项注入，无需改 game-scene（P6 整改 D3）。
+   */
+  reduceMotion?: boolean;
+  /**
    * 可选：把主角屏幕逻辑坐标喂给输入提供方。
    * gesture 布局用于以主角位置为原点判定点击意图（见 click-to-move-design.md 最新拍板）；
    * virtual 布局的输入提供方无此方法 → 调方用 ?. 安全跳过（no-op）。

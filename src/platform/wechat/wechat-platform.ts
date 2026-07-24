@@ -68,6 +68,7 @@ export function createWechatPlatform(): Platform {
   const posSink = input as Partial<{ setPlayerScreenPos?(x: number, y: number): void }>;
   return {
     env: 'wechat',
+    reduceMotion: false, // P6 整改 D3：默认关闭；后续可由微信系统设置注入
     input,
     audio: new WechatAudio(),
     storage: new WechatStorage(),

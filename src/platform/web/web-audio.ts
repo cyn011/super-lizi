@@ -165,6 +165,21 @@ export class WebAudio implements AudioPort {
 
   /** 同发复音上限（≤8，audio-design.md §3.1）。 */
   private static readonly MAX_VOICES = 8;
+  /** E1：MasterBus 限幅压缩器（消同帧/多音叠加削波）；null=未建/直连 destination。 */
+  private compressor: AudioNode | null = null;
+  /** E4：高频采集 SFX 最小播放间隔（秒），防同帧/极快连发叠响互掩。 */
+  private readonly lastPlayed = new Map<string, number>();
+  private static readonly THROTTLE_SFX = new Set(['sfx:seed_collect', 'sfx:coin']);
+  private static readonly THROTTLE_MS = 50;
+  /** E3：明亮 SFX（方波/锯齿主体）过 lowpass 去刺耳（audio-polish-phase6 §1.3）。 */
+  private static readonly BRIGHT_SFX = new Set([
+    'sfx:stomp',
+    'sfx:hurt',
+    'sfx:pause',
+    'sfx:resume',
+    'sfx:projectile_fire',
+  ]);
+  private static readonly BRIGHT_CUTOFF = 3000; // 2500–3500Hz 区间
 
   constructor(audioContextCtor?: () => typeof AudioContext | null) {
     this.getCtor =
@@ -196,7 +211,45 @@ export class WebAudio implements AudioPort {
   play(name: string): void {
     if (!this.ctx) return; // 解锁前静默
     if (this.activeVoices >= WebAudio.MAX_VOICES) return; // 复音上限，防爆
+    // E4：高频采集类（seed_collect/coin）极快连发节流，防同帧叠响互掩（audio-polish-phase6 §1.6）
+    if (WebAudio.THROTTLE_SFX.has(name)) {
+      const now = this.ctx.currentTime;
+      const last = this.lastPlayed.get(name);
+      if (last !== undefined && now - last < WebAudio.THROTTLE_MS / 1000) return;
+      this.lastPlayed.set(name, now);
+    }
     this.synth(name);
+  }
+
+  /** E1：MasterBus 限幅压缩器（消同帧/多音叠加削波）。环境不支持时回退直连 destination（测试/旧环境）。 */
+  private masterBus(ctx: AudioContext): AudioNode {
+    if (!this.compressor) {
+      const factory = (ctx as unknown as { createDynamicsCompressor?: () => DynamicsCompressorNode })
+        .createDynamicsCompressor;
+      if (typeof factory === 'function') {
+        const comp = factory.call(ctx);
+        comp.threshold.value = -6;
+        comp.ratio.value = 8;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.12;
+        comp.knee.value = 6;
+        comp.connect(ctx.destination);
+        this.compressor = comp;
+      } else {
+        this.compressor = ctx.destination; // 不支持则直连
+      }
+    }
+    return this.compressor;
+  }
+
+  /** E3：明亮 SFX（方波/锯齿）插入 lowpass 去刺耳。环境不支持时（测试 mock）返回 null。 */
+  private makeLowpass(ctx: AudioContext, freq: number): BiquadFilterNode | null {
+    const factory = (ctx as unknown as { createBiquadFilter?: () => BiquadFilterNode }).createBiquadFilter;
+    if (typeof factory !== 'function') return null;
+    const f = factory.call(ctx);
+    f.type = 'lowpass';
+    f.frequency.value = freq;
+    return f;
   }
 
   /** 按 SFX_SPECS 合成并调度。 */
@@ -212,7 +265,13 @@ export class WebAudio implements AudioPort {
     if (base <= 0) return; // 静音轴（如 sfx=0）
 
     const now = ctx.currentTime;
+    const bus = this.masterBus(ctx); // E1：MasterBus 限幅
     let oscCount = 0;
+
+    // E3：明亮 SFX 主体过 lowpass 去刺耳（不支持时 makeLowpass 返回 null，直连）。
+    const lowpass = WebAudio.BRIGHT_SFX.has(name)
+      ? this.makeLowpass(ctx, WebAudio.BRIGHT_CUTOFF)
+      : null;
 
     for (const tone of spec.tones) {
       const start = now + tone.t0;
@@ -230,8 +289,14 @@ export class WebAudio implements AudioPort {
       g.gain.exponentialRampToValueAtTime(peak, start + tone.attack);
       g.gain.setValueAtTime(peak, Math.max(start + tone.attack, end - tone.release));
       g.gain.exponentialRampToValueAtTime(EPS, end);
-      osc.connect(g);
-      g.connect(ctx.destination);
+      // E1：osc → (lowpass) → gain → MasterBus(compressor) → destination
+      if (lowpass) {
+        osc.connect(lowpass);
+        lowpass.connect(g);
+      } else {
+        osc.connect(g);
+      }
+      g.connect(bus);
       osc.start(start);
       osc.stop(end + 0.02);
       oscCount++;
@@ -255,10 +320,12 @@ export class WebAudio implements AudioPort {
         const np = Math.max(base * n.gain, EPS);
         const ns = now + n.t0;
         const ne = ns + n.dur;
-        ng.gain.setValueAtTime(np, ns);
+        // E2：瞬态补 2ms attack 斜坡，消起音 pop/click（对齐 tone 包络）
+        ng.gain.setValueAtTime(EPS, ns);
+        ng.gain.exponentialRampToValueAtTime(np, ns + 0.002);
         ng.gain.exponentialRampToValueAtTime(EPS, ne);
         src.connect(ng);
-        ng.connect(ctx.destination);
+        ng.connect(bus); // E1：经 MasterBus 限幅
         src.start(ns);
         src.stop(ne + 0.02);
       } catch {

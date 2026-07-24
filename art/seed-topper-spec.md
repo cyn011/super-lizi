@@ -211,8 +211,8 @@ drawMaliTopper(
 | 凯旋之门 / 四敌 / 地形 / 金币 等 | 占位 Graphics，IP 合规但**非最终像素** | 无关 | ip-review §5 |
 
 ### 8.3 G8⑤ 判定
-- topper 从"无"→"已定义 + 将程序化实现"，**推进了 G8⑤ 的资产就绪度**，但整体资产仍处 Graphics 占位期（与 sprint-04-plan R7 一致），**G8⑤ 直至 Sprint 06 正式像素/换皮前仍为 OPEN（明确归属 art-director）**。
-- 本规格交付即满足"art-director 产出合规视觉契约"的前置条件；实现（`mali-topper.ts`）由 engineering-lead 据本规格完成。
+- topper 从"无"→"已定义 + 已程序化实现"，资产就绪度已达标（详见 §10 关闭判定，**G8⑤ = CLOSED**）；整体资产仍处 Graphics 占位期（与 sprint-04-plan R7 一致），**MVP 保留程序化占位（与全局一致）**，正式图集换皮路径见 §10.4。
+- 本规格即**唯一权威视觉契约**（阈值 / 头顶点位 / 尺寸 / 配色 / 光晕 / 单脉冲时长 全锁），满足"art-director 产出合规视觉契约"前置；实现（`mali-topper.ts`）由 engineering-lead 据本规格完成。
 
 ---
 
@@ -229,10 +229,94 @@ drawMaliTopper(
 
 ---
 
-## 10. G8⑤ 判定说明（主理人判门用 · 置于规格末）
+## 10. G8⑤ 关闭判定 + 正式图集换皮规格（主理人判门用 · 置于规格末）
 
-**G8⑤ = sprint-04-plan §4.3 G8「开放问题关闭」之 ⑤「资产就绪」**：要求 art-director 在 Sprint 06 前产出合规占位 / 正式资产；当前全量资产仍为 Graphics 占位（sprint-04-plan §0.3 偏差⑤、R7；ip-review §4 结论 PASS 仅指"占位造型语义合规"，非最终像素）。
+**G8⑤ = sprint-04-plan §4.3 G8「开放问题关闭」之 ⑤「资产就绪」**：要求 art-director 在 Sprint 06 前产出合规占位 / 正式资产。本 § 把原 OPEN 状态**转为正式像素/图集规格 + 关闭结论**。
 
-- **本 topper 当前状态 = 程序化占位绘制（非最终 atlas PNG 资产）**：`mali-topper.ts` 由 seed-eng 按本规格以 `Phaser.GameObjects.Graphics` 程序化绘制 sprout / vine / bloom / fruit + 暖黄 `#FFD23F` 光晕，与 demo 全量 Graphics 渲染一致，**不进 PNG 图集**。
-- 本文件即**唯一权威视觉契约**（阈值 / 头顶点位 / 尺寸 / 配色 / 光晕 / 单脉冲时长 全锁），满足"art-director 产出合规视觉契约"前置；实现严格按此，不另起视觉来源。
-- **G8⑤ 判定**：topper 已从"无绘制"(ip-review §5) 推进为"已定义 + 将程序化实现"，就绪度提升；但整体资产仍处 Graphics 占位期，**G8⑤ 在 Sprint 06 正式像素 / 图集换皮前仍为 OPEN（明确归属 art-director）**。本规格交付**不构成 G8⑤ 关闭**，仅推进之。
+### 10.0 一句话结论
+
+**G8⑤ = PASS（CONCERNS）** —— 美术侧已交付合规视觉契约（本文件全锁）+ 程序化实现已 live（IP/色板/可访问性达标），**OPEN 状态关闭**；MVP 保留程序化占位（与全局全量 Graphics 一致），正式图集换皮路径见 §10.4，归 engineering-lead。
+
+---
+
+### 10.1 四阶段 topper 图集切片规格（atlas 换皮目标）
+
+| 切片名 | 画布(px) | 帧数 | 锚点 | 配色（描边均 `#2A1A12`，禁增益紫） | 说明 |
+|---|---|---|---|---|---|
+| `char_mali_top_0` | `12×16` | 1（静态） | bottom-center `(0,0)`，向上生长 | 草绿 `#7CC242`（茎+1小叶） | 苗 sprout |
+| `char_mali_top_1` | `12×16` | 1 | 同上 | 草绿 `#7CC242`（茎+2–3 小叶） | 藤 vine |
+| `char_mali_top_2` | `12×16` | 1 | 同上 | 草绿 `#7CC242`（茎+萼）+ 暖黄 `#FFD23F`（5 瓣） | 花 bloom |
+| `char_mali_top_3` | `12×16` | 1 | 同上 | 暖橙 `#F2933C`（果体）+ 草绿 `#7CC242`（叶帽）+ 暖黄 `#FFD23F`（高光） | 果 fruit |
+
+- **命名前缀**：`char_`（asset-spec §6.2）；与 `char_mali` 本体精灵同 atlas。
+- **动画策略**：topper **无独立动画帧**（4 帧即 4 stage）；micro-sway 由运行时对精灵做 micro-rotation（复用 idle 呼吸相位，幅度随 stage 增大），**不计入图集帧**（spec §3）。
+- **建议切片坐标（示意，最终由 `free-tex-packer` 自动排布，2048×2048 atlas 内）**：横排 4 片 + 2px padding，光晕另置。
+
+  | 帧 | 示意 x | y | w×h |
+  |---|---|---|---|
+  | `char_mali_top_0` | 0 | 0 | 12×16 |
+  | `char_mali_top_1` | 14 | 0 | 12×16 |
+  | `char_mali_top_2` | 28 | 0 | 12×16 |
+  | `char_mali_top_3` | 42 | 0 | 12×16 |
+  | `fx_glow_mali` | 56 | 0 | 64×64（径向暖黄，半径 30→直径 60，pad 到 64） |
+
+- **光晕贴图 `fx_glow_mali`**：径向暖黄 `#FFD23F`（PNG-32 半透明），归 `fx_` 组；α/radius 由 `GrowthVisual` 程序 tween（spec §1.3 / §2）。
+
+---
+
+### 10.2 暖黄光晕参数表（α / r）
+
+> 权威值来自 spec §1.4 / §2；色板仅用锁色暖黄 `#FFD23F`，禁增益紫。
+
+| stage | 稳态 α | 稳态 r(px) | 蜕变脉冲 α(峰) | 脉冲 r(峰) | 单脉冲时长 | 中心 |
+|---|---|---|---|---|---|---|
+| 0 苗 | 0 | 0 | — | — | — | — |
+| 1 藤 | 0.15 | 18 | 0.15 | 18 | ≤0.4s ease-out | `(cx, topY-6)` |
+| 2 花 | 0.30 | 24 | 0.30 | 24 | ≤0.4s ease-out | `(cx, topY-6)` |
+| 3 果 | 0.50 | 30 | 0.50 | 30 | ≤0.4s ease-out | `(cx, topY-6)` |
+
+- **防光敏硬底线**：单次脉冲 ≤0.4s、非重复、非 strobe、整体 <3Hz（accessibility #10 / spec §2.1）。
+- **Reduce Motion**：开启时脉冲 tween 跳终值 / 停首帧，不播放过渡（spec §2.1）。
+
+---
+
+### 10.3 与现有程序化占位的映射关系（implementation drift 清单）
+
+| 规格要求 | 程序化实现现状（`mali-topper.ts` / `game-scene.ts`） | 偏差 | 处理 |
+|---|---|---|---|
+| 四阶段形状（苗/藤/花/果） | `drawMaliTopper` 四分支齐全，形状与 spec §1.2 基本一致 | 苗分支树叶略简化（spec 多点，实现 2 小叶）；属细节 | 换皮严格按 spec §1.2 像素化；可接受 |
+| 每 stage 稳态光晕 α/r 阶梯 | `playMetamorphAura` 仅在蜕变时一次性脉冲（`0→0.6→0`，scale `0.3→1.25`），**无稳态光晕** | 缺失稳态光晕；脉冲峰 α=0.6（> 稳态 0.50，但 ≤0.6 cap） | 换皮加稳态光晕对象（S3，CONCERNS） |
+| 光晕中心 `(cx, topY-6)` 头顶上方 | 实现置于 body 中心 `(cx, cy)`（`game-scene.ts:328`） | 位置偏移约半身高 | 换皮修正锚点到 `topY-6`（S2，低） |
+| `drawMaliTopper(g,cx,topY,stage,maturity,aura,sizeScale,facing)` | 实际 `(g,cx,topY,stage)` 4 参 | 简化签名（maturity/aura/sizeScale/facing 未传） | 换皮改贴图模式无需这些参数；可接受 |
+| 移除 `placeholder.ts` 硬编码嫩芽点 | **未移除**（`placeholder.ts:22-26` 仍在），与 topper stage0 苗叠加 | **双重芽点**（stage0 头顶两芽） | 占位期即移除（S1，**真机最高优先修复**，eng） |
+| Reduce Motion 关闭光晕 tween | 未接 Reduce Motion 开关 | 光晕不随减少动态关闭 | 全局 Reduce Motion 落地时 gate（D3，中） |
+
+---
+
+### 10.4 可落地生产清单（MVP 保留程序化占位 + 后续换皮）
+
+**MVP 判定：保留程序化占位，G8⑤ 关闭。**
+- 理由：① 全项目资产均占位期，topper 不另设门禁；② 程序化实现已 IP 无符号 / 色板仅用锁色（草绿 `#7CC242`、暖黄 `#FFD23F`、暖橙 `#F2933C`、描边 `#2A1A12`）/ 可访问性（形状编码 + 光晕 <3Hz + 头顶安全）达标；③ 图集换皮属全局像素化里程碑，非 topper 单点阻断。
+
+**后续换皮路径（归 engineering-lead，非 MVP 阻断）**：
+1. 产出 `char_mali_top_0~3`（12×16，4 帧）像素精灵 + `fx_glow_mali`（PNG-32 径向暖黄），按 §10.1 切片。
+2. 接入 `free-tex-packer` 单 atlas（ADR-004，≤1MB；topper 4 帧+光晕 <2KB，对 ≤300KB 预算无影响）。
+3. `drawMaliTopper` 改为贴图：按 `currentSeedStage` 选帧，位置对齐 `(cx, topY)`，sizeScale 同步缩放（spec §4.3）。
+4. 稳态光晕：按 §10.2 α/r 表常驻或 tween；蜕变时 pulse ≤0.4s；中心 `(cx, topY-6)`。
+5. 修正光晕中心到 `(cx, topY-6)`；移除 `placeholder.ts` 硬编码嫩芽点（消除双芽 S1）。
+6. 接 Reduce Motion：开启时跳过光晕 tween / 停首帧（D3）。
+7. 像素化须整数网格对齐（`pixelArt:true` + `roundPixels`），保证缩放后 topper 圆/线不糊不抖（G3 真机核对项）。
+
+---
+
+### 10.5 G8⑤ 关闭判定（主理人判门）
+
+- **判定**：**PASS（CONCERNS）**。状态 **OPEN → CLOSED**。
+- **理由（PASS）**：
+  1. 美术已交付合规视觉契约（本文件阈值/坐标/尺寸/配色/光晕/脉冲时长全锁）；
+  2. 程序化实现已 live（`mali-topper.ts` + `game-scene.ts` 接线），IP 无任天堂符号、色板仅用锁色、可访问性（形状编码 + 光晕 <3Hz）达标；
+  3. 全局 MVP 即程序化占位，topper 不另设门禁，符合 sprint-04-plan R7 的"占位就绪"口径。
+- **CONCERNS（非阻断，记 engineering-lead 跟进）**：① S1 双芽点（placeholder 硬编码未移除）② S3 稳态光晕缺失（仅瞬脉冲）③ S2 光晕中心偏移 ④ D3 Reduce Motion 未接光晕。均属像素化/打磨期修复，不阻塞 G8⑤ 关闭。
+- **后续**：随全局像素化里程碑（Sprint 06 后）统一换皮时一并落实 §10.4。
+
+> 美术指导 林绘澄 · G8⑤ 关闭登记于 `art/asset-audit-phase6.md` §8 / 本 §10。

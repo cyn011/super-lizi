@@ -5,7 +5,7 @@
  *   - 可踩（ci_li / du_fu）：软顶圆角（无刺）+ 双编码眼睛，暗示「可从顶踩死」。
  *   - 不可踩（chong_feng / shi_pao）：硬角/楔形前尖/方顶炮口，暗示「危险·勿踩」。
  * 色：ci_li = 警示红 #E8483B，du_fu = 蓝紫 #6E7BF2，chong_feng = 警示红 #E8483B（强化不可踩危险，S04-2），
- *     shi_pao = 灰 #8A8A8A（固定炮台，GDD 04）。
+ *     shi_pao = 石白 #F4EFE6（固定炮台，GDD 04；越界色整改 A）。
  * 敌人渲染落在 game/（Phaser Graphics），逻辑（EnemyAI）在 core/，二者经 getBounds() 解耦。
  */
 import type Phaser from 'phaser';
@@ -14,9 +14,9 @@ import type { EnemyAI } from '../../core/enemy/enemy-ai';
 const CI_LI_COLOR = 0xe8483b; // 警示红（ci_li）
 const DU_FU_COLOR = 0x6e7bf2; // 蓝紫（du_fu）
 const CHONG_FENG_COLOR = 0xe8483b; // 警示红（chong_feng，强化不可踩危险，S04-2）
-const SHI_PAO_COLOR = 0x8a8a8a; // 灰（shi_pao 固定炮台）
-const SHI_PAO_MUZZLE = 0x4a4a4a; // 炮口深灰
-const FLASH_COLOR = 0xf2994a; // 开火闪光橙
+const SHI_PAO_COLOR = 0xf4efe6; // 石白（shi_pao 固定炮台，GDD 04；越界色整改 A）
+const SHI_PAO_MUZZLE = 0x8a8276; // 炮口石灰暗（stone dark；越界色整改 A）
+const FLASH_COLOR = 0xe8483b; // 开火闪光警示红（双编码危险色；越界色整改 A）
 const OUTLINE = 0x2a1a12; // 近黑棕描边
 
 /** 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。 */

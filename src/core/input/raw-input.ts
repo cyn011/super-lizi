@@ -31,3 +31,23 @@ export interface RawInputProvider {
 export function emptyFrame(): RawInputFrame {
   return { down: new Set(), pressedEdge: new Set(), releasedEdge: new Set() };
 }
+
+/**
+ * 复用单个帧对象的三组 Set：清空后从给定集合回填，避免每帧 `new Set(...)` 分配
+ * （热路径稳态 GC 压力点，见 Phase 6 性能报告候选④）。调用方须在本 tick 内同步消费
+ * 返回的 frame（不要跨 sample() 调用保留引用）。
+ */
+export function refillFrame(
+  frame: RawInputFrame,
+  down: Iterable<SignalId>,
+  pressed: Iterable<SignalId>,
+  released: Iterable<SignalId>,
+): RawInputFrame {
+  frame.down.clear();
+  for (const s of down) frame.down.add(s);
+  frame.pressedEdge.clear();
+  for (const s of pressed) frame.pressedEdge.add(s);
+  frame.releasedEdge.clear();
+  for (const s of released) frame.releasedEdge.add(s);
+  return frame;
+}

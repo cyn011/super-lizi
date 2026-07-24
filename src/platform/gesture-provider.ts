@@ -16,7 +16,7 @@
  *   暂停/失焦时 reset() 清状态，避免漂移与卡死。
  * - 全部参数来自 input-config.json 的 wechat.gesture 块，不硬编码。
  */
-import type { RawInputFrame, RawInputProvider, SignalId } from '../core/input/raw-input';
+import { refillFrame, type RawInputFrame, type RawInputProvider, type SignalId } from '../core/input/raw-input';
 import { LOGICAL_WIDTH } from './detect';
 import type { PointerSink } from './raw-input-provider';
 
@@ -79,6 +79,12 @@ export class GestureProvider implements RawInputProvider, PointerSink {
   private primaryId: number | null = null;
   /** 双指暂停锁：≥2 枚指针同时 down 时为 true，期间屏蔽移动、仅响应暂停释放。 */
   private pauseLock = false;
+  /** 复用帧对象，避免每 sample() 新建三组 Set（稳态 GC 优化，见 Phase 6 报告候选④）。 */
+  private readonly frame: RawInputFrame = {
+    down: new Set<SignalId>(),
+    pressedEdge: new Set<SignalId>(),
+    releasedEdge: new Set<SignalId>(),
+  };
 
   constructor(params: GestureParams, logicalWidth: number = LOGICAL_WIDTH) {
     this.params = params;
@@ -229,14 +235,10 @@ export class GestureProvider implements RawInputProvider, PointerSink {
 
   // ---- RawInputProvider 采样 ----
   sample(): RawInputFrame {
-    const frame: RawInputFrame = {
-      down: new Set(this.down),
-      pressedEdge: new Set(this.pressed),
-      releasedEdge: new Set(this.released),
-    };
+    const f = refillFrame(this.frame, this.down, this.pressed, this.released);
     this.pressed.clear();
     this.released.clear();
-    return frame;
+    return f;
   }
 
   /** 失焦/暂停时清空所有按住与计时，避免输入卡死。 */

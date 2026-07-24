@@ -56,15 +56,27 @@ function makeCompositeInput(
   const sink = secondary as Partial<PointerSink>;
   const adv = secondary as Partial<{ advance(dt: number): void }>;
 
+  // 复用合并帧，避免每 sample() 新建三组 Set（稳态 GC 优化，见 Phase 6 报告候选④）。
+  const merged: RawInputFrame = {
+    down: new Set<SignalId>(),
+    pressedEdge: new Set<SignalId>(),
+    releasedEdge: new Set<SignalId>(),
+  };
+
   const obj: RawInputProvider & Partial<PointerSink> & { advance?(dt: number): void } = {
     sample(): RawInputFrame {
       const kf = keyboard.sample();
       const sf = secondary.sample();
-      return {
-        down: new Set<SignalId>([...kf.down, ...sf.down]),
-        pressedEdge: new Set<SignalId>([...kf.pressedEdge, ...sf.pressedEdge]),
-        releasedEdge: new Set<SignalId>([...kf.releasedEdge, ...sf.releasedEdge]),
-      };
+      merged.down.clear();
+      for (const s of kf.down) merged.down.add(s);
+      for (const s of sf.down) merged.down.add(s);
+      merged.pressedEdge.clear();
+      for (const s of kf.pressedEdge) merged.pressedEdge.add(s);
+      for (const s of sf.pressedEdge) merged.pressedEdge.add(s);
+      merged.releasedEdge.clear();
+      for (const s of kf.releasedEdge) merged.releasedEdge.add(s);
+      for (const s of sf.releasedEdge) merged.releasedEdge.add(s);
+      return merged;
     },
     reset(): void {
       keyboard.reset?.();
@@ -97,6 +109,7 @@ export function createWebPlatform(): Platform {
 
   return {
     env: 'web',
+    reduceMotion: false, // P6 整改 D3：默认关闭；后续可由 prefers-reduced-motion / 设置项注入
     input,
     audio: new WebAudio(),
     storage: new WebStorage(),
