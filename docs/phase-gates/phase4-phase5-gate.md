@@ -163,4 +163,25 @@
 - **放行建议**：可先放行 Phase 5 启动（内容产出/正式资产/多关）；上述 CONCERN 列入 Phase 5 首任务跟踪，G9/R2 设 1 周关闭时限。最终签字（发布）须人工审批（本门为建议性门控，非强制放行）。
 
 ---
+
+## 六、Phase 5 收尾烧尾更新（主理人汇编 · 2026-07-24）
+
+> 本节为 Phase 5 收尾后追加，记录 S06 CONCERN 的最新闭合状态。原 §一至§五 为 S06 评估时快照，保留不改。
+
+### 已关闭项（文档层）
+- **G5 IP 红线（命名）**：`result-screen.ts` 评级星 `star→rank` 重命名 + 矢量原创菱形星（EL-STAR-FIX，commit 7573be2）；`art/ip-review.md` §3.1 标 RESOLVED。仅余"终像素仍占位"（归 G8⑤ 资产项，非命名红线）→ **G5 命名 CONCERN 关闭**。
+- **G7 测试/类型**：`tsc --noEmit` 0 错已落地（EL-S06-FIX 方案③ `tests/node-stubs.d.ts`，commit 4af445c）；quality-lead 复跑确认 tsc exit 0 + 258 测试全绿 → **G7 关闭**。
+- **G8② Sprint3 门**：补 `docs/phase-gates/sprint-03-quality-gate.md`（C1–C5 全绿，PASS 条件）→ **G8② 关闭**（见该文档 §6 收尾结论）。
+
+### 仍 open（待真机/模拟器，非代码阻塞）
+- **G3 双端一致性**：③④⑤⑦⑧ 代码层已固化（S05-5 lifecycle / S05-4 音频解锁 / S05-3 存储端口），待 `manual-regression-g3-g9.md` 三端手测留痕。
+- **G9 R2 真机复验**：`dist-wechat` 代码层闭合，待真机/模拟器跑通留痕。
+- **G8⑤ 资产产出**：占位 Graphics 仍待 art-director 正式像素（独立 track，不阻塞主线）。
+
+### 当前 CONCERN 收敛
+- 评估快照：G3/G5/G7/G8/G9 = 5 项 CONCERN。
+- 烧尾后：**G3 / G9（待真机）+ G8⑤（资产占位）open**；G5/G7/G8② 已关闭。
+- 真机跑测（G3/G9）须用户在 Web / 微信模拟器 / 微信真机三端执行 `manual-regression-g3-g9.md` 并留痕，方可转「完全通过」。沙箱无法代跑微信真机。
+
+---
 > 备注：本门报告为 quality-lead 建议性质量门判定；高影响动作（git commit / 发布签字）须经主理人审批。未做任何代码修改、未提交。
