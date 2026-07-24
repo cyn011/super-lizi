@@ -12,8 +12,10 @@ import inputJson from '../../config/input-config.json';
 import uiJson from '../../config/ui-config.json';
 import audioJson from '../../config/audio-config.json';
 import level1_1Json from '../../config/levels/1-1.json';
+import level1_2Json from '../../config/levels/1-2.json';
 
 import type { InputMapping } from '../input/input-abstraction';
+import type { LevelData } from '../level/level-data';
 
 // ---- 物理常量（E2.S1 / 架构 §10）----
 export const TILE = physicsJson.tile as number;
@@ -37,6 +39,14 @@ export const inputConfig = inputJson as {
 export const uiConfig = uiJson;
 export const audioConfig = audioJson;
 export const level1_1 = level1_1Json;
+
+// ---- 关卡注册表（S06 进度链）：id → LevelData，单一事实来源；game-scene 经此按 currentLevelId 取关 ----
+export const levels: Record<string, LevelData> = {
+  '1-1': level1_1Json as LevelData,
+  '1-2': level1_2Json as LevelData,
+};
+/** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
+export const LEVEL_ORDER: string[] = ['1-1', '1-2'];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----
 // Web：物理信号 = 键码。

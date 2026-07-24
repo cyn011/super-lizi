@@ -21,7 +21,7 @@
  * Web 端直接用 Phaser interactive 按钮，无需此钩子。
  */
 import type Phaser from 'phaser';
-import { ON_RESTART } from '../core/events/event-bus';
+import { ON_RESTART, ON_NEXT_LEVEL } from '../core/events/event-bus';
 import { pointInRect } from '../core/util/hit-test';
 // RankResult 类型已上移至 core/meta/save-data（S05-3：core 不依赖 ui 铁律收口）。
 import type { RankResult } from '../core/meta/save-data';
@@ -95,14 +95,19 @@ const COLOR_TITLE = '#F4EFE6'; // 石灰白
 const COLOR_RANK_ON = 0xf2c94c; // 经济金（评级达标，矢量菱形星填充）
 const COLOR_RANK_OFF = 0x6a5a3f; // 暗化（评级未达，矢量菱形星填充）
 const COLOR_BTN = 0xb5763e; // 栗色按钮
+const COLOR_NEXT_BTN = 0x6fae4a; // 下一关按钮（S06 进度链，绿色强调）
 const TEXT_FONT = 'sans-serif'; // 运行时系统字体（ADR-004：禁位图字体）
 
-// 面板尺寸
+// 面板尺寸（S06：加高以容纳「下一关」+「再玩一次」两个按钮）
 const PANEL_W = 280;
-const PANEL_H = 168;
+const PANEL_H = 232;
 // 按钮（热区 ≥48×48：160×52）
 const BTN_W = 160;
 const BTN_H = 52;
+// 「下一关」按钮局部 Y（位于「再玩一次」上方）
+const NEXT_BTN_Y = PANEL_H / 2 - 86;
+// 「再玩一次」按钮局部 Y（面板底部上方）
+const REPLAY_BTN_Y = PANEL_H / 2 - 30;
 
 // 评级菱形星（矢量，art-bible §7.2 原创菱形星，非五角星）
 const RANK_ROW_Y = -PANEL_H / 2 + 56; // 评级行局部 Y
@@ -137,12 +142,20 @@ export class ResultScreen {
 
   /** 「再玩一次」按钮的逻辑坐标命中盒（供 S05-5 handleTap 钩子；scale 弹入后约为 1，近似足够）。 */
   private buttonRect?: { x: number; y: number; w: number; h: number };
+  /** 「下一关」按钮的逻辑坐标命中盒（S06；hasNext 时才有）。 */
+  private nextButtonRect?: { x: number; y: number; w: number; h: number };
+  /** 「下一关」按钮对象（矩形 + 文本），用于按 hasNext 切换可见性。 */
+  private nextButtonObjs?: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text>;
+  /** 当前是否显示「下一关」按钮（show 时按 hasNext 设置，handleTap 据此判定）。 */
+  private nextButtonVisible = false;
   private readonly restartAction: () => void;
+  private readonly nextAction: () => void;
 
   constructor(scene: Phaser.Scene, bus: { emit: (name: string, payload?: unknown) => void }) {
     this.scene = scene;
     this.bus = bus;
     this.restartAction = () => this.bus.emit(ON_RESTART);
+    this.nextAction = () => this.bus.emit(ON_NEXT_LEVEL);
   }
 
   /** 结算面板是否已构建。 */
@@ -154,7 +167,7 @@ export class ResultScreen {
    * 显示结算：遮罩 + 评级菱形星 + 用时/金币 + 「再玩一次」。
    * 幂等：已构建则更新内容并重新弹入，不重复建对象。
    */
-  show(result: RankResult, elapsedMs: number, collectedCoins: number, totalCoins: number): void {
+  show(result: RankResult, elapsedMs: number, collectedCoins: number, totalCoins: number, hasNext: boolean): void {
     if (!this.built) this.build();
     const c = this.container!;
 
@@ -170,6 +183,12 @@ export class ResultScreen {
     const info2 = c.getByName('info2') as Phaser.GameObjects.Text | null;
     if (info1) info1.setText(`用时 ${(elapsedMs / 1000).toFixed(1)}s`);
     if (info2) info2.setText(`金币 ${collectedCoins}/${totalCoins}`);
+
+    // S06：按 hasNext 切换「下一关」按钮可见性（通关末关隐藏，仍通关可进显示）。
+    this.nextButtonVisible = hasNext;
+    if (this.nextButtonObjs) {
+      for (const o of this.nextButtonObjs) o.setVisible(hasNext);
+    }
 
     // 最小凯旋动画：panel 弹入（scale + alpha）
     c.setVisible(true);
@@ -197,6 +216,9 @@ export class ResultScreen {
     this.rankGfx = undefined;
     this.built = false;
     this.buttonRect = undefined;
+    this.nextButtonRect = undefined;
+    this.nextButtonObjs = undefined;
+    this.nextButtonVisible = false;
   }
 
   /**
@@ -205,8 +227,13 @@ export class ResultScreen {
    */
   handleTap(x: number, y: number): void {
     const r = this.buttonRect;
-    if (!r || !this.container || !this.container.visible) return;
-    if (pointInRect(x, y, r)) {
+    if (!this.container || !this.container.visible) return;
+    // S06：优先判「下一关」按钮（仅当其可见时）。
+    if (this.nextButtonVisible && this.nextButtonRect && pointInRect(x, y, this.nextButtonRect)) {
+      this.nextAction();
+      return;
+    }
+    if (r && pointInRect(x, y, r)) {
       this.restartAction();
     }
   }
@@ -267,15 +294,32 @@ export class ResultScreen {
       .setOrigin(0.5);
     info2.setName('info2');
 
+    // 「下一关」大圆角按钮（S06：位于「再玩一次」上方；hasNext 时由 show() 置为可见）
+    const nextBtn = this.scene.add
+      .rectangle(0, NEXT_BTN_Y, BTN_W, BTN_H, COLOR_NEXT_BTN, 0.9)
+      .setStrokeStyle(2, COLOR_OUTLINE, 1);
+    nextBtn.setInteractive({ useHandCursor: true });
+    nextBtn.on('pointerdown', this.nextAction);
+    const nextBtnText = this.scene.add
+      .text(0, NEXT_BTN_Y, '下一关', {
+        fontFamily: TEXT_FONT,
+        fontSize: '16px', // ≥14px
+        color: COLOR_TITLE,
+        stroke: '#2A1A12',
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5);
+    nextBtn.setVisible(false);
+    nextBtnText.setVisible(false);
+
     // 「再玩一次」大圆角按钮（热区 160×52 ≥48×48）
-    const btnY = PANEL_H / 2 - 30;
     const btn = this.scene.add
-      .rectangle(0, btnY, BTN_W, BTN_H, COLOR_BTN, 0.9)
+      .rectangle(0, REPLAY_BTN_Y, BTN_W, BTN_H, COLOR_BTN, 0.9)
       .setStrokeStyle(2, COLOR_OUTLINE, 1);
     btn.setInteractive({ useHandCursor: true });
     btn.on('pointerdown', this.restartAction);
     const btnText = this.scene.add
-      .text(0, btnY, '再玩一次', {
+      .text(0, REPLAY_BTN_Y, '再玩一次', {
         fontFamily: TEXT_FONT,
         fontSize: '16px', // ≥14px
         color: COLOR_TITLE,
@@ -284,7 +328,7 @@ export class ResultScreen {
       })
       .setOrigin(0.5);
 
-    c.add([g, title, rankG, info1, info2, btn, btnText]);
+    c.add([g, title, rankG, info1, info2, nextBtn, nextBtnText, btn, btnText]);
     // 遮罩不入容器（覆盖全屏，独立 depth），但随容器显隐同步
     c.add(overlay);
     overlay.setDepth(2499);
@@ -292,10 +336,17 @@ export class ResultScreen {
     // 记录按钮逻辑坐标命中盒（容器中心 + 局部偏移，忽略弹入 scale 近似）
     this.buttonRect = {
       x: CENTER_X - BTN_W / 2,
-      y: CENTER_Y + btnY - BTN_H / 2,
+      y: CENTER_Y + REPLAY_BTN_Y - BTN_H / 2,
       w: BTN_W,
       h: BTN_H,
     };
+    this.nextButtonRect = {
+      x: CENTER_X - BTN_W / 2,
+      y: CENTER_Y + NEXT_BTN_Y - BTN_H / 2,
+      w: BTN_W,
+      h: BTN_H,
+    };
+    this.nextButtonObjs = [nextBtn, nextBtnText];
 
     c.setVisible(false);
     this.container = c;

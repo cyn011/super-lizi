@@ -21,15 +21,17 @@ import {
   inputConfig,
   STEP_MS,
   STEP_DT,
-  level1_1,
+  levels,
+  LEVEL_ORDER,
 } from '../../core/config';
+import { nextLevelId } from '../../core/level/level-order';
 import { CharacterController } from '../../core/character/character-controller';
 import { DamageStateMachine } from '../../core/damage/damage-state-machine';
 import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { BeatClock } from '../../core/beat/beat-clock';
 import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
@@ -98,6 +100,10 @@ export class GameScene extends Phaser.Scene {
   private body!: Body;
   private world!: CollisionWorld;
   private runtime!: RuntimeLevel;
+  /** S06 进度链：当前关卡 id（默认首关）；restart/下一关经此切换。 */
+  private currentLevelId: string = LEVEL_ORDER[0];
+  /** 关卡地形 Graphics（loadLevel 重建时先销毁旧实例，避免泄漏）。 */
+  private levelGfx?: Phaser.GameObjects.Graphics;
   /** S05-1 节拍时钟：从关卡 beat 建；enabled 时每固定步门控。 */
   private beatClock?: BeatClock;
   /** S05-1 节拍驱动系统：按 tracks 在跨拍瞬间切平台 solid/ghost；无平台/无 track 时为 undefined。 */
@@ -246,50 +252,17 @@ export class GameScene extends Phaser.Scene {
       this.platform.env === 'wechat' ? wechatInputConfig : webInputConfig,
     );
 
-    // C5：用 LevelLoader 由真实关卡数据构建 CollisionWorld + 出生点 + 凯旋之门 AABB
-    this.runtime = LevelLoader.load(level1_1);
-    this.world = this.runtime.world;
-    this.goal = this.runtime.goal;
-
-    // S05-1 节拍：持有 BeatClock + BeatDrivenSystem（对齐 headless 门控）。
-    // 仅当 beat.enabled 且有平台+track 时建系统；禁用时自然冻结（simTimeMs 不推进）。
-    const beatDef = this.runtime.data.beat;
-    if (beatDef.enabled) {
-      this.beatClock = new BeatClock(beatDef);
-      const platforms = this.runtime.data.beatPlatforms ?? [];
-      if (platforms.length > 0 && beatDef.tracks.length > 0) {
-        this.beatSystem = new BeatDrivenSystem(this.runtime, this.beatClock, beatDef.tracks);
-      }
-    }
-
-    // 出生点初始化：body 左上角贴地面顶（spawn.y 已为脚底贴地），grounded=true、sizeScale=1，无开场掉穿
-    const spawn = this.runtime.spawn;
-    this.spawn = { x: spawn.x, y: spawn.y };
-    // S04-3：检查点重生点初始化为出生点（触碰 checkpoint 后更新）。
-    this.respawnPoint = { x: spawn.x, y: spawn.y };
-    this.body = { x: spawn.x, y: spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
-    this.controller = new CharacterController(characterConfig, {
-      x: spawn.x,
-      y: spawn.y,
-      grounded: true,
-    });
-
-    // C3：受伤状态机 + 击退计时（initialLives 取自 damageConfig，Economy/06 接入后可覆盖）
-    this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
-    this.hitstunTimer = 0;
-
-    // 占位精灵（Graphics 运行时绘制，不依赖 PNG —— 见 art/placeholder-spec.md）
+    // 占位精灵（Graphics 运行时绘制，不依赖 PNG —— 见 art/placeholder-spec.md）。
+    // body/controller/damage/关卡渲染等「按关卡」的初始化统一在 loadLevel 完成（S06 进度链复用）。
     this.sprite = this.add.graphics();
     this.sprite.setDepth(10); // 高于世界层（drawLevel 其后 add，hud-spec §8.3），避免被地形遮挡
-    this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
-    this.drawSprite();
 
     // ── HUD + 受伤 juice 接线（hud-spec §8.4 / 实现合同）──
     // 受击闪红覆盖层（世界坐标跟随 body，depth = 栗宝+1，不进 HUD 层）。
     this.flashGfx = this.add.graphics().setDepth(11);
     // Hud 用 getter 读最新 damage：重生/重启会 new DamageStateMachine，避免读到过期实例（关键陷阱）。
+    // 初始绘制延后到 loadLevel（S06）：此时 damage 已就绪，避免读到 undefined。
     this.hud = new Hud(this, this.bus, () => this.damage, damageConfig.initialLives);
-    this.hud.redraw(); // 初始绘制（3 实心心形 + FULL 形态）
 
     // S05-2：RunState 机 + 暂停/结算 UI（架构 §6.2，与 DamageState 正交）。
     this.runState = new RunStateMachineImpl('PLAYING');
@@ -297,8 +270,8 @@ export class GameScene extends Phaser.Scene {
     this.lifecycle = new RunLifecycle(this.runState, (name, payload) => this.bus.emit(name, payload));
     this.pauseMenu = new PauseMenu(this, this.bus);
     this.resultScreen = new ResultScreen(this, this.bus);
-    // S05-3：存档管理器（经平台注入 storage；levelOrder 留空 → 仅记录成绩，真实关卡顺序由后续进度 Story 注入）。
-    this.saveManager = new SaveManager(this.platform.storage);
+    // S05-3：存档管理器（经平台注入 storage + 关卡顺序 LEVEL_ORDER，通关解锁下一关）。
+    this.saveManager = new SaveManager(this.platform.storage, undefined, LEVEL_ORDER);
 
     // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。
     // 不破坏 S04-1 已落地的踩敌链路（ON_STOMP 由 damage-resolution 发放）；此处仅订阅/计算。
@@ -314,6 +287,11 @@ export class GameScene extends Phaser.Scene {
 
     // ON_RESTART：干净 reset（场景内重开，非 scene.restart，状态更可控）。
     this.offRestart = this.bus.on(ON_RESTART, () => this.restartGame());
+    // S06：结算页「下一关」按钮 → 加载下一关（进度链闭环）。
+    this.bus.on(ON_NEXT_LEVEL, () => {
+      const n = nextLevelId(LEVEL_ORDER, this.currentLevelId);
+      if (n) this.loadLevel(n);
+    });
 
     // 受伤 juice 计时（game-scene 自管，与 Hud 并存）：受击闪红 / 重生淡入。
     this.bus.on(ON_HURT, () => { this.hitFlashTimer = HIT_FLASH_MS; });
@@ -345,34 +323,15 @@ export class GameScene extends Phaser.Scene {
       this.coinGfx?.destroy();
       this.seedGfx?.destroy();
       this.checkpointGfx?.destroy();
+      this.levelGfx?.destroy();
       this.pauseMenu?.destroy();
       this.resultScreen?.destroy();
       this.hud.destroy();
     });
 
-    // 真实关卡渲染（tile 世界坐标，相机滚动时自动偏移）
-    // levelW/levelH 提前计算：供 drawLevel 诊断日志与相机跟随共用（纯顺序上移，无逻辑变更）。
-    const levelW = this.runtime.data.width * this.runtime.data.tileSize;
-    const levelH = this.runtime.data.height * this.runtime.data.tileSize;
-    this.drawLevel();
-
-    // S04-1：由关卡实体生成真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。
-    this.enemies = createEnemies(this.runtime.entities);
-    this.enemyGfx = this.add.graphics().setDepth(9);
-
-    // S04-2：弹丸列表（石炮 fire 时 push；不可踩独立 hazard），及占位渲染层。
-    this.projectiles = [];
-    this.projectileGfx = this.add.graphics().setDepth(9);
-
-    // S04-3：由关卡实体生成 coin/seed/checkpoint 占位渲染 + 去重集合初始化。
+    // S04-3 去重集合初始化（关卡实体渲染在 loadLevel 内完成）。
     this.collectedCoins = new Set<number>();
     this.collectedSeeds = new Set<number>();
-    this.coinGfx = this.add.graphics().setDepth(8);
-    this.seedGfx = this.add.graphics().setDepth(8);
-    this.checkpointGfx = this.add.graphics().setDepth(7);
-    this.drawCoins();
-    this.drawSeeds();
-    this.drawCheckpoints();
 
     // 输入布局：结构性检测 input 是否为手势提供方（实现 PointerSink）→ gesture；否则 virtual 四钮。
     // 微信 ?buttons=1 / 配置 layout:"virtual" 回退四钮；gesture 为默认（见 click-to-move-design.md）。
@@ -383,11 +342,104 @@ export class GameScene extends Phaser.Scene {
     }
     this.setupPointerInput(isGesture);
 
-    // C5 相机跟随：钳制到关卡边界（关宽 1280 > 逻辑宽 512），纵向不滚动
-    this.camera = new FollowCamera(this.cameras.main, levelW, levelH);
+    // S06：按 currentLevelId 从注册表加载关卡（首关 1-1）；restart / 下一关复用同一路径。
+    this.loadLevel(this.currentLevelId);
 
     // 固定步长主循环（ADR-005）：step 内做仿真，渲染在每帧 update 后
     this.loop = new FixedStep((dt, simTimeMs) => this.stepSim(dt, simTimeMs), STEP_MS);
+  }
+
+  /**
+   * S06 关卡加载（进度链核心）：按 id 从注册表 `levels` 重建「按关卡」的全部运行时状态。
+   * 被首关 create、restartGame（当前关）、ON_NEXT_LEVEL（下一关）三者复用，单一事实来源。
+   * 不重建一次性 UI（sprite/flashGfx/hud/pauseMenu/resultScreen/订阅），仅重建 runtime/物理/
+   * 节拍/敌人/拾取渲染/相机，并把 run 状态机与计时/标志复位为干净一局。
+   */
+  private loadLevel(id: string): void {
+    this.currentLevelId = id;
+
+    // C5：用 LevelLoader 由注册表关卡数据构建 CollisionWorld + 出生点 + 凯旋之门 AABB
+    this.runtime = LevelLoader.load(levels[id]);
+    this.world = this.runtime.world;
+    this.goal = this.runtime.goal;
+
+    // S05-1 节拍：持有 BeatClock + BeatDrivenSystem（对齐 headless 门控）。
+    this.beatClock = undefined;
+    this.beatSystem = undefined;
+    const beatDef = this.runtime.data.beat;
+    if (beatDef.enabled) {
+      this.beatClock = new BeatClock(beatDef);
+      const platforms = this.runtime.data.beatPlatforms ?? [];
+      if (platforms.length > 0 && beatDef.tracks.length > 0) {
+        this.beatSystem = new BeatDrivenSystem(this.runtime, this.beatClock, beatDef.tracks);
+      }
+    }
+
+    // 出生点初始化：body 左上角贴地面顶（spawn.y 已为脚底贴地），grounded=true、sizeScale=1，无开场掉穿
+    const spawn = this.runtime.spawn;
+    this.spawn = { x: spawn.x, y: spawn.y };
+    // S04-3：检查点重生点初始化为出生点（触碰 checkpoint 后更新）。
+    this.respawnPoint = { x: spawn.x, y: spawn.y };
+    this.body = { x: spawn.x, y: spawn.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
+    this.controller = new CharacterController(characterConfig, {
+      x: spawn.x,
+      y: spawn.y,
+      grounded: true,
+    });
+
+    // C3：受伤状态机 + 击退计时（initialLives 取自 damageConfig，Economy/06 接入后可覆盖）
+    this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
+    this.hitstunTimer = 0;
+    this.lastGrounded = true;
+
+    // S04-1：由关卡实体生成真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。
+    this.enemies = createEnemies(this.runtime.entities);
+    if (!this.enemyGfx) this.enemyGfx = this.add.graphics().setDepth(9);
+    else this.enemyGfx.clear();
+    // S04-2：弹丸列表（石炮 fire 时 push；不可踩独立 hazard），及占位渲染层。
+    this.projectiles = [];
+    if (!this.projectileGfx) this.projectileGfx = this.add.graphics().setDepth(9);
+    else this.projectileGfx.clear();
+
+    // S04-3：由关卡实体生成 coin/seed/checkpoint 占位渲染 + 去重集合初始化。
+    this.collectedCoins = new Set<number>();
+    this.collectedSeeds = new Set<number>();
+    if (!this.coinGfx) this.coinGfx = this.add.graphics().setDepth(8);
+    if (!this.seedGfx) this.seedGfx = this.add.graphics().setDepth(8);
+    if (!this.checkpointGfx) this.checkpointGfx = this.add.graphics().setDepth(7);
+    this.drawCoins();
+    this.drawSeeds();
+    this.drawCheckpoints();
+
+    // 真实关卡渲染（tile 世界坐标，相机滚动时自动偏移）；重建时先销毁旧地形 Graphics，避免泄漏。
+    this.drawLevel();
+
+    // C5 相机跟随：钳制到关卡边界（关宽 1536 > 逻辑宽 512），纵向不滚动
+    const levelW = this.runtime.data.width * this.runtime.data.tileSize;
+    const levelH = this.runtime.data.height * this.runtime.data.tileSize;
+    this.camera = new FollowCamera(this.cameras.main, levelW, levelH);
+
+    // S04-4 经济/分数：新一局分数/连击归零。
+    this.economy = new EconomyController(economyConfig);
+    this.prevComboMult = 1;
+
+    // 顶层 RUN 状态机复位为 PLAYING（来自 PLAYING/PAUSED/LEVEL_COMPLETE/GAME_OVER 均合法）。
+    this.runState.transition('PLAYING');
+    this.paused = false;
+    this.levelComplete = false;
+    this.gameOver = false;
+    this.elapsedMs = 0;
+    this.hitFlashTimer = 0;
+    this.respawnFadeTimer = 0;
+
+    // 隐藏暂停/结算 UI，复位精灵与受伤闪烁覆盖层。
+    this.pauseMenu?.hide();
+    this.resultScreen?.hide();
+    this.sprite?.setPosition(Math.round(this.body.x), Math.round(this.body.y));
+    this.sprite?.setAlpha(1);
+    this.flashGfx?.clear();
+    this.hud.redraw();
+    this.emitScoreChange();
   }
 
   private stepSim(dt: number, simTimeMs: number): void {
@@ -642,7 +694,9 @@ export class GameScene extends Phaser.Scene {
       collectedCoins: this.collectedCoins.size,
       totalCoins,
     });
-    this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins);
+    // S06：是否还有下一关 → 决定结算页是否显示「下一关」按钮。
+    const hasNext = nextLevelId(LEVEL_ORDER, this.currentLevelId) !== null;
+    this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins, hasNext);
     // S05-3：通关落盘最优成绩（ranks/bestTimes/bestCoins 取历史最优；V4 结算流程统一在此存档）。
     this.saveManager.recordClear(this.runtime.data.id, result);
     // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击走结算路由（再玩一次）。
@@ -658,42 +712,14 @@ export class GameScene extends Phaser.Scene {
     this.lifecycle.reset();
     // S05-5：门关 → gameplay 原生输入恢复转发。
     this.platform.setMenuActive?.(false);
-    this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
-    this.body = { x: this.respawnPoint.x, y: this.respawnPoint.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0 };
-    this.controller = new CharacterController(characterConfig, { x: this.respawnPoint.x, y: this.respawnPoint.y, grounded: true });
-    this.lastGrounded = true;
-    this.levelComplete = false;
-    this.gameOver = false;
-    this.hitstunTimer = 0;
-    // S05-2：RunState 回 PLAYING（PAUSED/LEVEL_COMPLETE/GAME_OVER 均合法→PLAYING）；
-    // 清暂停/结算 UI 与计时，确保重开干净。
-    this.runState.transition('PLAYING');
-    this.paused = false;
-    this.elapsedMs = 0;
-    this.pauseMenu?.hide();
-    this.resultScreen?.hide();
-    this.hitFlashTimer = 0;
-    this.respawnFadeTimer = 0;
-    // S04-3：重置拾取去重（与 economy 重置一致，使关卡实体可重新拾取），并重绘图层。
-    this.collectedCoins.clear();
-    this.collectedSeeds.clear();
-    this.drawCoins();
-    this.drawSeeds();
-    // S04-2：清空瞬时弹丸（无敌人拥有，重开不应残留上一局飞行中的弹丸）。
-    this.projectiles = [];
-    this.drawCheckpoints();
-    // S04-4：新一局分数/连击归零（HUD 字段经 ON_SCORE_CHANGED 同步归零，留 S04-5 绘制）。
-    this.economy = new EconomyController(economyConfig);
-    this.emitScoreChange();
-    this.sprite.setAlpha(1);
-    this.flashGfx?.clear();
+    // S06：复用 loadLevel 重建「当前关」全部运行时状态（干净一局）。
+    this.loadLevel(this.currentLevelId);
     // 清理微信原生触摸监听（避免重复触发 ON_RESTART）。
     if (this.restartTouchHandler && typeof wx !== 'undefined' && wx.offTouchStart) {
       wx.offTouchStart(this.restartTouchHandler);
       this.restartTouchHandler = undefined;
     }
     this.hud.hideOverlay();
-    this.hud.redraw();
   }
 
   /**
@@ -724,7 +750,9 @@ export class GameScene extends Phaser.Scene {
 
   /** 真实关卡渲染：实心 tile / 单向平台 / 凯旋之门，全部世界坐标（相机偏移）。 */
   private drawLevel(): void {
+    if (this.levelGfx) this.levelGfx.destroy(); // 重建关卡前销毁旧地形 Graphics，避免泄漏
     const g = this.add.graphics();
+    this.levelGfx = g;
     const ts = this.world.tileSize;
     for (let ty = 0; ty < this.runtime.data.height; ty++) {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {

@@ -99,4 +99,23 @@ describe('SaveManager.recordClear（S05-3）', () => {
       expect(d.unlockedLevels).toEqual(['1-1']);
     });
   });
+
+  describe('S06 进度链契约（与注册表 LEVEL_ORDER 对齐）', () => {
+    it('注入 ["1-1","1-2"]，通关 1-1 后 unlockedLevels 含 1-2（去重）', () => {
+      const m = new SaveManager(new MockStorage(), 'super-mali-save', ['1-1', '1-2']);
+      m.recordClear('1-1', makeResult({ ranks: 2, elapsedMs: 41000, collectedCoins: 7 }));
+      m.recordClear('1-1', makeResult({ ranks: 3 })); // 重复清 1-1 不应重复加入 1-2
+      const d = m.load();
+      expect(d.unlockedLevels).toContain('1-1');
+      expect(d.unlockedLevels).toContain('1-2');
+      expect(d.unlockedLevels.filter((x) => x === '1-2')).toHaveLength(1);
+    });
+
+    it('无 levelOrder（旧调用签名）行为不变：仅记录成绩、不解锁', () => {
+      const m = new SaveManager(new MockStorage()); // 旧调用：不传关卡顺序
+      m.recordClear('1-1', makeResult({ ranks: 2 }));
+      const d = m.load();
+      expect(d.unlockedLevels).toEqual(['1-1']);
+    });
+  });
 });

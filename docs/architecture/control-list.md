@@ -87,3 +87,11 @@
 4. 每次主包构建核对 §2；合入门禁跑 §3 IP 扫描 + §4 静态/单测。
 
 > 本清单与 `architecture.md`、`adr/`、`architecture-review.md` 配套；任何指标调整须同步回 `src/config/*.json` 并复测。
+
+## §6 关卡注册表契约（S06 进度链）
+
+- **单一事实来源**：`src/core/config/index.ts` 导出 `levels: Record<string, LevelData>`（id→关卡 JSON）与 `LEVEL_ORDER: string[]`（静态关卡顺序，决定「下一关」推导与解锁顺序）。新增关卡须在此注册，game-scene 经 `levels[currentLevelId]` 取关，**禁止**硬编码 `level1_1` 等具体关卡。
+- **进度推导**：`nextLevelId(order, current)`（纯函数，`src/core/level/level-order.ts`）返回下一关 id；末关/未知关返回 `null`。UI「下一关」按钮可见性、存档解锁均据此推导。
+- **解锁链路**：`SaveManager` 构造注入 `LEVEL_ORDER`（作为第三参 `levelOrder`，与默认 `key` 形参顺序兼容），`recordClear` 通关后据顺序解锁下一关；未注入则仅记录成绩（向后兼容旧调用）。
+- **事件**：结算页「下一关」按钮发 `ON_NEXT_LEVEL`，game-scene 订阅后调用 `loadLevel(next)` 重建运行时。
+- **节拍语义基线（D4 已拍板）**：`beatDurationMs = 60000 / bpm / grid`；bpm=120/grid=8 → **62.5ms/字符**。故 1-2 的 `SSSGGG` = 187.5ms 实 / 187.5ms 虚（375ms 周期）。落盘 `1-2.json` 时 `beat.tracks[].pattern` 必须写 `SSSGGG`，**非**设计 spec 初稿的 `GSGSGSGSGSGSGSGS`（每 62.5ms 翻转一次，不可落、不可玩）。

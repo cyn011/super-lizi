@@ -31,6 +31,8 @@ export const ON_BEAT = 'ON_BEAT';
 export const ON_START = 'ON_START';
 export const ON_FORM_CHANGED = 'ON_FORM_CHANGED';
 export const ON_LEVEL_COMPLETE_UI = 'ON_LEVEL_COMPLETE_UI';
+/** 进入下一关（结算页「下一关」按钮触发）：UI 发、game-scene 订阅后加载 nextLevel。 */
+export const ON_NEXT_LEVEL = 'ON_NEXT_LEVEL';
 
 export type EventName = string;
 export type EventHandler = (payload?: unknown) => void;
