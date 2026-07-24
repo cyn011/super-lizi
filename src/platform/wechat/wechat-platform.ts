@@ -13,6 +13,9 @@ import type { PointerSink } from '../raw-input-provider';
 import { WechatTouchProvider } from './wechat-touch';
 import { WechatStorage } from './wechat-storage';
 import { WechatAudio } from './wechat-audio';
+import { WechatLifecycle } from './lifecycle';
+import { NativeButtonRouter } from './native-button-router';
+import { setMenuActive as setGateMenuActive } from './input-gate';
 import { inputConfig } from '../../core/config';
 
 /** 从 input-config.json 读取手势参数（wechat.gesture 块未在 core 类型中声明，此处本地断言）。 */
@@ -55,6 +58,11 @@ export function createWechatPlatform(): Platform {
     input = new WechatTouchProvider(LOGICAL_WIDTH, LOGICAL_HEIGHT);
   }
 
+  // E7.S3 / S05-5：生命周期端口（wx.onHide/onShow → 回调，策略在 core/state/run-lifecycle）。
+  const lifecycle = new WechatLifecycle();
+  // E7.S3 / S05-5：原生菜单点击路由（wx 触摸 → 逻辑坐标 → game-scene 注入的 routeMenuTap）。
+  const router = new NativeButtonRouter(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
   const w = (globalThis as unknown as { wx: { onHide(cb: () => void): void; onShow(cb: () => void): void } }).wx;
   // 把主角屏幕坐标转发给当前输入（gesture 有 setPlayerScreenPos；virtual 的 WechatTouchProvider 无 → no-op）。
   const posSink = input as Partial<{ setPlayerScreenPos?(x: number, y: number): void }>;
@@ -63,11 +71,11 @@ export function createWechatPlatform(): Platform {
     input,
     audio: new WechatAudio(),
     storage: new WechatStorage(),
-    lifecycle: {
-      onHide: (cb) => w.onHide(cb),
-      onShow: (cb) => w.onShow(cb),
-    },
+    lifecycle,
     setPlayerScreenPos: (x: number, y: number) => posSink.setPlayerScreenPos?.(x, y),
+    // S05-5：菜单激活门（屏蔽 gameplay 转发）+ 原生菜单路由注入（均仅微信端生效，Web 端不传）。
+    setMenuActive: (active: boolean) => setGateMenuActive(active),
+    setNativeMenuTap: (cb: (x: number, y: number) => void) => router.setRouteTap(cb),
   };
 }
 

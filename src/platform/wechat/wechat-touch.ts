@@ -8,6 +8,7 @@
 
 import type { RawInputFrame, RawInputProvider, SignalId } from '../../core/input/raw-input';
 import { inputConfig } from '../../core/config';
+import { isMenuActive } from './input-gate';
 
 interface ButtonDef {
   id: SignalId;
@@ -91,6 +92,8 @@ export class WechatTouchProvider implements RawInputProvider {
    * 真机触屏不受影响（仍走 touch 路径）。
    */
   private handleClick(clientX: number, clientY: number): void {
+    // S05-5 门控：菜单激活时跳过 gameplay 转发，避免菜单点击顺带驱动角色。
+    if (isMenuActive()) return;
     const hit = this.hitTest(clientX, clientY);
     if (!hit) return;
     if (!this.down.has(hit)) this.pressed.add(hit);
@@ -133,6 +136,8 @@ export class WechatTouchProvider implements RawInputProvider {
   }
 
   private handle(points: TouchPoint[] | undefined, phase: 'start' | 'move' | 'end'): void {
+    // S05-5 门控：菜单激活时跳过 gameplay 转发（同一次点击交给原生菜单路由）。
+    if (isMenuActive()) return;
     if (!points) return;
     for (const p of points) {
       if (phase === 'end') {

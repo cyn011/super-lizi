@@ -36,4 +36,16 @@ export interface Platform {
    * virtual 布局的输入提供方无此方法 → 调方用 ?. 安全跳过（no-op）。
    */
   setPlayerScreenPos?: (x: number, y: number) => void;
+  /**
+   * 可选（仅微信端实现，Web 端 no-op）：菜单激活时屏蔽 gameplay 原生输入转发。
+   * E7.S3 / S05-5：暂停 / 结算 / GameOver 时置 true，恢复 / 重开时置 false，
+   * 避免菜单点击顺带驱动角色（同时保留后台暂停期间仍按住的手指 → 输入连续）。
+   */
+  setMenuActive?: (active: boolean) => void;
+  /**
+   * 可选（仅微信端实现，Web 端 no-op）：注入「原生菜单点击路由」回调。
+   * game-scene 据 RunState 把逻辑坐标派发给 PauseMenu/ResultScreen.handleTap，
+   * 使「继续 / 重玩 / 再玩一次」在微信端可点（Web 端由 Phaser interactive 按钮生效）。
+   */
+  setNativeMenuTap?: (cb: (x: number, y: number) => void) => void;
 }
