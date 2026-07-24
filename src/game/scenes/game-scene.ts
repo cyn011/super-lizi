@@ -31,7 +31,7 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { BeatClock } from '../../core/beat/beat-clock';
 import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
@@ -57,6 +57,9 @@ import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
 import { drawCheckpoint } from '../render/checkpoint-view';
 import { resolvePickups } from '../pickup-resolution';
+import { createSeedRuntime, accumulateOnCollect } from '../../core/seed/seed-runtime';
+import { drawMaliTopper, playMetamorphAura } from '../render/mali-topper';
+import type { Stage, SeedRuntimeState } from '../../core/seed/seed-types';
 import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
 import { Projectile } from '../../core/enemy/projectile';
 import type { HazardSource } from '../../core/damage/hazard-source';
@@ -148,6 +151,14 @@ export class GameScene extends Phaser.Scene {
   private coinGfx?: Phaser.GameObjects.Graphics;
   private seedGfx?: Phaser.GameObjects.Graphics;
   private checkpointGfx?: Phaser.GameObjects.Graphics;
+
+  // ── GDD 12 种子蜕变（局内 runtime + 头顶 topper 视觉）──
+  /** 本局种子运行时：每关 loadLevel 重置（createSeedRuntime）。core 零平台纯逻辑，此层仅委托。 */
+  private seedRun!: SeedRuntimeState;
+  /** 当前头顶 topper 阶段（METAMORPHOSIS 时更新；每帧据此重绘跟随 body）。 */
+  private currentSeedStage: Stage = 'sprout';
+  /** 头顶蜕变物 Graphics（世界坐标，depth 高于角色；仅视觉，不改碰撞）。 */
+  private topperGfx?: Phaser.GameObjects.Graphics;
 
   // ── S04-4 经济 / 分数（core 零平台 API）──
   /** 经济控制器：踩怪/金币/通关计分 + 连击倍率（GDD 06）。 */
@@ -300,6 +311,24 @@ export class GameScene extends Phaser.Scene {
     // Game Over：冻结 + 覆盖层 + 跨端重试触发（hud-spec §6.2）。
     this.bus.on(ON_GAME_OVER, () => this.onGameOver());
 
+    // GDD 12 种子蜕变：采集 → accumulateOnCollect（core 纯函数）→ 必发 ON_SEED_GROWTH；
+    // 仅当 stage 跨阈值再发 ON_SEED_METAMORPHOSIS。绝不改 form / sizeScale / 碰撞盒（仅视觉）。
+    this.bus.on(ON_SEED_COLLECTED, (_seedId) => {
+      if (!this.seedRun) return;
+      const res = accumulateOnCollect(this.seedRun);
+      this.bus.emit(ON_SEED_GROWTH, { growthPct: res.growthPct, stage: res.stage });
+      if (res.stageChanged) {
+        this.bus.emit(ON_SEED_METAMORPHOSIS, res.stage);
+      }
+    });
+    // 蜕变跨阈值：更新头顶 topper 阶段 + 播放暖黄光晕（仅视觉反馈，不改任何玩法状态）。
+    this.bus.on(ON_SEED_METAMORPHOSIS, (stage) => {
+      this.currentSeedStage = stage as Stage;
+      const cx = this.body.x + PLAYER_W / 2;
+      const cy = this.body.y + PLAYER_H / 2;
+      playMetamorphAura(this, cx, cy);
+    });
+
     // S05-2：暂停/结算/继续 事件接线（RunState 机驱动流转，单一事实来源）。
     this.bus.on(ON_PAUSE, (p) => this.onPause(p));
     this.bus.on(ON_RESUME, () => this.onResume());
@@ -323,6 +352,7 @@ export class GameScene extends Phaser.Scene {
       this.coinGfx?.destroy();
       this.seedGfx?.destroy();
       this.checkpointGfx?.destroy();
+      this.topperGfx?.destroy();
       this.levelGfx?.destroy();
       this.pauseMenu?.destroy();
       this.resultScreen?.destroy();
@@ -407,6 +437,13 @@ export class GameScene extends Phaser.Scene {
     if (!this.coinGfx) this.coinGfx = this.add.graphics().setDepth(8);
     if (!this.seedGfx) this.seedGfx = this.add.graphics().setDepth(8);
     if (!this.checkpointGfx) this.checkpointGfx = this.add.graphics().setDepth(7);
+
+    // GDD 12：本局种子 runtime 重置（growthPct=0 → sprout，保证本局即时反馈，§3.1）。
+    this.seedRun = createSeedRuntime();
+    this.currentSeedStage = 'sprout';
+    if (!this.topperGfx) this.topperGfx = this.add.graphics().setDepth(12); // 高于角色(sprite=10)
+    else this.topperGfx.clear();
+
     this.drawCoins();
     this.drawSeeds();
     this.drawCheckpoints();
@@ -636,6 +673,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * GDD 12：每帧重绘头顶蜕变物（世界坐标跟随 body；stage 取 currentSeedStage，METAMORPHOSIS 时切换）。
+   * 仅视觉：topperGfx 与 sprite 完全分离，绝不修改 body / sizeScale / form / 碰撞盒（§3.4/§3.5 红线）。
+   * 锚点：cx = body.x + PLAYER_W/2（头中心 x），topY = body.y（头顶 y = 碰撞盒顶）；配件向上生长。
+   */
+  private drawTopper(): void {
+    const g = this.topperGfx;
+    if (!g) return;
+    g.clear();
+    const cx = this.body.x + PLAYER_W / 2;
+    const topY = this.body.y; // 头顶 y（碰撞盒顶）
+    drawMaliTopper(g, cx, topY, this.currentSeedStage);
+  }
+
+  /**
    * ON_GAME_OVER 处理（hud-spec §6.2）：冻结 + 显示覆盖层 + 注册跨端重试触发。
    * 仿真已在 update 顶部因 gameOver 标志冻结；此处只负责覆盖层与输入。
    */
@@ -699,6 +750,8 @@ export class GameScene extends Phaser.Scene {
     this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins, hasNext);
     // S05-3：通关落盘最优成绩（ranks/bestTimes/bestCoins 取历史最优；V4 结算流程统一在此存档）。
     this.saveManager.recordClear(this.runtime.data.id, result);
+    // GDD 12：一并落盘本局种子蜕变结果（totalCollected/maturity/stage 合并入 SeedMeta）。
+    this.saveManager.saveSeedResult(this.seedRun);
     // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击走结算路由（再玩一次）。
     this.platform.setMenuActive?.(true);
   }
@@ -902,5 +955,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.drawSprite();
+    this.drawTopper();
   }
 }

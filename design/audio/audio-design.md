@@ -65,12 +65,12 @@
 | 12 | 重开 | `ON_RESTART` | `sfx:restart` | 轻快上扫：三角 440→880Hz 120ms，比 resume 更亮 | ✅ | result-screen.ts:145 / pause-menu.ts:58 / game-scene.ts:556 |
 | 13 | 检查点 | `ON_CHECKPOINT` | `sfx:checkpoint` | 温和铃：正弦 784Hz(G5) 软衰减 300ms 单音微光 | ✅ | pickup-resolution.ts:102 |
 | 14 | 种子采集 | `ON_SEED_COLLECTED` | `sfx:seed_collect` | 闪亮"叮"：正弦 1047→1568Hz(C6→G6) 两声 50+50ms，清脆有机 | ✅ | pickup-resolution.ts:85，payload `seedId` |
-| 15 | 种子蜕变 stage up | `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph`（原 GDD09 `SFX_POWERUP`） | 温暖上行"绽放"：正弦/三角 440→880Hz 300ms + 柔铃泛音，正向生长感 | ⚠ GAP | GDD12 要求新增此事件，但 event-bus 当前仅 `ON_SEED_COLLECTED` 已加（D4） |
+| 15 | 种子蜕变 stage up | `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph`（原 GDD09 `SFX_POWERUP`） | 温暖上行"绽放"：正弦/三角 440→880Hz 300ms + 柔铃泛音，正向生长感 | ✅ | 已接总线（D4 CLOSED）；事件常量由工程主程补入 event-bus，seed growth **跨阈值** emit 时响（每次 GROWTH 不 emit） |
 | 16 | 石炮开火 | `ON_PROJECTILE_SPAWN` | `sfx:projectile_fire` | 短"啾"：方/锯齿 700→300Hz 80ms，安静 | ⚠ GAP | `shi_pao` 返回 `Projectile[]` 但未 emit 此事件（D3） |
 | 17 | 分数变化（可选，默认不发声） | `ON_SCORE_CHANGED` | （建议不映射 / 仅连击里程碑） | — | ✅ 但高频 | 每次踩/币/通关都发，默认不接音效避免 spam（D7） |
 
-**MVP 必接（真实事件已存在）**：#3–#14（含 #1 待 D1 修复后）。
-**GAP / 延后（待决策点）**：#1、#2、#15、#16。
+**MVP 必接（真实事件已存在）**：#3–#14（含 #1 待 D1 修复后）；#15 种子蜕变已接总线（D4 CLOSED；事件常量由工程主程补入 event-bus，跨阈值 emit 生效）。
+**GAP / 延后（待决策点）**：#1、#2、#16。
 **可选**：#17。
 
 ---
@@ -140,7 +140,7 @@
   ON_RESTART         → sfx:restart
   ON_CHECKPOINT      → sfx:checkpoint
   ON_SEED_COLLECTED  → sfx:seed_collect
-  ON_SEED_METAMORPHOSIS → sfx:seed_metamorph // ⚠ 待 D4 事件就位
+  ON_SEED_METAMORPHOSIS → sfx:seed_metamorph // ✅ 已接（D4 CLOSED）
   ON_PROJECTILE_SPAWN   → sfx:projectile_fire // ⚠ 待 D3 事件就位
   // ON_SCORE_CHANGED 默认不映射（D7）
   ```
@@ -180,7 +180,7 @@
 - **D1（跳跃音源缺口，高优先）**：`ON_JUMP` 当前**仅在 headless 仿真 emit**，真实 game-scene 未 emit（`CharacterController.consume` 只改 `vy` 不发事件；`scene-sync.runStepSim` 也不返回 jumped）。→ 推荐修复：**`CharacterController` 构造注入 `EventBus`，在 `consume` 中 `jumped===true` 时 `emit(ON_JUMP)`**（core 合法 emit，headless 已用此模式），使跳跃音有统一真实源。请主理人确认由 S05-4 顺带小改或单列 sub-task。
 - **D2（BGM 接口扩展）**：是否本 Story 预接 BGM？建议否（`music=0`，仅锁基调）。若未来需 BGM，**是否扩展 `AudioPort`（新增 `playMusic`/`streamMusic`）还是另立 `BgmPort`**？请拍板（影响架构）。
 - **D3（石炮开火事件）**：`ON_PROJECTILE_SPAWN` 已定义但**从未 emit**（`shi_pao` 仅返回 `Projectile[]`）。→ 需 game-scene 在消费返回的弹丸时 `emit(ON_PROJECTILE_SPAWN)`，才能触发 `sfx:projectile_fire`。是否本 Story 补？建议补（小改）。
-- **D4（种子蜕变事件缺口，GDD↔代码不一致）**：GDD 12 §5.1 要求 `event-bus` 新增 `ON_SEED_GROWTH` + `ON_SEED_METAMORPHOSIS`，但当前代码**仅加了 `ON_SEED_COLLECTED`**。→ `sfx:seed_metamorph`（`SFX_POWERUP`）无事件源。需工程主程把两事件补进 `event-bus` 并在 seed growth 跨阈值时 emit，本音效才生效。请主理人确认随 S05-4 或转种子蜕变 Story 落地。
+- **D4（种子蜕变事件缺口，GDD↔代码不一致）— ✅ CLOSED（GDD 12 §5.1 已定义 `ON_SEED_*` 事件契约）**：`audio-bus.ts` 已接 `ON_SEED_METAMORPHOSIS → sfx:seed_metamorph`（与 `web-audio.ts` 合成 440→880Hz/0.30s 对齐）。事件常量 `ON_SEED_METAMORPHOSIS` 由工程主程补入 `event-bus.ts` 并在 seed growth **跨阈值**时 emit（每次 `ON_SEED_GROWTH` 不 emit，避免 spam）；`ON_SEED_GROWTH` 音频侧**不映射**（采集反馈已由 `ON_SEED_COLLECTED→sfx:seed_collect` 覆盖，避免每采双音）。
 - **D5（二段跳）**：`ON_DOUBLE_JUMP` 从未 emit；MVP 角色有 `airJumps` 但无对应事件。是否本 Story 接入二段跳音？建议暂不接（与跳跃共用 `sfx:jump` 也可），待二段跳玩法明确。
 - **D6（无敌帧结束音）**：用户要求"无敌帧结束"反馈，但当前无独立事件（`invincibleTimer` 归零不发事件）。建议用 `ON_RESPAWN` 触发 `sfx:respawn` 作为"重生/恢复"反馈；若需精准"无敌结束"提示，需新增 `ON_INVINCIBLE_END` 事件（建议不做以免琐碎）。
 - **D7（`ON_SCORE_CHANGED` 是否发声）**：该事件高频（每次踩/币/通关都发）。默认建议**不映射音效**（仅 HUD 视觉），避免 spam；如要听觉奖励，仅对连击里程碑（`comboMult` 跳变）触发轻音。请拍板。
@@ -193,7 +193,7 @@
 ## 7. 与既有资产/文档对齐
 
 - **GDD 09 旧 `SfxName` 枚举**（`SFX_JUMP…SFX_FIRE`）已被本契约的**字符串 `name` 方案**取代（`play(name:string)` 架构）。旧枚举可视为 name 同义，但新代码用 §2 的 `sfx:*` 命名。
-- **GDD 12 对齐**：种子音 `sfx:seed_collect`（采集）+ `sfx:seed_metamorph`（蜕变，待 D4 事件就位）。
+- **GDD 12 对齐**：种子音 `sfx:seed_collect`（采集）+ `sfx:seed_metamorph`（蜕变，已接总线 D4 CLOSED）。
 - **GDD 10 对齐**：BGM 未来 120 BPM；`ON_BEAT` 当前仅 headless emit，真实游戏未驱动（`BeatClock.enabled:false`），故节拍同步音乐留 Could。
 - **IP 红线**：音色/旋律禁用任天堂符号（蘑菇/星/旗杆采样），全部原创/程序化。
 

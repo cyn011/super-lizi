@@ -32,6 +32,7 @@ describe('SaveData 模型（S05-3）', () => {
     expect(d.ranks).toEqual({});
     expect(d.bestTimes).toEqual({});
     expect(d.bestCoins).toEqual({});
+    expect(d.seedMeta).toEqual({ totalCollected: 0, maturity: 0, unlockedStages: ['sprout'], currentStage: 'sprout' });
   });
 
   it('空 storage → load 返回 defaultSaveData 等价副本', () => {
@@ -73,6 +74,7 @@ describe('SaveData 模型（S05-3）', () => {
       ranks: { '1-1': 3 },
       bestTimes: { '1-1': 42000 },
       bestCoins: { '1-1': 9 },
+      seedMeta: { totalCollected: 0, maturity: 0, unlockedStages: ['sprout'], currentStage: 'sprout' },
     };
     s.seedRaw(KEY, JSON.stringify(full));
     const m = new SaveManager(s);

@@ -9,6 +9,8 @@
  *   - `RankResult` 由 ui/result-screen 上移至本文件（core 不依赖 ui 的铁律收口）；
  *   - SaveManager 增加 `recordClear`（通关落盘最优成绩 + 解锁下一关）与版本化 `load` 迁移。
  */
+import { type SeedMeta, type SeedRuntimeState, type Stage, STAGE_ORDER, maxStage } from '../seed/seed-types';
+
 export interface SaveData {
   /** 存档格式版本（S05-3 引入，默认 1，供未来迁移）。 */
   version: number;
@@ -20,6 +22,8 @@ export interface SaveData {
   bestTimes: Record<string, number>;
   /** 各关最优金币数（取历史最大）。键=关卡 id。S05-3 新增。 */
   bestCoins: Record<string, number>;
+  /** 种子蜕变全局状态（GDD 12 §3.6，MVP 必做）：跨关累计采集 / 成熟度 / 已解锁阶段。 */
+  seedMeta: SeedMeta;
 }
 
 /** 存储端口：由 platform 层实现（Web / 微信端存储）。 */
@@ -28,8 +32,20 @@ export interface StoragePort {
   set(key: string, value: string): void;
 }
 
+/** 默认种子蜕变存档（GDD 12 §3.6）：仅 sprout 解锁，计数/成熟度为 0。 */
+export function defaultSeedMeta(): SeedMeta {
+  return { totalCollected: 0, maturity: 0, unlockedStages: ['sprout'], currentStage: 'sprout' };
+}
+
 export function defaultSaveData(): SaveData {
-  return { version: 1, unlockedLevels: ['1-1'], ranks: {}, bestTimes: {}, bestCoins: {} };
+  return {
+    version: 1,
+    unlockedLevels: ['1-1'],
+    ranks: {},
+    bestTimes: {},
+    bestCoins: {},
+    seedMeta: defaultSeedMeta(),
+  };
 }
 
 /**
@@ -115,6 +131,27 @@ export class SaveManager {
     this.save(data);
   }
 
+  /**
+   * 记录一局种子蜕变结果并落盘（GDD 12 §3.6 / §5.3）。
+   * 合并入 seedMeta：
+   *   - totalCollected += run.collectedThisRun
+   *   - maturity = max(maturity, run.growthPct)
+   *   - currentStage = maxStage(currentStage, run.stage)
+   *   - unlockedStages = ∪(unlockedStages, [run.stage])
+   * 用现成存储写回（仿 recordClear：load → 合并 → save）。
+   */
+  saveSeedResult(run: SeedRuntimeState): void {
+    const data = this.load();
+    const meta = data.seedMeta;
+    meta.totalCollected += run.collectedThisRun;
+    meta.maturity = Math.max(meta.maturity, run.growthPct);
+    meta.currentStage = maxStage(meta.currentStage, run.stage);
+    const set = new Set<Stage>(meta.unlockedStages);
+    set.add(run.stage);
+    meta.unlockedStages = [...set];
+    this.save(data);
+  }
+
   // ── 版本化迁移 ──
   private migrate(raw: unknown): SaveData {
     if (!raw || typeof raw !== 'object') return defaultSaveData();
@@ -136,6 +173,7 @@ export class SaveManager {
         ranks,
         bestTimes: isRecordOfNumber(o.bestTimes) ? (o.bestTimes as Record<string, number>) : {},
         bestCoins: isRecordOfNumber(o.bestCoins) ? (o.bestCoins as Record<string, number>) : {},
+        seedMeta: defaultSeedMeta(), // 旧档无 seedMeta → 默认（GDD 12 §3.6 向后兼容）
       };
     }
 
@@ -149,6 +187,7 @@ export class SaveManager {
       ranks: isRecordOfNumber(d.ranks) ? (d.ranks as Record<string, number>) : {},
       bestTimes: isRecordOfNumber(d.bestTimes) ? (d.bestTimes as Record<string, number>) : {},
       bestCoins: isRecordOfNumber(d.bestCoins) ? (d.bestCoins as Record<string, number>) : {},
+      seedMeta: normalizeSeedMeta(d.seedMeta), // 缺/非法 seedMeta → 默认（GDD 12 §3.6 向后兼容）
     };
   }
 }
@@ -156,4 +195,32 @@ export class SaveManager {
 /** 运行期窄化：判断未知值是否为 `Record<string, number>`（非数组对象）。 */
 function isRecordOfNumber(v: unknown): v is Record<string, number> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** 运行期窄化：判断未知值是否为合法 SeedMeta。 */
+function isSeedMeta(v: unknown): v is SeedMeta {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.totalCollected === 'number' &&
+    typeof o.maturity === 'number' &&
+    Array.isArray(o.unlockedStages) &&
+    typeof o.currentStage === 'string'
+  );
+}
+
+/**
+ * 规整 seedMeta：非法/缺字段 → 默认；合法则清洗阶段枚举（剔除非法 stage）+ 保证含 sprout
+ * （GDD 12 §3.6 向后兼容：老存档 / 跨版本字段缺失不崩）。
+ */
+function normalizeSeedMeta(v: unknown): SeedMeta {
+  if (isSeedMeta(v)) {
+    const valid = (v.unlockedStages as unknown[]).filter((s): s is Stage =>
+      STAGE_ORDER.includes(s as Stage),
+    );
+    const cur = STAGE_ORDER.includes(v.currentStage as Stage) ? (v.currentStage as Stage) : 'sprout';
+    if (!valid.includes('sprout')) valid.push('sprout');
+    return { totalCollected: v.totalCollected, maturity: v.maturity, unlockedStages: valid, currentStage: cur };
+  }
+  return defaultSeedMeta();
 }

@@ -2,7 +2,7 @@
 
 > 上游：concept §P3 / art/asset-spec §1 / ux §6.3 / gdd06 / gdd11
 > 分层：Must（MVP 机制深）｜Could（能力增益 / meta 元成长 / 图鉴面板）
-> 依赖：05 Level（种子实体）｜06 Economy（form 正交）｜07 Damage（sizeScale 不变）｜08 UI（HUD topper）｜09 Audio（SFX_POWERUP）｜11 Meta（持久化）
+> 依赖：05 Level（种子实体）｜06 Economy（form 正交）｜07 Damage（sizeScale 不变）｜08 UI（HUD topper）｜09 Audio（sfx:seed_metamorph）｜11 Meta（持久化）
 > 评审强度：lean｜作者：文策渊（design-strategist）｜关联任务：PH4-SEED-001
 
 > **定位**：本文件是 ux/core-loop-ux §6.3 所等待的"机制定义文档"。它把"种子精灵蜕变"从概念（concept §P3 差异内核）与美术契约（art §1.3 `computeGrowth`）**落地为可实现的机制 + 数据/事件契约**，供工程主程直接实现、美术/UX 取数。完成后，ux §6.3 的 R1 阻塞解除。
@@ -29,7 +29,7 @@
 ### Must（MVP 必做 · 可玩切片）
 - 种子实体在关卡内可采集（新增 `type:'seed'` 实体，复用 00 §1.3 统一 schema）。
 - 采集 → 发 `ON_SEED_COLLECTED(seedId)`；本局 `growthPct` 累积（封顶 1.0）。
-- 跨阈值 → 发 `ON_SEED_METAMORPHOSIS(stage)`，驱动 art 头顶 topper 切换（苗→藤→花→果，复用 art §1.3 已绘 `char_mali_top_0~3`）+ 暖黄光晕 tween + `SFX_POWERUP`。
+- 跨阈值 → 发 `ON_SEED_METAMORPHOSIS(stage)`，驱动 art 头顶 topper 切换（苗→藤→花→果，复用 art §1.3 已绘 `char_mali_top_0~3`）+ 暖黄光晕 tween + `sfx:seed_metamorph`。
 - `ON_SEED_GROWTH(growthPct, stage)` 进度事件（供 UI/音频细反馈）。
 - 跨关持久化：全局 `SeedMeta.totalCollected` 写入 SaveData（11 扩展点），重载保留。
 - **蜕变仅视觉**：MVP 不改 `form`、不改 `sizeScale`、不改任何数值能力。
@@ -51,7 +51,7 @@
   → runtime.growthPct = min(CAP, growthPct + GROWTH_PER_SEED)
   → stage = stageFromMaturity(growthPct)        // 调 art computeGrowth 的阈值
   → 发 ON_SEED_GROWTH(growthPct, stage)
-  → if stage 变化：发 ON_SEED_METAMORPHOSIS(stage) + playSfx('SFX_POWERUP')
+  → if stage 变化：发 ON_SEED_METAMORPHOSIS(stage) + playSfx('sfx:seed_metamorph')
   → art 用 computeGrowth({source:'run', maturity:growthPct}) 取 GrowthVisual
         → 切换 char_mali_top_{0..3} + 光晕 alpha/radius tween（≤0.4s，非高频闪）
 每局开始：runtime.growthPct = 0 → stage = sprout(苗)，保证本局即时反馈清晰
@@ -144,7 +144,7 @@ interface SeedRuntimeState {
 - **06 Economy**：form 正交（§3.4），种子**不写入** EconomyState 分数（防刷分主导策略）。
 - **07 Damage**：sizeScale 不变（§3.5）。
 - **08 UI / ux §6.3**：订阅 `ON_SEED_*` 做收集反馈 / 蜕变过渡 / 图鉴（Could 壳）。
-- **09 Audio**：`SF 'SFX_POWERUP'`（art §5.1 已锁"蜕变 stage up"）在 METAMORPHOSIS 时播放。
+- **09 Audio**：`sfx:seed_metamorph`（art §5.1 已锁"蜕变 stage up"）在 METAMORPHOSIS 时播放。
 - **11 Meta**：持久化 `seedMeta`（§3.6）。
 
 ---
@@ -164,7 +164,7 @@ export const ON_SEED_METAMORPHOSIS = 'ON_SEED_METAMORPHOSIS'; // payload: Stage
 |---|---|---|---|
 | `ON_SEED_COLLECTED` | `seedId: string` | 玩家 body 触碰 seed 且存活（非 DEAD），seed 实例移除瞬间 | 06?否 / 08 UI（收集飘字）/ 本系统（累积 growthPct） |
 | `ON_SEED_GROWTH` | `{ growthPct:number(0..1); stage:Stage }` | 每次采集后重算 growthPct 即发（即使 stage 未变） | UI 进度条（Could）/ 音频细反馈 |
-| `ON_SEED_METAMORPHOSIS` | `stage: Stage` | **仅当 stage 跨阈值变化**（苗→藤→花→果） | art（topper 切换 + 光晕 tween）/ ux §6.3 蜕变过渡 / 09（SFX_POWERUP） |
+| `ON_SEED_METAMORPHOSIS` | `stage: Stage` | **仅当 stage 跨阈值变化**（苗→藤→花→果） | art（topper 切换 + 光晕 tween）/ ux §6.3 蜕变过渡 / 09（sfx:seed_metamorph） |
 
 ### 5.3 函数契约
 ```ts
@@ -226,7 +226,7 @@ interface SaveData {
 - [ ] 3 个 `ON_SEED_*` 常量已加入 `event-bus.ts`，命名一致。
 - [ ] 与 GDD 06 正交：吃元气果改 `form`，采种子不改 `form`（MVP）。
 - [ ] 种子**不计入** EconomyState 分数（杜绝刷分主导策略）。
-- [ ] `ON_SEED_METAMORPHOSIS` 触发 `SFX_POWERUP`（art §5.1 已锁）。
+- [ ] `ON_SEED_METAMORPHOSIS` 触发 `sfx:seed_metamorph`（art §5.1 已锁）。
 
 ---
 

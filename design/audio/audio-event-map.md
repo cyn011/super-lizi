@@ -48,10 +48,10 @@
 
 | 事件 | GDD 出处 | 代码现状 | 影响 |
 |---|---|---|---|
-| `ON_SEED_GROWTH` | GDD 12 §5.1（要求新增） | **event-bus 中不存在** | 种子成长进度细反馈无源 |
-| `ON_SEED_METAMORPHOSIS` | GDD 12 §5.1（要求新增） | **event-bus 中不存在**（仅 `ON_SEED_COLLECTED` 已加） | `sfx:seed_metamorph`（SFX_POWERUP）无源（D4） |
+| `ON_SEED_GROWTH` | GDD 12 §5.1（要求新增） | **event-bus 常量待工程主程补入** | 种子成长进度细反馈（GDD 供 UI/音频）；**音频侧不映射**（采集反馈已由 `ON_SEED_COLLECTED→sfx:seed_collect` 覆盖，每次 GROWTH 再响会每采双音，故无声，留 UI 进度条） |
+| `ON_SEED_METAMORPHOSIS` | GDD 12 §5.1（要求新增） | **event-bus 常量待工程主程补入**（仅 `ON_SEED_COLLECTED` 已加）；audio-bus 已接映射（D4 CLOSED） | 跨阈值 emit 时响 `sfx:seed_metamorph`（SFX_POWERUP） |
 
-> 结论：GDD 12 要求 event-bus 新增 3 个 `ON_SEED_*` 常量，实际只落地了 `ON_SEED_COLLECTED`。种子蜕变音效（`sfx:seed_metamorph`）需先把 `ON_SEED_GROWTH` / `ON_SEED_METAMORPHOSIS` 补进 `event-bus` 并在跨阈值时 emit 才生效。
+> 结论：GDD 12 要求 event-bus 新增 3 个 `ON_SEED_*` 常量，实际只落地了 `ON_SEED_COLLECTED`。**音频侧总线已接好**：`ON_SEED_METAMORPHOSIS → sfx:seed_metamorph`（D4 CLOSED）；`ON_SEED_GROWTH` 音频侧**不映射**（避免每采双音）。待工程主程把两常量补入 `event-bus` 并在 seed growth **跨阈值** emit `ON_SEED_METAMORPHOSIS` 即生效。
 
 ## D. audio-bus 订阅清单（最终映射，含 GAP 标注）
 
@@ -74,11 +74,13 @@
 | `ON_RESTART` | `sfx:restart` | ✅ |
 | `ON_CHECKPOINT` | `sfx:checkpoint` | ✅ |
 | `ON_SEED_COLLECTED` | `sfx:seed_collect` | ✅ |
-| `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph` | ❌ 待 D4 |
+| `ON_SEED_METAMORPHOSIS` | `sfx:seed_metamorph` | ✅ 已接总线（D4 CLOSED；event-bus 常量待工程主程补入，跨阈值 emit 才响） |
+| `ON_SEED_GROWTH` | （不映射） | — 由 `ON_SEED_COLLECTED` 覆盖采集反馈；每采双音风险，故无声（GDD 12 §5.1 细反馈留 UI 进度条） |
 | `ON_PROJECTILE_SPAWN` | `sfx:projectile_fire` | ❌ 待 D3 |
 | `ON_SCORE_CHANGED` | （不映射） | — D7 |
 
 ## E. 一句话结论
 
-- **15 个事件真实可触发音效**（`ON_SCORE_CHANGED` 默认不计），覆盖用户要求的全部意图（跳跃待 D1、种子蜕变待 D4、石炮待 D3）。
-- **4 个真实事件缺口**（D1/D3/D4 + 二段跳 D5）需工程或种子蜕变 Story 补 emit，否则对应音效静默——均不强阻塞 MVP 主线（其余音效已可完整跑通）。
+- **15 个事件真实可触发音效**（`ON_SCORE_CHANGED` 默认不计），覆盖用户要求的全部意图（跳跃待 D1、石炮待 D3）。
+- **种子蜕变 `ON_SEED_METAMORPHOSIS → sfx:seed_metamorph` 已接总线（D4 CLOSED）**：仅待工程主程把常量补入 `event-bus` 并在跨阈值 emit，即自动发声（每次 `ON_SEED_GROWTH` 不响）。`ON_SEED_GROWTH` 音频侧**不映射**。
+- **3 个真实事件缺口**（D1/D3 + 二段跳 D5）需工程补 emit，否则对应音效静默——均不强阻塞 MVP 主线（其余音效已可完整跑通）。

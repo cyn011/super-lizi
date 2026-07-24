@@ -92,6 +92,10 @@
     { "type": "checkpoint", "x": 1248, "y": 176 },
     { "type": "coin", "x": 1280, "y": 200 },
     { "type": "seed", "x": 1312, "y": 200, "seedId": "seed_02" },
+    { "type": "seed", "x": 640, "y": 200, "seedId": "seed_03" },
+    { "type": "seed", "x": 880, "y": 200, "seedId": "seed_04" },
+    { "type": "seed", "x": 1100, "y": 200, "seedId": "seed_05" },
+    { "type": "seed", "x": 1440, "y": 200, "seedId": "seed_06" },
     { "type": "coin", "x": 1344, "y": 200 }
   ],
   "props": [],

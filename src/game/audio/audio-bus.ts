@@ -7,7 +7,8 @@
  *
  * 不发声的事件（按设计契约 D7）：`ON_SCORE_CHANGED` 默认不映射（高频，避免 spam）。
  * 预留/待补 emit 的事件仍登记映射，事件一旦 emit 即自动发声，无需改本文件：
- *   - `ON_FORM_CHANGED`（蜕变，映射到已存在的 ON_FORM_CHANGED；勿引用不存在的 ON_SEED_METAMORPHOSIS）
+ *   - `ON_SEED_METAMORPHOSIS`（种子蜕变 stage up，GDD 12 §5.1 / D4）→ `sfx:seed_metamorph`；事件常量由工程主程补入 event-bus，跨阈值 emit 才响
+ *   - `ON_FORM_CHANGED`（元气果/form 变化，GDD 06；MVP 未 emit）→ 暂复用 `sfx:seed_metamorph`（变身/绽放统一 sting），待元气果系统落地再拆独立 `sfx:form_change`
  *   - `ON_PROJECTILE_SPAWN`（石炮，本 Story D3 已补 emit）
  *   - `ON_DOUBLE_JUMP`（二段跳，D5 延后，事件当前未 emit）
  */
@@ -32,6 +33,7 @@ import {
   ON_RESTART,
   ON_CHECKPOINT,
   ON_SEED_COLLECTED,
+  ON_SEED_METAMORPHOSIS,
   ON_FORM_CHANGED,
   ON_PROJECTILE_SPAWN,
 } from '../../core/events/event-bus';
@@ -56,7 +58,8 @@ export const EVENT_TO_SFX: Record<string, string> = {
   [ON_RESTART]: 'sfx:restart',
   [ON_CHECKPOINT]: 'sfx:checkpoint',
   [ON_SEED_COLLECTED]: 'sfx:seed_collect',
-  [ON_FORM_CHANGED]: 'sfx:seed_metamorph', // 蜕变音映射到已存在的 ON_FORM_CHANGED（设计契约：勿引用 ON_SEED_METAMORPHOSIS）
+  [ON_SEED_METAMORPHOSIS]: 'sfx:seed_metamorph', // 种子蜕变 stage up（GDD 12 §5.1 / D4）：仅跨阈值 emit 才响，每次 GROWTH 不响
+  [ON_FORM_CHANGED]: 'sfx:seed_metamorph', // GDD 06 元气果/form 变化（MVP 未 emit）；暂复用"绽放"音，待独立 sfx:form_change
   [ON_PROJECTILE_SPAWN]: 'sfx:projectile_fire', // D3 本 Story 已补 emit
   // 注意：ON_SCORE_CHANGED 默认不映射（D7，高频避免 spam）
   // 注意：ON_ENEMY_HIT_PLAYER 由 ON_HURT 覆盖，不单列

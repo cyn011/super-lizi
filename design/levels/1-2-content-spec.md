@@ -30,7 +30,7 @@
 | `beatPlatforms[0].tiles` | tx19,20,21 @ ty5 | 与下方 `tiles[]` 不重复（initial=ghost 不进 tiles） |
 | `beatPlatforms[0].initial` | `"ghost"` | 第 0 拍前保底相位=虚；故**不**列入 `tiles[]` |
 | `tiles[]` | 见 §3 | 地面 ty7-8 全宽 + 墙列 + oneway + 悬浮 solid；**节拍平台 tile 不在内** |
-| `entities[]` | 见 §4 | 8 敌 + 9 coin + 2 seed + 2 checkpoint（坐标精确） |
+| `entities[]` | 见 §4 | 10 敌 + 9 coin + 6 seed + 2 checkpoint（坐标精确） |
 | `checkpoints[]` | `[]` | 检查点走 `entities[]`（同 1-1 形态） |
 | `props[]` | `[]` | 无 |
 
@@ -78,28 +78,36 @@
 | 1 | coin | 160 | 200 | 热身·地面 |
 | 2 | ci_li | 256 | 200 | 地刺·地面 |
 | 3 | coin | 320 | 200 | 热身·地面 |
-| 4 | du_fu | 400 | 120 | 漂浮 |
-| 5 | coin | 384 | 150 | 高位·oneway(tx12-14,ty5)上方赏金 |
+| 4 | coin | 384 | 150 | 高位·oneway(tx12-14,ty5)上方赏金 |
+| 5 | du_fu | 400 | 120 | 漂浮 |
 | 6 | seed | 480 | 200 | **seed_01**，前段锚点 |
 | 7 | shi_pao | 576 | 100 | 石炮·高位 |
-| 8 | chong_feng | 672 | 200 | 冲锋·地面 |
-| 9 | coin | 608 | 150 | 节拍段上方赏金（踩 bp_1_2 可抓） |
-| 10 | coin | 672 | 96 | 高位赏金 |
-| 11 | ci_li | 800 | 200 | 地刺·悬浮 solid(tx26-27,ty4)下方 |
-| 12 | du_fu | 864 | 120 | 漂浮 |
-| 13 | checkpoint | 960 | 176 | **mid 检查点** |
-| 14 | coin | 1024 | 200 | gauntlet 前·地面 |
-| 15 | ci_li | 1056 | 200 | 地刺·gauntlet |
-| 16 | du_fu | 1120 | 120 | 漂浮·gauntlet |
-| 17 | coin | 1152 | 150 | oneway(tx33-35,ty6)上方赏金 |
-| 18 | chong_feng | 1184 | 200 | 冲锋·gauntlet |
-| 19 | shi_pao | 1216 | 100 | 石炮·高位·gauntlet |
-| 20 | checkpoint | 1248 | 176 | **gauntlet 前检查点**（防劝退） |
-| 21 | coin | 1280 | 200 | gauntlet 后·地面 |
-| 22 | seed | 1312 | 200 | **seed_02**，终前锚点 |
-| 23 | coin | 1344 | 200 | 门前赏金 |
+| 8 | coin | 608 | 150 | 节拍段上方赏金（踩 bp_1_2 可抓） |
+| 9 | seed | 640 | 200 | **seed_03**，新增·藤阶段触发点 |
+| 10 | chong_feng | 672 | 200 | 冲锋·地面 |
+| 11 | coin | 672 | 96 | 高位赏金 |
+| 12 | ci_li | 800 | 200 | 地刺·悬浮 solid(tx26-27,ty4)下方 |
+| 13 | du_fu | 864 | 120 | 漂浮 |
+| 14 | seed | 880 | 200 | **seed_04**，新增·花阶段触发点 |
+| 15 | checkpoint | 960 | 176 | **mid 检查点** |
+| 16 | coin | 1024 | 200 | gauntlet 前·地面 |
+| 17 | ci_li | 1056 | 200 | 地刺·gauntlet |
+| 18 | seed | 1100 | 200 | **seed_05**，新增·果阶段触发点（4 阶段演示第 4 颗） |
+| 19 | du_fu | 1120 | 120 | 漂浮·gauntlet |
+| 20 | coin | 1152 | 150 | oneway(tx33-35,ty6)上方赏金 |
+| 21 | chong_feng | 1184 | 200 | 冲锋·gauntlet |
+| 22 | shi_pao | 1216 | 100 | 石炮·高位·gauntlet |
+| 23 | checkpoint | 1248 | 176 | **gauntlet 前检查点**（防劝退） |
+| 24 | coin | 1280 | 200 | gauntlet 后·地面 |
+| 25 | seed | 1312 | 200 | **seed_02**，终前锚点（收集余量） |
+| 26 | seed | 1440 | 200 | **seed_06**，新增·收集余量 |
+| 27 | coin | 1344 | 200 | 门前赏金 |
 
-> 计数：coin×9、ci_li×3、du_fu×2、chong_feng×2、shi_pao×2、seed×2、checkpoint×2 = 共 23 个实体。
+> 计数：coin×9、ci_li×3、du_fu×3、chong_feng×2、shi_pao×2、seed×6、checkpoint×2 = 共 27 个实体。
+
+> **演示路径（前 4 颗触发四阶段）**：按 x 升序可达顺序，前 4 颗种子使玩家一局内走过 苗→藤→花→果（`growthPerSeed=0.25`，4 颗满蜕变 `cap=1.0`，见 GDD 12 §3.3）：
+> `seed_01(480) → seed_03(640) → seed_04(880) → seed_05(1100)`（sprout→vine→bloom→fruit）；
+> 余 `seed_02(1312)`、`seed_06(1440)` 为收集探索余量（不强制四阶段）。
 
 ---
 
@@ -200,6 +208,10 @@
     { "type": "checkpoint", "x": 1248, "y": 176 },
     { "type": "coin", "x": 1280, "y": 200 },
     { "type": "seed", "x": 1312, "y": 200, "seedId": "seed_02" },
+    { "type": "seed", "x": 640, "y": 200, "seedId": "seed_03" },
+    { "type": "seed", "x": 880, "y": 200, "seedId": "seed_04" },
+    { "type": "seed", "x": 1100, "y": 200, "seedId": "seed_05" },
+    { "type": "seed", "x": 1440, "y": 200, "seedId": "seed_06" },
     { "type": "coin", "x": 1344, "y": 200 }
   ],
   "props": [],

@@ -199,7 +199,7 @@
 ### 6.1 ⚠ 缺口声明（必读，主理人需拍板）
 - **GDD 11 当前内容**（`design/gdd/11-meta-progression.md`）**仅为 SaveData 存档**：`{ unlockedLevels, stars, bestTimes }`，流程 `ON_LEVEL_COMPLETE → 解锁下一关 + 记录星/时间 → 持久化`。**无"种子收集→蜕变→成长"的任何数据模型或事件。**
 - **"种子精灵"是主角栗宝的旧占位名**（art-bible §4.2），**不是**种子收集系统；`design/` 全目录检索无 seed/种子蜕变机制定义。
-- **本文件不臆造机制**：§6.2 定义 GDD 11 **真实范围**的 UI（跨关进度）；§6.3 仅提供"种子蜕变成长"的 **UI 呈现壳 + 数据契约**，明确标注"待 GDD 11 扩充数据模型 + 事件常量后实现"。主理人须先决定：(a) 在 GDD 11 内增补 seed 子模型，或 (b) 另立新 GDD（如 11b / 12）。**在机制未定前，工程不应实现 §6.3 的数据读取。**
+- **本文件不臆造机制**：§6.2 定义 GDD 11 **真实范围**的 UI（跨关进度）；§6.3 提供"种子蜕变成长"的 **UI 呈现壳 + 数据契约**，现已对齐 **GDD 12（12-seed-metamorphosis）**（`Stage='sprout'|'vine'|'bloom'|'fruit'` 四阶段枚举 + `ON_SEED_*` 事件契约）。机制已由 GDD 12 落地，工程可按契约实现 §6.3 数据读取。
 
 ### 6.2 跨关卡进度 UI（GDD 11 真实范围，可立即实现）
 - **数据契约**（来自 GDD 11 `SaveData`）：
@@ -210,25 +210,25 @@
 - **展示面**：`LEVEL_SELECT` 格（§3.2）+ 结算面板"新纪录"徽标（§5.2）+（可选）`MENU` 底部"累计星数 Σstars / 已解锁 N 关"。
 - **a11y**：星/锁用形状+图标；数字 ≥10px；热区 ≥48×48。
 
-### 6.3 种子蜕变成长 UI（呈现壳 · 待机制拍板，MVP 不实现）
-> 以下为**视觉/文本呈现层**提案，数据字段为**建议契约**，待 GDD 扩充后落地。
+### 6.3 种子蜕变成长 UI（呈现壳 · GDD 12 已定义机制，MVP 不实现）
+> 以下为**视觉/文本呈现层**提案，数据字段对齐 **GDD 12（12-seed-metamorphosis）** 已定义的契约（`Stage` 四阶段枚举与 `ON_SEED_*` 事件），不再阻塞。
 
 - **成长隐喻（对齐 art-bible 嫩芽母题）**：以"栗宝头顶嫩芽 → 抽枝 → 开花"对应 meta 成长阶段，复用既有形状/色彩语言（栗色 `#B5763E`、暖黄 `#FFD23F`、增益紫 `#9B6CF2` 仅道具），保证视觉一致、色盲安全（形状区分阶段）。
 - **三阶段反馈**：
   1. **收集反馈**：拾取种子 → 轻量 punch + 中心闪光环 + "+1 种子"飘字（复用 ux-spec §8 Juice #3 收集弹出范式）；避免密集闪光（减少动态时静态）。
   2. **蜕变过渡**：累计达阈值 → 过渡动画（栗宝剪影柔和形变 + 嫩芽生长，≤0.4s，非高频闪），配文字"栗宝蜕变了！"。
-  3. **成长呈现**：`成长图鉴/栗宝` 面板展示已收集种子 → 当前形态阶段（seed → sprout → bloom），文本标签 + 形状进度（非仅靠色）。
+  3. **成长呈现**：`成长图鉴/栗宝` 面板展示已收集种子 → 当前形态阶段（sprout → vine → bloom → fruit），文本标签 + 形状进度（非仅靠色）。
 - **建议数据契约（待 GDD 确认字段名）**：
   ```
   SeedProgress {
     seedId: string;        // 种子类型
     collected: number;     // 已收集数
     total: number;         // 该类型总数（关卡内/全局）
-    stage: 'seed'|'sprout'|'bloom';  // 当前蜕变阶段
+    stage: 'sprout'|'vine'|'bloom'|'fruit';  // 当前蜕变阶段（4-stage，对齐 GDD 12 附录 A）
     growthPct: number;     // 0..1 当前阶段进度
   }
   ```
-- **待补事件（当前 event-bus 无）**：建议 `ON_SEED_COLLECTED(seedId)`、`ON_SEED_METAMORPHOSIS(stage)`——**须先由主理人拍板并加入 `event-bus.ts` 与 GDD 11**，否则 UI 无数据源。
+- **事件（GDD 12 §5.1 已定义）**：`ON_SEED_COLLECTED(seedId)`、`ON_SEED_METAMORPHOSIS(stage)`、`ON_SEED_GROWTH`——**事件常量由工程主程补入 `event-bus.ts`**（GDD 12 §5.1 契约），UI 即可订阅。
 - **MVP 建议**：§6.3 作为 Could（backlog），MVP 只做 §6.2 的 SaveData 跨关进度 UI。
 
 ---
@@ -281,7 +281,7 @@
 | `ON_GAME_OVER` | GameOver UI | 暗罩+重试（hud-spec §6，已落地） |
 | `ON_DEATH(lives)` / `ON_RESPAWN(lives)` | HUD | 心形/形态/淡入（hud-spec，已落地） |
 | `ON_HURT` / `ON_LIFE_LOST` | HUD | 受击反馈（hud-spec，已落地） |
-| （待补）`ON_SEED_COLLECTED` / `ON_SEED_METAMORPHOSIS` | Seed UI | §6.3，待 GDD 拍板后加 |
+| `ON_SEED_COLLECTED` / `ON_SEED_METAMORPHOSIS` / `ON_SEED_GROWTH` | Seed UI | §6.3，GDD 12 §5.1 已定义，事件常量由工程主程补入 event-bus |
 
 > 所有 UI 回调在场景 `shutdown` 时用 `bus.on` 返回的 off 函数解绑（同 hud-spec §8.1）。
 
@@ -314,7 +314,7 @@
 
 | # | 事项 | 建议 | 阻塞？ |
 |---|---|---|---|
-| R1 | **"种子蜕变成长"机制未定义**（GDD 11 仅为 SaveData） | 在 GDD 11 增补 seed 子模型 **或** 另立新 GDD；并加 `ON_SEED_*` 事件常量。MVP 仅做 §6.2 | ⚠ 阻塞 §6.3 实现（非 MVP 阻断） |
+| R1 | **"种子蜕变成长"机制未定义**（原 GDD 11 仅为 SaveData） | **已解决**：另立 **GDD 12** 定义机制、`Stage` 四阶段枚举与 `ON_SEED_*` 事件（§5.1）；事件常量由工程主程补入 `event-bus.ts`。MVP 仅做 §6.2 | ✅ 已解（GDD 12 落地，非 MVP 阻断） |
 | R2 | 暂停触发文案冲突（ux-spec §5.1 "INPUT_ACTION" vs 默认 gesture "双指 tap"） | 以 click-to-move-design 为准修订 ux-spec §5.1 | 否（本文已统一） |
 | R3 | 星级阈值（§5.2 建议值） | 主理人/平衡确认 parTime 倍率与收集率阈值 | 否（结构已锁，阈值可调） |
 | R4 | 关卡选择 MVP 是否启用 | 维持 ux-spec A1：MVP 单关直进，LEVEL_SELECT 预留 | 否 |

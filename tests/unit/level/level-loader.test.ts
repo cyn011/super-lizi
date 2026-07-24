@@ -83,8 +83,8 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
   });
 
   it('entities 透传 + 敌人由实体生成 EnemyAI（S04-1 ci_li/du_fu + S04-2 chong_feng/shi_pao）+ S04-3 实体分桶', () => {
-    // 5 敌(ci_li×2, chong_feng×1, du_fu×1, shi_pao×1) + 7 币 + 2 种子 + 1 检查点 = 15
-    expect(rt.entities.length).toBe(15);
+    // 5 敌(ci_li×2, chong_feng×1, du_fu×1, shi_pao×1) + 7 币 + 6 种子 + 1 检查点 = 19
+    expect(rt.entities.length).toBe(19);
     expect(rt.enemies.length).toBe(5);
     expect(rt.enemies[0].type).toBe('ci_li');
     expect(rt.enemies[1].type).toBe('ci_li');
@@ -96,7 +96,7 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(rt.enemies.filter((e) => !e.isStompable).map((e) => e.type)).toEqual(['chong_feng', 'shi_pao']);
     // S04-3：coin/seed/checkpoint 由 entities 按 type 过滤分桶（不污染 enemies）
     expect(rt.coins.length).toBe(7);
-    expect(rt.seeds.length).toBe(2);
+    expect(rt.seeds.length).toBe(6);
     expect(rt.seeds[0].seedId).toBe('seed_01');
     expect(rt.seeds[1].seedId).toBe('seed_02');
     expect(rt.checkpoints.length).toBe(1);

@@ -18,6 +18,10 @@ export const ON_GAME_OVER = 'ON_GAME_OVER';
 export const ON_COIN = 'ON_COIN';
 /** 种子采集（GDD 12 §5.1）：payload `string`（seedId）。本 Story 仅发事件，maturity/蜕变留专项。 */
 export const ON_SEED_COLLECTED = 'ON_SEED_COLLECTED';
+/** 蜕变进度（GDD 12 §5.1）：payload `{ growthPct:number; stage:Stage }`，每次采集后重算即发（stage 未变也发），供 UI 进度条 / 音频细反馈。 */
+export const ON_SEED_GROWTH = 'ON_SEED_GROWTH';
+/** 蜕变跨阈值（GDD 12 §5.1）：payload `Stage`，仅当 stage 跨阈值变化时发（苗→藤→花→果），驱动 topper 切换 + 暖黄光晕 + sfx:seed_metamorph。 */
+export const ON_SEED_METAMORPHOSIS = 'ON_SEED_METAMORPHOSIS';
 export const ON_SCORE = 'ON_SCORE';
 /** 经济变化广播（S04-4）：payload `{ score, coins, comboMult }`，供 HUD(S04-5) 订阅。 */
 export const ON_SCORE_CHANGED = 'ON_SCORE_CHANGED';

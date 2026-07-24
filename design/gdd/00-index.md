@@ -63,6 +63,7 @@
 | 09 | 音频占位 Audio Placeholder | 09-audio-placeholder.md | Could（轻 stub） |
 | 10 | 节拍预留接口 Beat Reservation | 10-beat-reservation.md | Must（接口深）/ Could（机制） |
 | 11 | 元循环/进度 Meta Progression | 11-meta-progression.md | Could（轻 stub） |
+| 12 | 种子蜕变成长 Seed Metamorphosis（依赖 05/06/07/08/09/11） | 12-seed-metamorphosis.md | Must（MVP 机制深） |
 
 ### 2.2 依赖图（文字版，箭头 = 依赖）
 ```
@@ -82,6 +83,8 @@
 10 Beat Reservation ──> 05 Level (读取 beat 字段)
         │
 11 Meta Progression ──> 05 Level / 08 UI (解锁/结算)
+        │
+12 Seed Metamorphosis ──> 05/06/07/08/09/11 (种子实体/经济正交/受伤尺寸/UI/音频/存档)
         │
 09 Audio Placeholder ── (被 03/04/06/07/08 调用 playSfx，无强依赖)
 ```
@@ -107,6 +110,7 @@
 | 09 音频占位 | `design/gdd/09-audio-placeholder.md` |
 | 10 节拍预留接口 | `design/gdd/10-beat-reservation.md` |
 | 11 元循环/进度 | `design/gdd/11-meta-progression.md` |
+| 12 种子蜕变成长 | `design/gdd/12-seed-metamorphosis.md` |
 | 一致性评审 | `design/gdd/99-consistency-review.md` |
 
 ---
