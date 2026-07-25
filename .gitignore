@@ -13,3 +13,7 @@ dist-wechat/
 
 # macOS
 .DS_Store
+
+# Local screenshots / debug captures (not project assets)
+screenshot-*.png
+screenshot-new-*.png

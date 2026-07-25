@@ -149,6 +149,45 @@
   }
 })();
 
+// ── R2-nov：EventTarget polyfill for window/document/canvas ───────────────────
+// 微信小游戏环境没有浏览器标准的 addEventListener/removeEventListener/dispatchEvent。
+// Phaser 3.90 的 ScaleManager / InputManager / Audio 等会在 boot 期调用
+// window.addEventListener / canvas.addEventListener；缺失则抛
+// `e.addEventListener is not a function` 并中断部分初始化。
+// 这里给全局对象和上屏画布补一个最小 EventTarget：允许注册/注销/派发事件。
+// 后续 wx.onTouch* 再把触摸事件派发到 canvas，Phaser 的 pointer 输入即可工作。
+(function () {
+  try {
+    function makeEventTarget(obj) {
+      if (!obj || typeof obj.addEventListener === 'function') return;
+      var listeners = {};
+      obj.addEventListener = function (type, fn /*, options */) {
+        (listeners[type] = listeners[type] || []).push(fn);
+      };
+      obj.removeEventListener = function (type, fn /*, options */) {
+        var arr = listeners[type];
+        if (!arr) return;
+        var idx = arr.indexOf(fn);
+        if (idx >= 0) arr.splice(idx, 1);
+      };
+      obj.dispatchEvent = function (event) {
+        var arr = listeners[event.type] || [];
+        for (var i = 0; i < arr.length; i++) {
+          try { arr[i](event); } catch (_) {}
+        }
+        return true;
+      };
+    }
+
+    makeEventTarget(globalThis);
+    if (typeof window !== 'undefined' && window !== globalThis) makeEventTarget(window);
+    if (typeof document !== 'undefined') makeEventTarget(document);
+    if (globalThis.__screenCanvas) makeEventTarget(globalThis.__screenCanvas);
+  } catch (e) {
+    console.error('[R2-nov] EventTarget polyfill failed:', e && e.message ? e.message : e);
+  }
+})();
+
 require('./weapp-adapter');
 
 // ── R4-perf：performance / requestAnimationFrame / storage 全局兜底 ──
@@ -670,7 +709,27 @@ if (typeof screen === 'undefined') {
     });
     Object.defineProperty(fakeDoc, 'createElement', {
       value: function (tag) {
-        if (tag === 'canvas') return fakeCanvas;
+        if (tag === 'canvas') {
+          // R2-dec：每次 createElement('canvas') 必须返回**新**画布。
+          // 旧实现长期复用同一个 fakeCanvas，导致 Phaser.Text 多对象共享同一张
+          // canvas，最后绘制的文字（版本水印）会覆盖所有文本显示。
+          // 这里优先用 origDoc.createElement('canvas')（调用 wx.createCanvas()，
+          // 第一次后均返回离屏画布）生成独立画布；拿不到真实画布才回退 fakeCanvas。
+          try {
+            var newCanvas = origDoc.createElement('canvas');
+            if (newCanvas && typeof newCanvas.getContext === 'function') {
+              try { if (!newCanvas.style) Object.defineProperty(newCanvas, 'style', { value: {}, writable: true, configurable: true }); } catch (_) {}
+              try { if (!newCanvas.width) newCanvas.width = 512; } catch (_) {}
+              try { if (!newCanvas.height) newCanvas.height = 288; } catch (_) {}
+              try { newCanvas.clientWidth = newCanvas.clientWidth || 512; } catch (_) {}
+              try { newCanvas.clientHeight = newCanvas.clientHeight || 288; } catch (_) {}
+              try { newCanvas.offsetWidth = newCanvas.offsetWidth || 512; } catch (_) {}
+              try { newCanvas.offsetHeight = newCanvas.offsetHeight || 288; } catch (_) {}
+              return newCanvas;
+            }
+          } catch (_) {}
+          return fakeCanvas;
+        }
         try { return origDoc.createElement(tag); } catch (_) {}
         return {
           tagName: tag,
@@ -687,7 +746,7 @@ if (typeof screen === 'undefined') {
     Object.defineProperty(fakeDoc, 'elementFromPoint', {
       value: function (_x, _y) {
         // Phaser 触摸事件流程会用它找目标元素；微信环境无真实 DOM，直接返回画布或容器即可。
-        return fakeCanvas || gameContainer || null;
+        return globalThis.__screenCanvas || fakeCanvas || gameContainer || null;
       },
       configurable: true
     });
@@ -801,3 +860,66 @@ if (typeof Image === 'undefined') {
 })();
 
 require('./index');
+
+// ── R2-dec-touch：把微信原生触摸派发成标准 TouchEvent，驱动 Phaser 指针输入 ───
+// 关键：Phaser 3 的 TouchManager 监听的是 'touchstart/touchmove/touchend/touchcancel'
+// （见 node_modules/phaser/src/input/touch/TouchManager.js:332-335），**不是** 'pointerdown'。
+// 旧实现只派发 pointer 事件，Phaser 不监听该事件 → 标题屏「开始游戏」按钮在真机点不动（本次阻塞点）。
+// 这里把 wx.onTouch* 转换成带 touches/changedTouches/targetTouches 数组的
+// TouchEvent-like 对象派发到上屏画布（Phaser 的 input.target = config.canvas =
+// __screenCanvas）。Phaser 用 changedTouches[i].clientX/clientY 经 ScaleManager
+// 换算到 512×288 逻辑坐标命中按钮。同时把 touchstart 派发到 window 触发音频解锁。
+(function () {
+  try {
+    var canvas = globalThis.__screenCanvas;
+    if (!canvas || typeof wx === 'undefined' || typeof canvas.dispatchEvent !== 'function') return;
+
+    function toTouch(t) {
+      var cx = (typeof t.clientX === 'number') ? t.clientX : (typeof t.x === 'number' ? t.x : 0);
+      var cy = (typeof t.clientY === 'number') ? t.clientY : (typeof t.y === 'number' ? t.y : 0);
+      return {
+        identifier: (typeof t.identifier === 'number') ? t.identifier : 0,
+        clientX: cx, clientY: cy,
+        pageX: cx, pageY: cy,
+        screenX: cx, screenY: cy,
+        x: cx, y: cy
+      };
+    }
+
+    function makeTouchEvent(type, touches) {
+      return {
+        type: type,
+        touches: touches,
+        changedTouches: touches,
+        targetTouches: touches,
+        target: canvas,
+        currentTarget: canvas,
+        cancelable: true,
+        defaultPrevented: false,
+        preventDefault: function () { this.defaultPrevented = true; },
+        stopPropagation: function () {},
+        timeStamp: Date.now()
+      };
+    }
+
+    function dispatchTouch(type, wxTouches) {
+      if (!wxTouches || !wxTouches.length) return;
+      var touches = [];
+      for (var i = 0; i < wxTouches.length; i++) {
+        try { touches.push(toTouch(wxTouches[i])); } catch (_) {}
+      }
+      if (!touches.length) return;
+      try { canvas.dispatchEvent(makeTouchEvent(type, touches)); } catch (_) {}
+      if (type === 'touchstart' && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try { window.dispatchEvent(makeTouchEvent('touchstart', touches)); } catch (_) {}
+      }
+    }
+
+    if (typeof wx.onTouchStart === 'function') wx.onTouchStart(function (e) { dispatchTouch('touchstart', e.changedTouches); });
+    if (typeof wx.onTouchMove === 'function') wx.onTouchMove(function (e) { dispatchTouch('touchmove', e.changedTouches); });
+    if (typeof wx.onTouchEnd === 'function') wx.onTouchEnd(function (e) { dispatchTouch('touchend', e.changedTouches); });
+    if (typeof wx.onTouchCancel === 'function') wx.onTouchCancel(function (e) { dispatchTouch('touchcancel', e.changedTouches); });
+  } catch (e) {
+    console.error('[R2-dec-touch] touch dispatch failed:', e && e.message ? e.message : e);
+  }
+})();
