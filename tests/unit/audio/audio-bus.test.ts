@@ -20,6 +20,12 @@ class MockAudioPort implements AudioPort {
   unlock(): void {
     /* no-op */
   }
+  playMusic(name: string): void {
+    this.calls.push(name);
+  }
+  stopMusic(): void {
+    /* no-op */
+  }
 }
 
 describe('AudioBus · 事件 → play(name) 映射（S05-4）', () => {

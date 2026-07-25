@@ -18,6 +18,7 @@
  *   - 背景天空 #5BC8F5 由 main.ts 的 backgroundColor 提供，本场景不再重绘。
  */
 import Phaser from 'phaser';
+import type { Platform } from '../../platform/platform';
 
 const LOGICAL_W = 512;
 const LOGICAL_H = 288;
@@ -383,12 +384,34 @@ export class TitleScene extends Phaser.Scene {
     // ── 键盘 Enter / Space 开始 ──
     this.input.keyboard?.on('keydown-ENTER', () => this.startGame());
     this.input.keyboard?.on('keydown-SPACE', () => this.startGame());
+
+    // ── S05-4-BGM：首次用户交互后播 menu BGM ──
+    // 解锁（main.ts 首次手势后才 resume）前 playMusic 会 no-op（契约允许）；故注册一次性
+    // pointerdown/keydown 监听，首次真实交互后再播。进入 startGame 会改播 stage（覆盖）。
+    const platform = this.resolvePlatform();
+    if (platform) {
+      const onFirstInteract = () => {
+        if (this.started) return; // 已进入游戏则不回退播 menu
+        platform.audio.playMusic('music:menu');
+      };
+      this.input.once('pointerdown', onFirstInteract);
+      this.input.keyboard?.once('keydown', onFirstInteract);
+    }
+  }
+
+  /** 从 registry / globalThis 解析 Platform（main.ts 已注入并兜底）。 */
+  private resolvePlatform(): Platform | undefined {
+    const fromReg = this.registry.get('platform') as Platform | undefined;
+    if (fromReg && fromReg.env) return fromReg;
+    return (globalThis as unknown as { __superMaliPlatform?: Platform }).__superMaliPlatform;
   }
 
   /** 进入 GameScene（关卡 1-1，GameScene 默认加载首关）。防重复触发。 */
   private startGame(): void {
     if (this.started) return;
     this.started = true;
+    // S05-4-BGM：进关改播 stage（AudioPort 换名先停 menu 后起 stage，无双循环叠加）。
+    this.resolvePlatform()?.audio.playMusic('music:stage');
     this.scene.start('Game');
   }
 }

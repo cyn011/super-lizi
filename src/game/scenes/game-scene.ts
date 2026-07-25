@@ -319,8 +319,11 @@ export class GameScene extends Phaser.Scene {
       this.resultScreen?.hide();
       this.platform.setMenuActive?.(false);
       const n = nextLevelId(LEVEL_ORDER, this.currentLevelId);
-      if (n) this.loadLevel(n);
-      else this.scene.start('Title');
+      if (n) {
+        this.loadLevel(n);
+        // S05-4-BGM：下一关重启 stage BGM。
+        this.platform.audio.playMusic('music:stage');
+      } else this.scene.start('Title');
     });
 
     // 受伤 juice 计时（game-scene 自管，与 Hud 并存）：受击闪红 / 重生淡入。
@@ -367,6 +370,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.offRestart?.();
       this.offRestart = undefined;
+      // S05-4-BGM：场景关闭即停 BGM（避免跨场景残留循环）。
+      this.platform.audio.stopMusic();
       this.audioBus?.destroy();
       this.audioBus = undefined;
       for (const off of this.economyOffs) off();
@@ -408,6 +413,8 @@ export class GameScene extends Phaser.Scene {
 
     // S06：按 currentLevelId 从注册表加载关卡（首关 1-1）；restart / 下一关复用同一路径。
     this.loadLevel(this.currentLevelId);
+    // S05-4-BGM：进关即播 stage BGM（AudioPort 已 idempotent/换名先停后起；未解锁时 no-op）。
+    this.platform.audio.playMusic('music:stage');
 
     // 固定步长主循环（ADR-005）：step 内做仿真，渲染在每帧 update 后
     this.loop = new FixedStep((dt, simTimeMs) => this.stepSim(dt, simTimeMs), STEP_MS);
@@ -780,6 +787,8 @@ export class GameScene extends Phaser.Scene {
    */
   private onGameOver(): void {
     this.gameOver = true;
+    // S05-4-BGM：GameOver 停 BGM（仿真冻结，重开时重启）。
+    this.platform.audio.stopMusic();
     // S05-2：RunState 流转（PLAYING→GAME_OVER；与 DamageState 正交，不写其字段）。
     this.runState.transition('GAME_OVER');
     // S05-5：门开 → 屏蔽 gameplay 原生输入转发（Game Over 期间仿真冻结）。
@@ -803,6 +812,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.runState.transition('PAUSED')) return;
     this.paused = true;
     this.pauseMenu?.show();
+    // S05-4-BGM：暂停即停 BGM（仿真冻结，恢复时重启）。
+    this.platform.audio.stopMusic();
     // S05-5：门开 → 屏蔽 gameplay 原生输入转发，原生点击改走菜单路由。
     this.platform.setMenuActive?.(true);
   }
@@ -812,6 +823,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.runState.transition('PLAYING')) return;
     this.paused = false;
     this.pauseMenu?.hide();
+    // S05-4-BGM：恢复即重启 stage BGM。
+    this.platform.audio.playMusic('music:stage');
     // S05-5：门关 → gameplay 原生输入恢复转发（后台暂停期间仍按住的手指原样保留 → 连续）。
     this.platform.setMenuActive?.(false);
   }
@@ -824,6 +837,8 @@ export class GameScene extends Phaser.Scene {
    */
   private onLevelComplete(_payload?: unknown): void {
     if (!this.runState.transition('LEVEL_COMPLETE')) return;
+    // S05-4-BGM：凯旋收尾停 BGM，让 sfx:level_clear 独奏（audio-bgm-design.md §3.4）。
+    this.platform.audio.stopMusic();
     const md = this.runtime.data.metadata as unknown as Record<string, unknown>;
     const parTimeMs = (md.parTimeMs as number | undefined) ?? DEFAULT_PAR_TIME_MS;
     const totalCoins = this.runtime.coins.length;
@@ -857,6 +872,8 @@ export class GameScene extends Phaser.Scene {
     this.resultScreen?.hide();
     // S06：复用 loadLevel 重建「当前关」全部运行时状态（干净一局）。
     this.loadLevel(this.currentLevelId);
+    // S05-4-BGM：重开即重启 stage BGM（loadLevel 后重置状态机为 PLAYING）。
+    this.platform.audio.playMusic('music:stage');
     // 清理微信原生触摸监听（避免重复触发 ON_RESTART）。
     if (this.restartTouchHandler && typeof wx !== 'undefined' && wx.offTouchStart) {
       wx.offTouchStart(this.restartTouchHandler);

@@ -11,6 +11,14 @@ export interface AudioPort {
   play(name: string): void;
   /** 首次用户交互后解锁（绕过自动播放限制）。 */
   unlock(): void;
+  /**
+   * 启动指定 BGM 循环（audio-bgm-design.md §2.1）。
+   * 同 name 重复调用 = idempotent（不叠加第二份循环）；换 name = 先停后起。
+   * 解锁前（ctx 为 null）或未知 name → no-op（静默，不抛错）。
+   */
+  playMusic(name: string): void;
+  /** 停止当前 BGM（取消已预排未触发 oscillator）。解锁前或没有当前 BGM → no-op。 */
+  stopMusic(): void;
 }
 
 export interface StoragePort {
