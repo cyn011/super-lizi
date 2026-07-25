@@ -307,10 +307,13 @@ export class GameScene extends Phaser.Scene {
 
     // ON_RESTART：干净 reset（场景内重开，非 scene.restart，状态更可控）。
     this.offRestart = this.bus.on(ON_RESTART, () => this.restartGame());
-    // S06：结算页「下一关」按钮 → 加载下一关（进度链闭环）。
+    // S06：结算页「下一关」按钮 → 加载下一关；末关时返回标题。
     this.bus.on(ON_NEXT_LEVEL, () => {
+      this.resultScreen?.hide();
+      this.platform.setMenuActive?.(false);
       const n = nextLevelId(LEVEL_ORDER, this.currentLevelId);
       if (n) this.loadLevel(n);
+      else this.scene.start('Title');
     });
 
     // 受伤 juice 计时（game-scene 自管，与 Hud 并存）：受击闪红 / 重生淡入。
@@ -830,6 +833,8 @@ export class GameScene extends Phaser.Scene {
     this.lifecycle.reset();
     // S05-5：门关 → gameplay 原生输入恢复转发。
     this.platform.setMenuActive?.(false);
+    // 从结算面板点「再玩一次」时，先隐藏面板再重建关卡。
+    this.resultScreen?.hide();
     // S06：复用 loadLevel 重建「当前关」全部运行时状态（干净一局）。
     this.loadLevel(this.currentLevelId);
     // 清理微信原生触摸监听（避免重复触发 ON_RESTART）。

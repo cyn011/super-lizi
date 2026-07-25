@@ -88,10 +88,11 @@ const CENTER_Y = LOGICAL_H / 2; // 144
 
 // 颜色（美术圣经 §3 / placeholder-spec，禁止硬编语义外色）
 const COLOR_OVERLAY_BG = 0x000000;
-const OVERLAY_ALPHA = 0.6;
-const COLOR_PANEL = 0x4a3a2f; // 暖棕面板
+const OVERLAY_ALPHA = 0.78; // 加深遮罩，让结算面板从关卡背景中跳出来
+const COLOR_PANEL = 0x35251b; // 深棕面板（比原 0x4a3a2f 更深，与各种 biome 背景拉开对比）
 const COLOR_OUTLINE = 0x2a1a12; // 近黑棕描边
-const COLOR_TITLE = '#F4EFE6'; // 石灰白
+const COLOR_HIGHLIGHT = 0xf2c94c; // 经济金：顶部横幅线/标题强调
+const COLOR_TITLE = '#FFD23F'; // 暖黄标题字，高对比
 const COLOR_RANK_ON = 0xf2c94c; // 经济金（评级达标，矢量菱形星填充）
 const COLOR_RANK_OFF = 0x6a5a3f; // 暗化（评级未达，矢量菱形星填充）
 const COLOR_BTN = 0xb5763e; // 栗色按钮
@@ -178,16 +179,18 @@ export class ResultScreen {
         drawRank(this.rankGfx, (i - 1) * RANK_GAP, RANK_ROW_Y, RANK_R, i < result.ranks);
       }
     }
-    // 信息行
+    // 信息行：清晰前缀，避免被错误覆盖成金币统计
     const info1 = c.getByName('info1') as Phaser.GameObjects.Text | null;
     const info2 = c.getByName('info2') as Phaser.GameObjects.Text | null;
-    if (info1) info1.setText(`用时 ${(elapsedMs / 1000).toFixed(1)}s`);
-    if (info2) info2.setText(`金币 ${collectedCoins}/${totalCoins}`);
+    if (info1) info1.setText(`用时 ${(elapsedMs / 1000).toFixed(1)} 秒`);
+    if (info2) info2.setText(`金币 ${collectedCoins} / ${totalCoins}`);
 
-    // S06：按 hasNext 切换「下一关」按钮可见性（通关末关隐藏，仍通关可进显示）。
-    this.nextButtonVisible = hasNext;
+    // S06：「下一关」按钮始终显示；末关时文案改为「返回标题」。
+    this.nextButtonVisible = true;
+    const nextBtnText = c.getByName('nextBtnText') as Phaser.GameObjects.Text | null;
+    if (nextBtnText) nextBtnText.setText(hasNext ? '下一关' : '返回标题');
     if (this.nextButtonObjs) {
-      for (const o of this.nextButtonObjs) o.setVisible(hasNext);
+      for (const o of this.nextButtonObjs) o.setVisible(true);
     }
 
     // 最小凯旋动画：panel 弹入（scale + alpha）
@@ -256,14 +259,22 @@ export class ResultScreen {
     g.lineStyle(2, COLOR_OUTLINE, 1);
     g.strokeRoundedRect(-PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, 12);
 
-    // 标题
+    // 顶部经济金横幅线（强化"通关"视觉层次）
+    g.lineStyle(3, COLOR_HIGHLIGHT, 1);
+    g.beginPath();
+    g.moveTo(-PANEL_W / 2 + 16, -PANEL_H / 2 + 44);
+    g.lineTo(PANEL_W / 2 - 16, -PANEL_H / 2 + 44);
+    g.strokePath();
+
+    // 标题：大字号暖黄 + 深描边，让通关提示一眼可见
     const title = this.scene.add
       .text(0, -PANEL_H / 2 + 22, '通关！', {
         fontFamily: TEXT_FONT,
-        fontSize: '18px',
+        fontSize: '28px',
+        fontStyle: 'bold',
         color: COLOR_TITLE,
         stroke: '#2A1A12',
-        strokeThickness: 2,
+        strokeThickness: 3,
       })
       .setOrigin(0.5);
     title.setName('title');
@@ -276,12 +287,12 @@ export class ResultScreen {
     }
     this.rankGfx = rankG;
 
-    // 信息行
+    // 信息行：带清晰前缀，避免与标题/按钮混淆
     const info1 = this.scene.add
-      .text(0, -PANEL_H / 2 + 92, '', {
+      .text(0, -PANEL_H / 2 + 90, '', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
-        color: COLOR_TITLE,
+        color: '#F4EFE6',
       })
       .setOrigin(0.5);
     info1.setName('info1');
@@ -289,12 +300,12 @@ export class ResultScreen {
       .text(0, -PANEL_H / 2 + 112, '', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
-        color: COLOR_TITLE,
+        color: '#F4EFE6',
       })
       .setOrigin(0.5);
     info2.setName('info2');
 
-    // 「下一关」大圆角按钮（S06：位于「再玩一次」上方；hasNext 时由 show() 置为可见）
+    // 「下一关/返回标题」大圆角按钮（S06：位于「再玩一次」上方；始终显示，末关变文案）
     const nextBtn = this.scene.add
       .rectangle(0, NEXT_BTN_Y, BTN_W, BTN_H, COLOR_NEXT_BTN, 0.9)
       .setStrokeStyle(2, COLOR_OUTLINE, 1);
@@ -304,11 +315,12 @@ export class ResultScreen {
       .text(0, NEXT_BTN_Y, '下一关', {
         fontFamily: TEXT_FONT,
         fontSize: '16px', // ≥14px
-        color: COLOR_TITLE,
+        color: '#F4EFE6',
         stroke: '#2A1A12',
         strokeThickness: 2,
       })
       .setOrigin(0.5);
+    nextBtnText.setName('nextBtnText');
     nextBtn.setVisible(false);
     nextBtnText.setVisible(false);
 
@@ -322,7 +334,7 @@ export class ResultScreen {
       .text(0, REPLAY_BTN_Y, '再玩一次', {
         fontFamily: TEXT_FONT,
         fontSize: '16px', // ≥14px
-        color: COLOR_TITLE,
+        color: '#F4EFE6',
         stroke: '#2A1A12',
         strokeThickness: 2,
       })
