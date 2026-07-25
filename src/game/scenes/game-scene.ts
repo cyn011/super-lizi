@@ -52,6 +52,7 @@ import { resolveActiveMenu } from '../../core/state/menu-tap';
 // S05-4 薄音频总线：订阅事件总线 → platform.audio.play(name)；仅依赖 AudioPort 类型，不反向依赖平台实现。
 import { AudioBus } from '../audio/audio-bus';
 import { drawEnemy } from '../render/enemy-view';
+import { biomeForLevel } from '../render/theme-palette';
 import { drawProjectile } from '../render/projectile-view';
 import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
@@ -865,23 +866,30 @@ export class GameScene extends Phaser.Scene {
     const g = this.add.graphics();
     this.levelGfx = g;
     const ts = this.world.tileSize;
+    // biome 氛围接线点：theme → palette（草原保持默认暖色；洞穴冷暗蓝），对齐 art/cave-biome-spec.md §6。
+    const pal = biomeForLevel(this.runtime.data);
+    // 背景层：仅非空 palette（洞穴暗蓝 #1C2E49）绘制；草原 bg=null 跳过，零回归。
+    if (pal.bg !== null) {
+      g.fillStyle(pal.bg, 1);
+      g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
+    }
     for (let ty = 0; ty < this.runtime.data.height; ty++) {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {
         if (this.world.isSolidTile(tx, ty)) {
-          g.fillStyle(0x3a2a1f, 1);
+          g.fillStyle(pal.rockFace, 1);
           g.fillRect(tx * ts, ty * ts, ts, ts);
-          g.lineStyle(1, 0x2a1a12, 1);
+          g.lineStyle(1, pal.outline, 1);
           g.strokeRect(tx * ts, ty * ts, ts, ts);
         } else if (this.world.isOneWayTile(tx, ty)) {
-          g.fillStyle(0x6a5a3f, 1);
+          g.fillStyle(pal.rockBody, 1);
           g.fillRect(tx * ts, ty * ts, ts, ts / 2);
         }
       }
     }
     // 凯旋之门
-    g.fillStyle(0xf2c94c, 1);
+    g.fillStyle(pal.crystalCore, 1);
     g.fillRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
-    g.lineStyle(2, 0x2a1a12, 1);
+    g.lineStyle(2, pal.outline, 1);
     g.strokeRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
   }
 

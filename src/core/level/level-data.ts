@@ -20,11 +20,17 @@ export type EntityDef =
   | CheckpointEntityDef;
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
-export type EnemyEntityType = 'ci_li' | 'du_fu' | 'chong_feng' | 'shi_pao';
+export type EnemyEntityType = 'ci_li' | 'du_fu' | 'chong_feng' | 'shi_pao' | 'gu_bao';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;
   y: number;
+  /**
+   * 每实例覆盖（仅 gu_bao 消费，向后兼容旧 4 敌）。
+   * gu_bao：phaseOffset(ms 初始相位错相) / dormantMs / activeMs / height / width。
+   * 其余敌不读此字段。
+   */
+  params?: Record<string, number>;
 }
 
 /** S04-3 金币实体（经济内容源；碰玩家 → ON_COIN，联动 S04-4 经济 +10）。 */

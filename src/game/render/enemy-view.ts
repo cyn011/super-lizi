@@ -22,6 +22,10 @@ const OUTLINE = 0x2a1a12; // 近黑棕描边
 /** 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。 */
 export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   if (e.dead) return; // 已消灭不绘制
+  if (e.type === 'gu_bao') {
+    drawGuBao(g, e); // 鼓苞：地生苞 + 尖刺（危险）/ 软顶（可踩）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -38,6 +42,50 @@ export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
     drawShiPao(g, b, color, e);
   } else {
     drawStompable(g, b, color); // ci_li / du_fu：软顶圆角 + 双编码眼睛
+  }
+}
+
+/**
+ * 鼓苞（gu_bao）占位绘制（GDD 13 §7.3，锁色板内）：
+ *   - 苞体：暖橙 #F2933C + 描边 #2A1A12（与 4 旧敌区分）。
+ *   - 危险态（EMERGING/ACTIVE）：顶部警示红 #E8483B 尖刺（危险双编码）。
+ *   - 缩回软顶（RETRACTING）：尖刺收起，顶转暖黄 #FFD23F 高光环（可踩提示）。
+ *   - DORMANT（盒高≈0）：不绘制（地下）。
+ * 几何读 EnemyAI.getBounds()（盒顶随升起进度 p 上移），单一真相源，与碰撞盒一致。
+ */
+const GU_BAO_BUD = 0xf2933c; // 暖橙苞体
+const GU_BAO_SPIKE = 0xe8483b; // 警示红尖刺（危险）
+const GU_BAO_SOFT = 0xffd23f; // 暖黄软顶（可踩）
+function drawGuBao(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.h <= 0.5) return; // DORMANT：地下不可见（盒高≈0）
+  const outline = OUTLINE;
+  // 苞体（垂直圆角柱）
+  const radii = { tl: b.w / 2, tr: b.w / 2, bl: 2, br: 2 };
+  g.fillStyle(GU_BAO_BUD, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, radii);
+  g.lineStyle(1, outline, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, radii);
+
+  const state = e.guBaoPhaseState;
+  const cx = b.x + b.w / 2;
+  if (state === 'EMERGING' || state === 'ACTIVE') {
+    // 警示红尖刺顶（危险双编码）：三枚三角
+    g.fillStyle(GU_BAO_SPIKE, 1);
+    const half = b.w / 2;
+    const sh = Math.max(3, b.w * 0.45);
+    const mid = b.y - sh;
+    g.fillTriangle(b.x, b.y, b.x + half * 0.6, b.y, cx, mid);
+    g.fillTriangle(b.x + half * 0.4, b.y, b.x + b.w - half * 0.4, b.y, cx, mid);
+    g.fillTriangle(b.x + b.w - half * 0.6, b.y, b.x + b.w, b.y, cx, mid);
+    g.lineStyle(1, outline, 1);
+    g.strokeTriangle(b.x, b.y, b.x + half * 0.6, b.y, cx, mid);
+    g.strokeTriangle(b.x + b.w - half * 0.6, b.y, b.x + b.w, b.y, cx, mid);
+  } else if (state === 'RETRACTING') {
+    // 软顶：暖黄高光环（可踩提示），尖刺收起
+    g.fillStyle(GU_BAO_SOFT, 1);
+    const topH = Math.max(3, b.h * 0.28);
+    g.fillRoundedRect(b.x + 2, b.y, b.w - 4, topH, { tl: b.w / 3, tr: b.w / 3, bl: 0, br: 0 });
   }
 }
 

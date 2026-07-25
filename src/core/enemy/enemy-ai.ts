@@ -25,6 +25,14 @@ import type { HazardSource, StompableHazard } from '../damage/hazard-source';
 import type { EnemyState, EnemyTypeName } from './enemy-types';
 import { enemyConfig } from '../config';
 import { Projectile } from './projectile';
+import {
+  DEFAULT_GU_BAO_CFG,
+  guBaoProgress,
+  resolveGuBaoPhase,
+  stepGuBao,
+  type GuBaoCfg,
+  type GuBaoState,
+} from './gu-bao';
 
 /** 单类敌人参数（全部来自 enemy-config.json，禁止硬编码）。 */
 export interface EnemyConfigEntry {
@@ -67,10 +75,12 @@ const NO_PROJECTILES: Projectile[] = [];
 export class EnemyAI implements StompableHazard {
   readonly id: number;
   readonly type: EnemyTypeName;
-  readonly isStompable: boolean;
+  /** 可踩标记：旧 4 敌为静态 cfg 值；gu_bao 随态动态赋值（仅 RETRACTING=true）。 */
+  isStompable: boolean;
   readonly enemyType: string;
-  readonly width: number;
-  readonly height: number;
+  /** 碰撞盒宽 / 高（px）：旧 4 敌恒定；gu_bao 高度随升起进度 p 变化（DORMANT=0）。 */
+  width: number;
+  height: number;
 
   /** 当前位置 / 速度（世界坐标，px / px·s⁻¹）。 */
   x: number;
@@ -96,12 +106,27 @@ export class EnemyAI implements StompableHazard {
   private aimX = -1;
   private aimY = 0;
 
+  // ── gu_bao 周期状态机字段（GDD 13，零平台纯逻辑）──
+  /** gu_bao 当前态（DORMANT/EMERGING/ACTIVE/RETRACTING）。 */
+  private guBaoState: GuBaoState = 'DORMANT';
+  /** gu_bao 当前态已用时间（ms），供 stepGuBao 续推。 */
+  private guBaoT = 0;
+  /** gu_bao 升起进度 0..1（盒顶相对 anchorY 的上移比例）。 */
+  private guBaoP = 0;
+  /** gu_bao 当前态是否危害（仅 render/调试用，hazard 判定走 overlaps + isStompable）。 */
+  private guBaoHazard = false;
+  /** gu_bao 地面锚点（苞自此处升起；盒底恒贴 anchorY）。 */
+  private guBaoAnchorY = 0;
+  /** gu_bao 本实例状态机数值（enemy-config.gu_bao + per-instance params 覆盖）。 */
+  private guBaoCfg: GuBaoCfg = DEFAULT_GU_BAO_CFG;
+
   constructor(
     type: EnemyTypeName,
     x: number,
     y: number,
     id: number,
     config: typeof enemyConfig = enemyConfig,
+    params?: Record<string, number>,
   ) {
     this.type = type;
     this.id = id;
@@ -114,6 +139,21 @@ export class EnemyAI implements StompableHazard {
     this.y = y;
     this.baseY = y;
     this.state = type === 'ci_li' ? 'patrol' : type === 'du_fu' ? 'float' : 'idle';
+
+    // gu_bao：地面锚点 = y；按 phaseOffset 推导初始态；盒顶随 p 上移。
+    if (type === 'gu_bao') {
+      this.guBaoAnchorY = y;
+      this.guBaoCfg = buildGuBaoCfg(this.cfg, params);
+      const init = resolveGuBaoPhase(params?.phaseOffset ?? 0, this.guBaoCfg);
+      this.guBaoState = init.state;
+      this.guBaoT = init.t;
+      this.guBaoP = guBaoProgress(init.state, init.t, this.guBaoCfg);
+      this.width = this.guBaoCfg.width;
+      this.height = this.guBaoP * this.guBaoCfg.height;
+      this.y = this.guBaoAnchorY - this.height; // 盒顶（DORMANT: 等于 anchorY，地下零高）
+      this.state = init.state;
+      this.isStompable = init.state === 'RETRACTING';
+    }
   }
 
   /** 当前碰撞盒（供碰撞解算 / HazardSource.overlaps）。 */
@@ -157,6 +197,16 @@ export class EnemyAI implements StompableHazard {
     return this.fireFlash;
   }
 
+  /** gu_bao 当前态（render / 调试读：危险刺 vs 软顶）。 */
+  get guBaoPhaseState(): GuBaoState {
+    return this.guBaoState;
+  }
+
+  /** gu_bao 升起进度 0..1（render 读：苞体高度 / 尖刺收起）。 */
+  get guBaoProgress(): number {
+    return this.guBaoP;
+  }
+
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
    * @param player 玩家碰撞盒（chong_feng detect / shi_pao aim 需要；ci_li/du_fu 可省）。
@@ -171,6 +221,10 @@ export class EnemyAI implements StompableHazard {
     }
     if (this.type === 'du_fu') {
       this.updateFloat(dt);
+      return NO_PROJECTILES;
+    }
+    if (this.type === 'gu_bao') {
+      this.updateGuBao(dt);
       return NO_PROJECTILES;
     }
     if (this.type === 'chong_feng') return this.updateChongFeng(dt, world, player);
@@ -201,6 +255,23 @@ export class EnemyAI implements StompableHazard {
     this.y = this.baseY + amp * Math.sin(this.phase);
     this.vy = floatSpeed * Math.cos(this.phase);
     this.vx = 0;
+  }
+
+  // ── gu_bao 周期状态机（GDD 13）：DORMANT→EMERGING→ACTIVE→RETRACTING→(DORMANT) ──
+  // 盒底恒贴 guBaoAnchorY；盒顶随升起进度 p 上移；危害仅 EMERGING/ACTIVE；可踩仅 RETRACTING。
+  // 几何与危害/可踩全部由 stepGuBao 纯函数推导，本方法仅把结果落到实例字段（零平台）。
+  private updateGuBao(dt: number): void {
+    const res = stepGuBao(this.guBaoState, this.guBaoT, dt, this.guBaoCfg);
+    this.guBaoState = res.state;
+    this.guBaoT = res.t;
+    this.guBaoP = res.p;
+    const h = res.p * this.guBaoCfg.height; // 当前盒高（DORMANT=0）
+    this.height = h;
+    this.y = this.guBaoAnchorY - h; // 盒顶（anchorY - p*height）
+    this.width = this.guBaoCfg.width; // 宽恒定
+    this.state = res.state;
+    this.isStompable = res.stompable; // 仅 RETRACTING=true → 踩杀管线
+    this.guBaoHazard = res.hazard;
   }
 
   // ── chong_feng 冲锋：idle 探测玩家 → charge 直线冲锋 → 撞墙 stun → 回 idle ──
@@ -286,6 +357,7 @@ export class EnemyAI implements StompableHazard {
   // ── HazardSource 实现 ──
   overlaps(body: Body): boolean {
     if (this.dead) return false; // 已消灭：不再作为 hazard
+    if (this.type === 'gu_bao' && this.guBaoState === 'DORMANT') return false; // 地下无碰撞、无害
     if (this.state === 'stun') return false; // chong_feng 眩晕期 non-hazard（可被安全越过）
     return (
       body.x < this.x + this.width &&
@@ -307,12 +379,37 @@ export class EnemyAI implements StompableHazard {
 }
 
 /**
+ * 由 enemy-config 的 gu_bao 项 + 每实例 params 构建 GuBaoCfg（数值全来自 config，禁止硬编码）。
+ * params 可覆盖：dormantMs / activeMs / height / width（GDD 13 §3.2）；phaseOffset 由构造单独消费。
+ */
+function buildGuBaoCfg(raw: EnemyConfigEntry, params?: Record<string, number>): GuBaoCfg {
+  const r = raw as unknown as Partial<GuBaoCfg>;
+  const base: GuBaoCfg = {
+    dormantMs: r.dormantMs ?? DEFAULT_GU_BAO_CFG.dormantMs,
+    emergeMs: r.emergeMs ?? DEFAULT_GU_BAO_CFG.emergeMs,
+    activeMs: r.activeMs ?? DEFAULT_GU_BAO_CFG.activeMs,
+    retractMs: r.retractMs ?? DEFAULT_GU_BAO_CFG.retractMs,
+    height: r.height ?? DEFAULT_GU_BAO_CFG.height,
+    width: r.width ?? DEFAULT_GU_BAO_CFG.width,
+  };
+  if (!params) return base;
+  return {
+    dormantMs: params.dormantMs ?? base.dormantMs,
+    emergeMs: base.emergeMs,
+    activeMs: params.activeMs ?? base.activeMs,
+    retractMs: base.retractMs,
+    height: params.height ?? base.height,
+    width: params.width ?? base.width,
+  };
+}
+
+/**
  * 由关卡实体列表生成真实敌人（替代 C3 占位刺栗）。
- * 识别 ci_li / du_fu / chong_feng / shi_pao 四类；coin / checkpoint / 未来实体留待各自管线。
- * 零 Phaser / 零平台 API。
+ * 识别 ci_li / du_fu / chong_feng / shi_pao / gu_bao 五类；coin / checkpoint / 未来实体留待各自管线。
+ * gu_bao 识别并透传 params（phaseOffset 等）。零 Phaser / 零平台 API。
  */
 export function createEnemies(
-  entities: ReadonlyArray<{ type: string; x: number; y: number }>,
+  entities: ReadonlyArray<{ type: string; x: number; y: number; params?: Record<string, number> }>,
 ): EnemyAI[] {
   const out: EnemyAI[] = [];
   let id = 0;
@@ -321,9 +418,10 @@ export function createEnemies(
       e.type === 'ci_li' ||
       e.type === 'du_fu' ||
       e.type === 'chong_feng' ||
-      e.type === 'shi_pao'
+      e.type === 'shi_pao' ||
+      e.type === 'gu_bao'
     ) {
-      out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++));
+      out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }
   }
   return out;

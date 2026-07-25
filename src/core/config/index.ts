@@ -13,6 +13,7 @@ import uiJson from '../../config/ui-config.json';
 import audioJson from '../../config/audio-config.json';
 import level1_1Json from '../../config/levels/1-1.json';
 import level1_2Json from '../../config/levels/1-2.json';
+import level2_1Json from '../../config/levels/2-1.json';
 
 import type { InputMapping } from '../input/input-abstraction';
 import type { LevelData } from '../level/level-data';
@@ -44,9 +45,10 @@ export const level1_1 = level1_1Json;
 export const levels: Record<string, LevelData> = {
   '1-1': level1_1Json as LevelData,
   '1-2': level1_2Json as LevelData,
+  '2-1': level2_1Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
-export const LEVEL_ORDER: string[] = ['1-1', '1-2'];
+export const LEVEL_ORDER: string[] = ['1-1', '1-2', '2-1'];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----
 // Web：物理信号 = 键码。

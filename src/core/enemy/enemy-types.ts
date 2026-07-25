@@ -2,7 +2,7 @@
  * core/enemy/enemy-types — 敌人状态类型（GDD 04，E1.S3 骨架）。
  * 4 类：ci_li / chong_feng / du_fu / shi_pao。零 Phaser / 零平台依赖。
  */
-export type EnemyTypeName = 'ci_li' | 'chong_feng' | 'du_fu' | 'shi_pao';
+export type EnemyTypeName = 'ci_li' | 'chong_feng' | 'du_fu' | 'shi_pao' | 'gu_bao';
 
 /** 敌人运行时状态（可踩判定见 E3.S1/S2）。 */
 export interface EnemyState {

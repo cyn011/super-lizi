@@ -3,5 +3,6 @@
   "chong_feng": { "detect": 160, "chargeSpeed": 220, "stun": 1000, "attackRange": 48, "stompable": false, "width": 28, "height": 24 },
   "du_fu":      { "float": 60, "amp": 24, "stompable": true, "width": 24, "height": 24 },
   "shi_pao":    { "fireInterval": 2000, "projSpeed": 180, "stompable": false, "width": 28, "height": 28 },
+  "gu_bao":     { "dormantMs": 1100, "emergeMs": 160, "activeMs": 700, "retractMs": 160, "height": 48, "width": 32, "stompable": false, "stompableWindow": "retract", "baseYAnchor": "ground" },
   "projectile": { "width": 10, "height": 10 }
 }
