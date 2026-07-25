@@ -10,6 +10,7 @@ import { detectEnv } from '../platform/detect';
 import { createPlatform } from '../platform';
 import { EventBus } from '../core/events/event-bus';
 import { BootScene } from './scenes/boot-scene';
+import { TitleScene } from './scenes/title-scene';
 import { GameScene } from './scenes/game-scene';
 
 export function startGame(parent?: string | HTMLElement): Phaser.Game {
@@ -38,7 +39,7 @@ export function startGame(parent?: string | HTMLElement): Phaser.Game {
       mode: env === 'wechat' ? Phaser.Scale.NONE : Phaser.Scale.FIT,
       autoCenter: env === 'wechat' ? Phaser.Scale.NO_CENTER : Phaser.Scale.CENTER_BOTH,
     },
-    scene: [BootScene, GameScene],
+    scene: [BootScene, TitleScene, GameScene],
   };
 
   const game = new Phaser.Game(config);
