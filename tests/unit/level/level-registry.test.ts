@@ -38,8 +38,8 @@ describe('关卡注册表（1-2 流水线复用）', () => {
     expect(inTiles).toBe(false);
   });
 
-  it('LEVEL_ORDER = ["1-1","1-2","2-1"]', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '2-1']);
+  it('LEVEL_ORDER = ["1-1","1-2","2-1","2-2","2-3"]', () => {
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '2-1', '2-2', '2-3']);
   });
 
   it('levels 注册表含 2-1 且通过 validateLevelData（P-LEVEL-04）', () => {

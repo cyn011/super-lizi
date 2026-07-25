@@ -33,6 +33,19 @@ import {
   type GuBaoCfg,
   type GuBaoState,
 } from './gu-bao';
+import {
+  DEFAULT_BOUNCY_VINE_CFG,
+  resolveBouncyVinePower,
+  stepBouncyVine,
+  type BouncyVineCfg,
+  type BouncyVineState,
+} from './bouncy-vine';
+import {
+  DEFAULT_CYCLONE_CFG,
+  applyCycloneForce,
+  stepCyclone,
+  type CycloneCfg,
+} from './cyclone';
 
 /** 单类敌人参数（全部来自 enemy-config.json，禁止硬编码）。 */
 export interface EnemyConfigEntry {
@@ -120,6 +133,38 @@ export class EnemyAI implements StompableHazard {
   /** gu_bao 本实例状态机数值（enemy-config.gu_bao + per-instance params 覆盖）。 */
   private guBaoCfg: GuBaoCfg = DEFAULT_GU_BAO_CFG;
 
+  // ── bouncy_vine 三态状态机字段（GDD 14，零平台纯逻辑）──
+  /** 弹藤本实例状态机数值（enemy-config.bouncy_vine + per-instance params.power 覆盖）。 */
+  private vineCfg: BouncyVineCfg = DEFAULT_BOUNCY_VINE_CFG;
+  /** 弹藤地面锚点（苞自此处贴地；盒底恒贴 anchorY）。 */
+  private vineAnchorY = 0;
+  /** 弹藤当前态（IDLE/SPRING/RECOIL）。 */
+  private vineState: BouncyVineState = 'IDLE';
+  /** 弹藤当前态已用时间（ms）。 */
+  private vineT = 0;
+  /** 弹藤压缩/回弹进度 0..1（render 读：线圈高度 / 顶踩提示）。 */
+  private vineP = 0;
+  /** 本步是否触发回弹（justFired）；集成层读后套用弹起速度 + 发 ON_BOUNCE。 */
+  private vineJustBounced = false;
+  /** 上一帧玩家是否与藤顶接触（落地下降边沿检测：仅首帧触发）。 */
+  private prevVineContact = false;
+  /** 已含 power 倍率的弹起速度（px/s，向上为负）。 */
+  private vineBounceVelocity = 0;
+
+  // ── cyclone 上升气流力场字段（GDD 15，零平台纯逻辑）──
+  /** 气旋本实例力场数值（enemy-config.cyclone + per-instance params 覆盖）。 */
+  private cycloneCfg: CycloneCfg = DEFAULT_CYCLONE_CFG;
+  /** 气旋地面锚点（气柱自此处向上延伸 cycloneCfg.height）。 */
+  private cycloneAnchorY = 0;
+  /** 气柱顶 y（= cycloneAnchorY - cycloneCfg.height）；bbox = [cx-w/2, cx+w/2] × [top, top+h]。 */
+  private cycloneTop = 0;
+  /** 气柱中心 x（= colLeft + width/2）。 */
+  private cycloneCx = 0;
+  /** 漩涡相位（仅视觉，时间推进）。 */
+  private cyclonePhase = 0;
+  /** 本帧玩家是否在气柱内（render 读：气柱高亮）。 */
+  private cycloneInZoneFlag = false;
+
   constructor(
     type: EnemyTypeName,
     x: number,
@@ -153,6 +198,37 @@ export class EnemyAI implements StompableHazard {
       this.y = this.guBaoAnchorY - this.height; // 盒顶（DORMANT: 等于 anchorY，地下零高）
       this.state = init.state;
       this.isStompable = init.state === 'RETRACTING';
+    }
+
+    // bouncy_vine：地面锚点 = y；盒底贴 anchorY，盒顶 = anchorY - height；全态无害、非可踩。
+    if (type === 'bouncy_vine') {
+      this.vineAnchorY = y;
+      this.vineCfg = buildBouncyVineCfg(this.cfg, params);
+      this.vineState = 'IDLE';
+      this.vineT = 0;
+      this.vineP = 0;
+      this.width = this.vineCfg.width;
+      this.height = this.vineCfg.height;
+      this.y = this.vineAnchorY - this.height; // 盒顶（贴地线圈）
+      this.state = 'IDLE';
+      this.isStompable = false; // 纯辅助，非击杀型
+      this.vineBounceVelocity = this.vineCfg.bounceVelocity; // 已含 power 倍率（向上为负）
+    }
+
+    // cyclone：地面锚点 = y；气柱自 anchorY 向上延伸 height（bbox=[cx-w/2,cx+w/2]×[top,top+h]）。
+    if (type === 'cyclone') {
+      this.cycloneAnchorY = y;
+      this.cycloneCfg = buildCycloneCfg(this.cfg, params);
+      this.cycloneTop = this.cycloneAnchorY - this.cycloneCfg.height;
+      this.cycloneCx = x + this.cycloneCfg.width / 2;
+      this.cyclonePhase = 0;
+      this.cycloneInZoneFlag = false;
+      this.width = this.cycloneCfg.width;
+      this.height = this.cycloneCfg.height;
+      this.x = x; // 气柱左
+      this.y = this.cycloneTop; // 气柱顶
+      this.state = 'idle';
+      this.isStompable = false; // 非实体、非可踩
     }
   }
 
@@ -207,6 +283,36 @@ export class EnemyAI implements StompableHazard {
     return this.guBaoP;
   }
 
+  /** bouncy_vine 当前态（render / 调试读：线圈相位）。 */
+  get vinePhaseState(): BouncyVineState {
+    return this.vineState;
+  }
+
+  /** bouncy_vine 压缩/回弹进度 0..1（render 读：线圈高度 / 顶踩提示）。 */
+  get vineProgress(): number {
+    return this.vineP;
+  }
+
+  /** 本步是否触发回弹（game-scene 读：套用弹起速度 + 发 ON_BOUNCE）。 */
+  get justBounced(): boolean {
+    return this.vineJustBounced;
+  }
+
+  /** 已含 power 倍率的弹起速度（px/s，向上为负）；game-scene 套用 body.vy。 */
+  get bounceVelocity(): number {
+    return this.vineBounceVelocity;
+  }
+
+  /** cyclone 漩涡相位 0..2π（render 读：气柱旋转动画）。 */
+  get cyclonePhaseState(): number {
+    return this.cyclonePhase;
+  }
+
+  /** cyclone 本帧是否在气柱内（render 读：气柱高亮）。 */
+  get cycloneInZone(): boolean {
+    return this.cycloneInZoneFlag;
+  }
+
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
    * @param player 玩家碰撞盒（chong_feng detect / shi_pao aim 需要；ci_li/du_fu 可省）。
@@ -225,6 +331,14 @@ export class EnemyAI implements StompableHazard {
     }
     if (this.type === 'gu_bao') {
       this.updateGuBao(dt);
+      return NO_PROJECTILES;
+    }
+    if (this.type === 'bouncy_vine') {
+      this.updateBouncyVine(dt, player);
+      return NO_PROJECTILES;
+    }
+    if (this.type === 'cyclone') {
+      this.updateCyclone(dt, player);
       return NO_PROJECTILES;
     }
     if (this.type === 'chong_feng') return this.updateChongFeng(dt, world, player);
@@ -272,6 +386,49 @@ export class EnemyAI implements StompableHazard {
     this.state = res.state;
     this.isStompable = res.stompable; // 仅 RETRACTING=true → 踩杀管线
     this.guBaoHazard = res.hazard;
+  }
+
+  // ── bouncy_vine 三态状态机（GDD 14）：IDLE→SPRING→RECOIL→(IDLE) ──
+  // 落地下降边沿触发：玩家底触藤顶且 vy>=0 且与上帧未接触 → contact → SPRING（当帧 justFired）。
+  // justFired 由集成层（game-scene）消费：套用 body.vy = -bounceVelocity + 发 ON_BOUNCE（零计分）。
+  // 几何与危害/可踩全部由 stepBouncyVine 纯函数推导，本方法仅把结果落到实例字段（零平台）。
+  private updateBouncyVine(dt: number, player?: Body): void {
+    this.vineJustBounced = false;
+    let contact = false;
+    if (player) {
+      const vineTop = this.y; // 盒顶（anchorY - height）
+      const bottom = player.y + player.h;
+      const overlapX = player.x < this.x + this.width && player.x + player.w > this.x;
+      const bottomTouch = bottom >= vineTop - 4 && bottom <= vineTop + this.height + 8;
+      const contactNow = player.vy >= 0 && overlapX && bottomTouch;
+      contact = contactNow && !this.prevVineContact; // 仅落地下降边沿（防站藤上自动反复弹）
+      this.prevVineContact = contactNow;
+    }
+    const res = stepBouncyVine(this.vineState, this.vineT, dt, this.vineCfg, contact);
+    this.vineState = res.state;
+    this.vineT = res.t;
+    this.vineP = res.p;
+    this.state = res.state;
+    this.isStompable = false; // 纯辅助，全态非可踩
+    if (res.justFired) this.vineJustBounced = true;
+  }
+
+  // ── cyclone 上升气流力场（GDD 15）：玩家位于气柱内 → 施加向上加速度（净向上）+ 钳速 ──
+  // 纯力场（非实体、非可踩、hazard=false）；直接改写传入的 player 速度（player 即玩家 body，
+  // 由 game-scene 在 stepBody 后传入，零平台、无全局状态）。
+  private updateCyclone(dt: number, player?: Body): void {
+    if (!player) return;
+    const res = stepCyclone(
+      this.cycloneCfg,
+      player,
+      dt,
+      this.cyclonePhase,
+      this.cycloneCx,
+      this.cycloneTop,
+    );
+    this.cyclonePhase = res.phase;
+    this.cycloneInZoneFlag = res.inZone;
+    applyCycloneForce(res, player, dt, this.cycloneCfg.riseMax);
   }
 
   // ── chong_feng 冲锋：idle 探测玩家 → charge 直线冲锋 → 撞墙 stun → 回 idle ──
@@ -357,6 +514,9 @@ export class EnemyAI implements StompableHazard {
   // ── HazardSource 实现 ──
   overlaps(body: Body): boolean {
     if (this.dead) return false; // 已消灭：不再作为 hazard
+    // bouncy_vine / cyclone：纯辅助力场，hazard=false；其交互（回弹 / 托起）由 stepSim 单独处理，
+    // 不进伤害管线（避免误伤 / 误踩）。overlaps 恒 false 保证零危害。
+    if (this.type === 'bouncy_vine' || this.type === 'cyclone') return false;
     if (this.type === 'gu_bao' && this.guBaoState === 'DORMANT') return false; // 地下无碰撞、无害
     if (this.state === 'stun') return false; // chong_feng 眩晕期 non-hazard（可被安全越过）
     return (
@@ -404,9 +564,63 @@ function buildGuBaoCfg(raw: EnemyConfigEntry, params?: Record<string, number>): 
 }
 
 /**
+ * 由 enemy-config 的 bouncy_vine 项 + 每实例 params 构建 BouncyVineCfg（数值全来自 config，禁止硬编码）。
+ * params.power（数值倍率：normal=1.0 / strong=1.2 / weak=0.8）作用于 bounceVelocity；
+ * params 亦可覆盖 bounceVelocity / width / height / springMs / recoilMs（GDD 14 §3.2/§4）。
+ */
+function buildBouncyVineCfg(raw: EnemyConfigEntry, params?: Record<string, number>): BouncyVineCfg {
+  const r = raw as unknown as Partial<BouncyVineCfg>;
+  const power = resolveBouncyVinePower(params);
+  const base: BouncyVineCfg = {
+    bounceVelocity: (r.bounceVelocity ?? DEFAULT_BOUNCY_VINE_CFG.bounceVelocity) * power,
+    springMs: r.springMs ?? DEFAULT_BOUNCY_VINE_CFG.springMs,
+    recoilMs: r.recoilMs ?? DEFAULT_BOUNCY_VINE_CFG.recoilMs,
+    width: r.width ?? DEFAULT_BOUNCY_VINE_CFG.width,
+    height: r.height ?? DEFAULT_BOUNCY_VINE_CFG.height,
+    hazard: r.hazard ?? false,
+  };
+  if (!params) return base;
+  return {
+    ...base,
+    bounceVelocity: (params.bounceVelocity ?? base.bounceVelocity),
+    width: params.width ?? base.width,
+    height: params.height ?? base.height,
+    springMs: params.springMs ?? base.springMs,
+    recoilMs: params.recoilMs ?? base.recoilMs,
+  };
+}
+
+/**
+ * 由 enemy-config 的 cyclone 项 + 每实例 params 构建 CycloneCfg（数值全来自 config，禁止硬编码）。
+ * params 可覆盖气柱尺寸与强度：w / h / liftAcc / riseMax / dragX（GDD 15 §3.2）。
+ */
+function buildCycloneCfg(raw: EnemyConfigEntry, params?: Record<string, number>): CycloneCfg {
+  const r = raw as unknown as Partial<CycloneCfg>;
+  const base: CycloneCfg = {
+    liftAcc: r.liftAcc ?? DEFAULT_CYCLONE_CFG.liftAcc,
+    riseMax: r.riseMax ?? DEFAULT_CYCLONE_CFG.riseMax,
+    dragX: r.dragX ?? DEFAULT_CYCLONE_CFG.dragX,
+    width: r.width ?? DEFAULT_CYCLONE_CFG.width,
+    height: r.height ?? DEFAULT_CYCLONE_CFG.height,
+    phaseSpeed: r.phaseSpeed ?? DEFAULT_CYCLONE_CFG.phaseSpeed,
+    hazard: r.hazard ?? false,
+  };
+  if (!params) return base;
+  return {
+    ...base,
+    liftAcc: params.liftAcc ?? base.liftAcc,
+    riseMax: params.riseMax ?? base.riseMax,
+    dragX: params.dragX ?? base.dragX,
+    width: params.w ?? base.width,
+    height: params.h ?? base.height,
+  };
+}
+
+/**
  * 由关卡实体列表生成真实敌人（替代 C3 占位刺栗）。
- * 识别 ci_li / du_fu / chong_feng / shi_pao / gu_bao 五类；coin / checkpoint / 未来实体留待各自管线。
- * gu_bao 识别并透传 params（phaseOffset 等）。零 Phaser / 零平台 API。
+ * 识别 ci_li / du_fu / chong_feng / shi_pao / gu_bao / bouncy_vine / cyclone 七类；
+ * coin / checkpoint / 未来实体留待各自管线。gu_bao 透传 params（phaseOffset 等）；
+ * bouncy_vine 透传 params.power、cyclone 透传 params.w/h/liftAcc/riseMax/dragX。零 Phaser / 零平台 API。
  */
 export function createEnemies(
   entities: ReadonlyArray<{ type: string; x: number; y: number; params?: Record<string, number> }>,
@@ -419,7 +633,9 @@ export function createEnemies(
       e.type === 'du_fu' ||
       e.type === 'chong_feng' ||
       e.type === 'shi_pao' ||
-      e.type === 'gu_bao'
+      e.type === 'gu_bao' ||
+      e.type === 'bouncy_vine' ||
+      e.type === 'cyclone'
     ) {
       out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }

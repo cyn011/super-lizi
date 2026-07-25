@@ -7,6 +7,12 @@
 export const ON_JUMP = 'ON_JUMP';
 export const ON_DOUBLE_JUMP = 'ON_DOUBLE_JUMP';
 export const ON_LAND = 'ON_LAND';
+/**
+ * 弹藤回弹（GDD 14 §6）：零计分信号事件，仅供物理层套用弹起速度（player.vy = -bounceVelocity）。
+ * 故意不发射 ON_STOMP —— 后者在 GDD 06 触发 +100 计分 + 敌死亡，反复弹跳刷分 = 主导策略风险。
+ * 不新增任何音频键（复用 ON_JUMP 占位路径由音频总线订阅决定，本常量仅作事件名）。
+ */
+export const ON_BOUNCE = 'ON_BOUNCE';
 export const ON_STOMP = 'ON_STOMP';
 export const ON_ENEMY_DEATH = 'ON_ENEMY_DEATH';
 export const ON_ENEMY_HIT_PLAYER = 'ON_ENEMY_HIT_PLAYER';

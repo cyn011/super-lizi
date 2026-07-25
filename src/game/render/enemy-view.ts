@@ -10,6 +10,7 @@
  */
 import type Phaser from 'phaser';
 import type { EnemyAI } from '../../core/enemy/enemy-ai';
+import { drawCyclone } from './cyclone-view';
 
 const CI_LI_COLOR = 0xe8483b; // 警示红（ci_li）
 const DU_FU_COLOR = 0x6e7bf2; // 蓝紫（du_fu）
@@ -18,10 +19,20 @@ const SHI_PAO_COLOR = 0xf4efe6; // 石白（shi_pao 固定炮台，GDD 04；越�
 const SHI_PAO_MUZZLE = 0x8a8276; // 炮口石灰暗（stone dark；越界色整改 A）
 const FLASH_COLOR = 0xe8483b; // 开火闪光警示红（双编码危险色；越界色整改 A）
 const OUTLINE = 0x2a1a12; // 近黑棕描边
+const VINE_GREEN = 0x7cc242; // 草绿（弹藤藤体，锁色板 #1）
+const VINE_HIGHLIGHT = 0xffd23f; // 暖黄（弹藤高光环，友好辅助提示，锁色板 #4）
 
 /** 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。 */
 export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   if (e.dead) return; // 已消灭不绘制
+  if (e.type === 'bouncy_vine') {
+    drawBouncyVine(g, e); // 弹藤：草绿线圈（纯辅助，友好色）
+    return;
+  }
+  if (e.type === 'cyclone') {
+    drawCyclone(g, e); // 气旋：半透明上升气流柱（纯辅助力场）
+    return;
+  }
   if (e.type === 'gu_bao') {
     drawGuBao(g, e); // 鼓苞：地生苞 + 尖刺（危险）/ 软顶（可踩）
     return;
@@ -167,4 +178,36 @@ function drawShiPao(
   g.fillStyle(OUTLINE, 1);
   g.fillCircle(b.x + b.w * 0.36, b.y + b.h * 0.4, 2);
   g.fillCircle(b.x + b.w * 0.64, b.y + b.h * 0.4, 2);
+}
+
+/**
+ * 弹藤（bouncy_vine）占位绘制（GDD 14 §7.3，锁色板内）：
+ *   - 藤体：草绿 #7CC242 + 描边 #2A1A12（与鼓苞暖橙 / 4 旧敌区分）。
+ *   - 压缩（SPRING）：线圈压扁；回弹（RECOIL）：松弛。
+ *   - 高光环（暖黄 #FFD23F）：友好辅助提示（与鼓苞 RETRACTING 软顶暖黄同源但语境不同）。
+ * 几何读 EnemyAI.getBounds()（盒贴地，顶 = anchorY - height），单一真相源，与碰撞盒一致。
+ */
+function drawBouncyVine(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.h <= 0.5) return;
+  const outline = OUTLINE;
+  const state = e.vinePhaseState;
+  const p = e.vineProgress; // 0..1 压缩/回弹进度
+  // 线圈主体（扁圆角条，贴地）
+  const h = Math.max(3, b.h * (1 - 0.4 * (state === 'SPRING' ? p : 0))); // SPRING 期压扁
+  g.fillStyle(VINE_GREEN, 1);
+  g.fillRoundedRect(b.x, b.y + (b.h - h), b.w, h, { tl: b.w / 2, tr: b.w / 2, bl: 4, br: 4 });
+  g.lineStyle(1, outline, 1);
+  g.strokeRoundedRect(b.x, b.y + (b.h - h), b.w, h, { tl: b.w / 2, tr: b.w / 2, bl: 4, br: 4 });
+  // 卷曲纹（中竖线，暗示弹性线圈）
+  g.lineStyle(1, outline, 0.7);
+  g.beginPath();
+  g.moveTo(b.x + b.w / 2, b.y + (b.h - h) + 2);
+  g.lineTo(b.x + b.w / 2, b.y + b.h - 2);
+  g.strokePath();
+  // 高光环（友好辅助）：IDLE 常亮、SPRING 弹起瞬间最亮、RECOIL 渐隐
+  const ringA = state === 'SPRING' ? 0.95 : state === 'RECOIL' ? 0.5 * (1 - p) : 0.7;
+  g.fillStyle(VINE_HIGHLIGHT, ringA);
+  const ringH = Math.max(2, b.h * 0.35);
+  g.fillRoundedRect(b.x + 3, b.y + (b.h - h), b.w - 6, ringH, { tl: b.w / 3, tr: b.w / 3, bl: 0, br: 0 });
 }

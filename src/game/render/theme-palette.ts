@@ -12,6 +12,10 @@
  *  - 'cave'（2-1）：冷暗洞穴，hex 全部取自 art/cave-biome-spec.md §6.2 权威映射——
  *    岩壁 #4A78C0 / 描边 #2A1A12 / 火光 #F2933C / 晶体核心 #FFD23F / 辉光 #6E7BF2 /
  *    危险 #E8483B；rockBody(#254060) 与 bg(#1C2E49) 由 #4A78C0 运行时 darken 派生（0 新增色）。
+ *  - 'vine_forest'（2-2）：明亮藤林，全锁色板内（附录 A）——草绿 #7CC242 / 阴影绿 #5FA82F /
+ *    暖橙 #F2933C / 暖黄 #FFD23F / 描边 #2A1A12 / 蓝紫 #6E7BF2 / 天空 #5BC8F5 / 警示红 #E8483B；0 新增色。
+ *  - 'storm_sky'（2-3）：阴沉风暴天空，全锁色板内（附录 A）——蓝紫 #6E7BF2 / 环境冷蓝 #4A78C0 /
+ *    天空 #5BC8F5 / 暖橙 #F2933C / 暖黄 #FFD23F / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
  *
  * 未知 / 缺省 theme 回退 'grass'（fail-safe，保证旧关 / 回归稳定，art §6.1）。
  */
@@ -68,10 +72,44 @@ const CAVE: ThemePalette = {
   danger: 0xe8483b, // 警示红（锁色板 #7）
 };
 
+/**
+ * 藤林调色板（2-2 content-spec 附录 A，锁色板内，0 新增 hex）：
+ *   背景 #5BC8F5（森林天光）/ 岩壁 #7CC242（草绿基色）/ 岩壁暗面 #5FA82F（阴影绿）/
+ *   描边 #2A1A12 / 暖橙花 #F2933C / 微光 #FFD23F / 辉光 #6E7BF2（冷中藏暖）/ 危险 #E8483B。
+ */
+const VINE_FOREST: ThemePalette = {
+  bg: 0x5bc8f5, // 天空 #5BC8F5（森林天光，锁色板 #11）
+  rockFace: 0x7cc242, // 草绿 #7CC242（藤林基色，锁色板 #1）
+  rockBody: 0x5fa82f, // 阴影绿 #5FA82F（草体阴影，锁色板 #2）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 暖橙 #F2933C（藤花点缀，锁色板 #3）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（孢子/微光，锁色板 #4）
+  crystalGlow: 0x6e7bf2, // 蓝紫 #6E7BF2（冷中藏暖，锁色板 #9）
+  danger: 0xe8483b, // 警示红 #E8483B（仅 ci_li 等，与弹藤友好色解耦）
+};
+
+/**
+ * 风暴天空调色板（2-3 content-spec 附录 A，锁色板内，0 新增 hex）：
+ *   背景 #4A78C0（阴沉天光）/ 岩壁 #6E7BF2（蓝紫风暴岩台）/ 岩壁暗面 #4A78C0（同 bg 冷调）/
+ *   描边 #2A1A12 / 闪电 #F2933C / 电光核心 #FFD23F / 辉光 #5BC8F5（冷蓝天光反差）/ 危险 #E8483B。
+ */
+const STORM_SKY: ThemePalette = {
+  bg: 0x4a78c0, // 环境冷蓝 #4A78C0（阴沉天光，锁色板 #10）
+  rockFace: 0x6e7bf2, // 蓝紫 #6E7BF2（风暴岩台基色，锁色板 #9）
+  rockBody: 0x4a78c0, // 环境冷蓝 #4A78C0（同 bg 冷调，锁色板 #10）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 暖橙 #F2933C（闪电点缀，锁色板 #3）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（电光核心，锁色板 #4）
+  crystalGlow: 0x5bc8f5, // 天空 #5BC8F5（冷蓝天光反差，锁色板 #11）
+  danger: 0xe8483b, // 警示红 #E8483B（仅 chong_feng/shi_pao 等，与气旋友好色解耦）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
   cave: CAVE,
+  vine_forest: VINE_FOREST,
+  storm_sky: STORM_SKY,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

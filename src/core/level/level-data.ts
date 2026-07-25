@@ -20,15 +20,25 @@ export type EntityDef =
   | CheckpointEntityDef;
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
-export type EnemyEntityType = 'ci_li' | 'du_fu' | 'chong_feng' | 'shi_pao' | 'gu_bao';
+export type EnemyEntityType =
+  | 'ci_li'
+  | 'du_fu'
+  | 'chong_feng'
+  | 'shi_pao'
+  | 'gu_bao'
+  | 'bouncy_vine'
+  | 'cyclone';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;
   y: number;
   /**
-   * 每实例覆盖（仅 gu_bao 消费，向后兼容旧 4 敌）。
+   * 每实例覆盖（数值型；向后兼容旧 4 敌）。
    * gu_bao：phaseOffset(ms 初始相位错相) / dormantMs / activeMs / height / width。
-   * 其余敌不读此字段。
+   * bouncy_vine：power(弹起速度倍率，normal=1.0 / strong=1.2 / weak=0.8) /
+   *              bounceVelocity / width / height / springMs / recoilMs。
+   * cyclone：w / h(气柱尺寸) / liftAcc / riseMax / dragX(实例级强度与尺寸覆盖)。
+   * 其余敌(ci_li/du_fu/chong_feng/shi_pao)不读此字段。
    */
   params?: Record<string, number>;
 }

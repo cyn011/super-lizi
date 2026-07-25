@@ -31,7 +31,7 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { BeatClock } from '../../core/beat/beat-clock';
 import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
@@ -558,6 +558,7 @@ export class GameScene extends Phaser.Scene {
 
     // S04-1/S04-2：推进敌人 AI（表驱动；core 零平台，碰撞世界来自关卡 CollisionWorld）。
     // chong_feng detect / shi_pao aim 需玩家位置（this.body）；石炮 fire 产出弹丸 → projectiles。
+    // bouncy_vine 触发回弹 → 套用上抛速度 + 发 ON_BOUNCE（零计分，GDD 14 §6 红线防刷分）。
     for (const e of this.enemies) {
       if (!e.dead) {
         const spawned = e.update(dt, this.world, this.body);
@@ -565,6 +566,11 @@ export class GameScene extends Phaser.Scene {
           // D3：石炮（shi_pao）开火产出弹丸时补 emit ON_PROJECTILE_SPAWN → sfx:projectile_fire。
           for (const p of spawned) this.projectiles.push(p);
           this.bus.emit(ON_PROJECTILE_SPAWN, { count: spawned.length });
+        }
+        // 弹藤：本步触发 → 套用上抛（已含 power 倍率，负值）+ 发 ON_BOUNCE（零计分、不进 GDD06）
+        if (e.type === 'bouncy_vine' && e.justBounced) {
+          this.body.vy = e.bounceVelocity;
+          this.bus.emit(ON_BOUNCE, {});
         }
       }
     }
