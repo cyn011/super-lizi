@@ -1,6 +1,6 @@
 {
   "name": "super-mali",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "description": "super-mali — 原创马里奥式横版跳跃微信小游戏（Sprint 1 底座）",
