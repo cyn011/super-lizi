@@ -67,6 +67,7 @@
 | 13 | 鼓苞敌种 Gu Bao Enemy（依赖 04/06/07） | 13-gu-bao-enemy.md | Must（新敌种深） |
 | 14 | 弹藤敌种 Bouncy Vine（依赖 04/02/03/06/09） | 14-bouncy-vine-enemy.md | Must（新元素深） |
 | 15 | 气旋力场 Cyclone（依赖 02/03/05/09） | 15-cyclone-enemy.md | Must（新元素深） |
+| 16 | 嘟浮剪影敌种 Du Fu Silhouette（依赖 04/06/07 · 可选 biome 复用 vine_forest/cave · audio 复用占位） | 16-dufu-silhouette-enemy.md | Must（新敌种变体深） |
 
 ### 2.2 依赖图（文字版，箭头 = 依赖）
 ```
@@ -95,11 +96,13 @@
         │
 15 Cyclone ──> 02 Physics(力场叠加) · 03 Character(操控保留) · 05 Level(实体/zone) · 09 音频复用占位(无新增键)
         │
+16 Du Fu Silhouette ──> 04/06/07 (敌种基础/经济 ON_STOMP/受伤管线) · 复用 du_fu 浮动数学(core, 零平台) · 可选 biome 复用(vine_forest 推荐/cave 备选, 0 新增色) · 09 音频复用占位(无新增键)
+        │
 09 Audio Placeholder ── (被 03/04/06/07/08 调用 playSfx，无强依赖)
 ```
 
 ### 2.3 推荐构建顺序
-`01 → 02 → 03 → 04 → 05 → 07 → 06 → 08 → 10 → 09 → 11`
+`01 → 02 → 03 → 04 → 05 → 07 → 06 → 08 → 10 → 09 → 11 → 13 → 14 → 15 → 16`（13/14/15/16 为敌种/元素扩展，依赖早期 04/06/07，可在 11 后追加）
 （受伤 07 排在角色 03 后、经济 06 前，因经济依赖受伤的生命事件；节拍 10 与关卡 05 耦合，紧跟其后；音频 09 / 元循环 11 最末且轻量。）
 
 ---
@@ -123,6 +126,7 @@
 | 13 鼓苞敌种 | `design/gdd/13-gu-bao-enemy.md` |
 | 14 弹藤敌种 | `design/gdd/14-bouncy-vine-enemy.md` |
 | 15 气旋力场 | `design/gdd/15-cyclone-enemy.md` |
+| 16 嘟浮剪影敌种 | `design/gdd/16-dufu-silhouette-enemy.md` |
 | 一致性评审 | `design/gdd/99-consistency-review.md` |
 
 ---
