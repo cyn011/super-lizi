@@ -65,6 +65,8 @@
 | 11 | 元循环/进度 Meta Progression | 11-meta-progression.md | Could（轻 stub） |
 | 12 | 种子蜕变成长 Seed Metamorphosis（依赖 05/06/07/08/09/11） | 12-seed-metamorphosis.md | Must（MVP 机制深） |
 | 13 | 鼓苞敌种 Gu Bao Enemy（依赖 04/06/07） | 13-gu-bao-enemy.md | Must（新敌种深） |
+| 14 | 弹藤敌种 Bouncy Vine（依赖 04/02/03/06/09） | 14-bouncy-vine-enemy.md | Must（新元素深） |
+| 15 | 气旋力场 Cyclone（依赖 02/03/05/09） | 15-cyclone-enemy.md | Must（新元素深） |
 
 ### 2.2 依赖图（文字版，箭头 = 依赖）
 ```
@@ -88,6 +90,10 @@
 12 Seed Metamorphosis ──> 05/06/07/08/09/11 (种子实体/经济正交/受伤尺寸/UI/音频/存档)
         │
 13 Gu Bao Enemy ──> 04/06/07 (敌种基础/form/sizeScale，正交扩展 GDD04)
+        │
+14 Bouncy Vine ──> 04/02/03 (敌种基础/物理 v.y 覆写/角色操控) · 复用 06 ON_BOUNCE(零经济) · 09 音频复用占位(SFX_JUMP/LAND)
+        │
+15 Cyclone ──> 02 Physics(力场叠加) · 03 Character(操控保留) · 05 Level(实体/zone) · 09 音频复用占位(无新增键)
         │
 09 Audio Placeholder ── (被 03/04/06/07/08 调用 playSfx，无强依赖)
 ```
@@ -115,6 +121,8 @@
 | 11 元循环/进度 | `design/gdd/11-meta-progression.md` |
 | 12 种子蜕变成长 | `design/gdd/12-seed-metamorphosis.md` |
 | 13 鼓苞敌种 | `design/gdd/13-gu-bao-enemy.md` |
+| 14 弹藤敌种 | `design/gdd/14-bouncy-vine-enemy.md` |
+| 15 气旋力场 | `design/gdd/15-cyclone-enemy.md` |
 | 一致性评审 | `design/gdd/99-consistency-review.md` |
 
 ---
