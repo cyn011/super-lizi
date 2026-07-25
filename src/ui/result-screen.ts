@@ -138,6 +138,7 @@ export class ResultScreen {
   private readonly scene: Phaser.Scene;
   private readonly bus: { emit: (name: string, payload?: unknown) => void };
   private container?: Phaser.GameObjects.Container;
+  private overlay?: Phaser.GameObjects.Rectangle; // 全屏遮罩：独立对象，不跟随面板容器动画
   private rankGfx?: Phaser.GameObjects.Graphics; // 评级菱形星（单个 Graphics 绘制全部三个）
   private built = false;
 
@@ -193,6 +194,9 @@ export class ResultScreen {
       for (const o of this.nextButtonObjs) o.setVisible(true);
     }
 
+    // 显示全屏遮罩（独立对象，先于面板动画可见）
+    this.overlay?.setVisible(true);
+
     // 最小凯旋动画：panel 弹入（scale + alpha）
     c.setVisible(true);
     c.setScale(0.92);
@@ -210,12 +214,15 @@ export class ResultScreen {
   /** 隐藏结算面板（重试用）。 */
   hide(): void {
     this.container?.setVisible(false);
+    this.overlay?.setVisible(false);
   }
 
   /** 销毁（场景 shutdown）。 */
   destroy(): void {
     this.container?.destroy();
     this.container = undefined;
+    this.overlay?.destroy();
+    this.overlay = undefined;
     this.rankGfx = undefined;
     this.built = false;
     this.buttonRect = undefined;
@@ -341,8 +348,8 @@ export class ResultScreen {
       .setOrigin(0.5);
 
     c.add([g, title, rankG, info1, info2, nextBtn, nextBtnText, btn, btnText]);
-    // 遮罩不入容器（覆盖全屏，独立 depth），但随容器显隐同步
-    c.add(overlay);
+    // 遮罩不入容器：覆盖全屏、独立 depth、不受面板容器位置/缩放影响
+    this.overlay = overlay;
     overlay.setDepth(2499);
 
     // 记录按钮逻辑坐标命中盒（容器中心 + 局部偏移，忽略弹入 scale 近似）

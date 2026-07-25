@@ -45,6 +45,7 @@ export class PauseMenu {
   private readonly scene: Phaser.Scene;
   private readonly bus: { emit: (name: string, payload?: unknown) => void };
   private container?: Phaser.GameObjects.Container;
+  private overlay?: Phaser.GameObjects.Rectangle; // 全屏遮罩：独立对象，不跟随面板容器动画
   private built = false;
   private readonly buttons: ButtonHit[] = [];
 
@@ -65,17 +66,21 @@ export class PauseMenu {
   /** 显示暂停菜单（幂等：已构建则直接显隐）。 */
   show(): void {
     if (!this.built) this.build();
+    this.overlay?.setVisible(true);
     this.container?.setVisible(true);
   }
 
   /** 隐藏（继续/重玩后）。 */
   hide(): void {
     this.container?.setVisible(false);
+    this.overlay?.setVisible(false);
   }
 
   destroy(): void {
     this.container?.destroy();
     this.container = undefined;
+    this.overlay?.destroy();
+    this.overlay = undefined;
     this.built = false;
     this.buttons.length = 0;
   }
@@ -130,7 +135,9 @@ export class PauseMenu {
     const continueBtn = this.makeButton(-gap / 2, btnY, COLOR_BTN_CONTINUE, '继续', this.resumeAction);
     const restartBtn = this.makeButton(gap / 2, btnY, COLOR_BTN_RESTART, '重玩', this.restartAction);
 
-    c.add([g, title, overlay, continueBtn.rect, continueBtn.text, restartBtn.rect, restartBtn.text]);
+    // 遮罩独立，不加入容器，避免跟随容器居中/缩放导致覆盖不全
+    this.overlay = overlay;
+    c.add([g, title, continueBtn.rect, continueBtn.text, restartBtn.rect, restartBtn.text]);
 
     // 记录命中盒（逻辑坐标；scale 弹入后约为 1，近似足够）
     this.buttons.push({
