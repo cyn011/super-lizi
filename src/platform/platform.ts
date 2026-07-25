@@ -23,6 +23,19 @@ export interface LifecyclePort {
   onShow(cb: () => void): void;
 }
 
+/**
+ * 微信分享（转发）+ 关卡深链端口。
+ * 全部 wx.* 调用收敛到 platform/wechat/*；Web / 测试环境实现为 no-op 不抛错。
+ */
+export interface SharePort {
+  /** 开启微信右上角「...」转发菜单并注册转发内容。title 为分享卡片标题。非微信/测试环境需 no-op 不抛错。 */
+  enableShare(title: string): void;
+  /** 更新分享附带 query 上下文（如 { level: '2-3' }）。 */
+  updateContext(ctx: Record<string, string>): void;
+  /** 读取冷启动 getLaunchOptionsSync / onShow 携带的 query（如 { level: '2-3' }），用于深链进关。 */
+  getLaunchQuery(): Record<string, string>;
+}
+
 /** 平台能力聚合。由 detect → createPlatform 在 Boot 注入。 */
 export interface Platform {
   env: Env;
@@ -54,4 +67,9 @@ export interface Platform {
    * 使「继续 / 重玩 / 再玩一次」在微信端可点（Web 端由 Phaser interactive 按钮生效）。
    */
   setNativeMenuTap?: (cb: (x: number, y: number) => void) => void;
+  /**
+   * 可选：微信分享（转发）+ 关卡深链端口。
+   * 仅微信端实现；Web 端不传（undefined）→ game/boot 用 ?. 安全跳过（no-op）。
+   */
+  share?: SharePort;
 }

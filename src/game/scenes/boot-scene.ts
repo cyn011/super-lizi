@@ -4,6 +4,8 @@
  */
 
 import Phaser from 'phaser';
+import { LEVEL_ORDER } from '../../core/config';
+import type { Platform } from '../../platform/platform';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -11,6 +13,17 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.scene.start('Title');
+    // 深链：冷启动带 level 参数 → 跳过标题屏直接进对应关；否则走默认 Title。
+    const platform = (this.registry.get('platform') ??
+      (globalThis as { __superMaliPlatform?: Platform }).__superMaliPlatform) as
+      | Platform
+      | undefined;
+    const lq = platform?.share?.getLaunchQuery();
+    const lv = lq?.level;
+    if (lv && LEVEL_ORDER.includes(lv)) {
+      this.scene.start('Game', { startLevel: lv });
+    } else {
+      this.scene.start('Title');
+    }
   }
 }

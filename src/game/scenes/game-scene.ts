@@ -106,6 +106,8 @@ export class GameScene extends Phaser.Scene {
   private runtime!: RuntimeLevel;
   /** S06 进度链：当前关卡 id（默认首关）；restart/下一关经此切换。 */
   private currentLevelId: string = LEVEL_ORDER[0];
+  /** 分享深链：Boot 经 scene.start('Game', { startLevel }) 传入的待进关卡。 */
+  private pendingStartLevel?: string;
   /** 关卡地形 Graphics（loadLevel 重建时先销毁旧实例，避免泄漏）。 */
   private levelGfx?: Phaser.GameObjects.Graphics;
   /** S05-1 节拍时钟：从关卡 beat 建；enabled 时每固定步门控。 */
@@ -225,6 +227,11 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('Game');
+  }
+
+  /** 分享深链：Boot 经 scene.start('Game', { startLevel }) 带 data 进入时调用。 */
+  init(data: { startLevel?: string }): void {
+    this.pendingStartLevel = data?.startLevel;
   }
 
   create(): void {
@@ -388,6 +395,17 @@ export class GameScene extends Phaser.Scene {
     }
     this.setupPointerInput(isGesture);
 
+    // 分享深链：优先用 Boot 传入的 startLevel，回退到冷启动 query.level。
+    // platform 已在此前 resolve 完毕（registry → globalThis → 重建三层兜底）。
+    let startLevel = this.pendingStartLevel;
+    if (!startLevel) {
+      const lq = this.platform.share?.getLaunchQuery();
+      startLevel = lq?.level;
+    }
+    if (startLevel && LEVEL_ORDER.includes(startLevel)) {
+      this.currentLevelId = startLevel;
+    }
+
     // S06：按 currentLevelId 从注册表加载关卡（首关 1-1）；restart / 下一关复用同一路径。
     this.loadLevel(this.currentLevelId);
 
@@ -403,6 +421,8 @@ export class GameScene extends Phaser.Scene {
    */
   private loadLevel(id: string): void {
     this.currentLevelId = id;
+    // 分享深链：把当前关写入转发 query，使后续分享卡片带 level=当前关。
+    this.platform.share?.updateContext({ level: id });
 
     // C5：用 LevelLoader 由注册表关卡数据构建 CollisionWorld + 出生点 + 凯旋之门 AABB
     this.runtime = LevelLoader.load(levels[id]);

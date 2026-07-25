@@ -118,5 +118,7 @@ export function createWebPlatform(): Platform {
       onShow: () => {},
     },
     setPlayerScreenPos: (x: number, y: number) => posSink.setPlayerScreenPos?.(x, y),
+    // 微信分享端口：Web 端无此能力，no-op（undefined → game/boot 用 ?. 安全跳过）。
+    share: undefined,
   };
 }

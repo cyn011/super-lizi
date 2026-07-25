@@ -60,6 +60,9 @@ export function startGame(parent?: string | HTMLElement): Phaser.Game {
   // 首次交互解锁音频（自动播放限制）
   platform.audio.unlock();
 
+  // 微信分享（转发）+ 关卡深链：开启右上角「...」转发菜单（Web 端 share 为 undefined → no-op）。
+  platform.share?.enableShare('栗宝大冒险 · 一起来跳！');
+
   // 真实手势内再次 resume（绕过自动播放限制；boot 时调用因无手势无效）。
   // 守卫 window：main.ts 同时被 index.html 与微信 game.js 引用，微信端无 window；
   // 微信端跳过监听（WechatAudio.unlock() 仅置 flag，boot 调用已够，无需手势 resume）。

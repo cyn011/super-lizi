@@ -16,6 +16,7 @@ import { WechatAudio } from './wechat-audio';
 import { WechatLifecycle } from './lifecycle';
 import { NativeButtonRouter } from './native-button-router';
 import { setMenuActive as setGateMenuActive } from './input-gate';
+import { WechatShare } from './share';
 import { inputConfig } from '../../core/config';
 
 /** 从 input-config.json 读取手势参数（wechat.gesture 块未在 core 类型中声明，此处本地断言）。 */
@@ -66,6 +67,7 @@ export function createWechatPlatform(): Platform {
   const w = (globalThis as unknown as { wx: { onHide(cb: () => void): void; onShow(cb: () => void): void } }).wx;
   // 把主角屏幕坐标转发给当前输入（gesture 有 setPlayerScreenPos；virtual 的 WechatTouchProvider 无 → no-op）。
   const posSink = input as Partial<{ setPlayerScreenPos?(x: number, y: number): void }>;
+  const share = new WechatShare();
   return {
     env: 'wechat',
     reduceMotion: false, // P6 整改 D3：默认关闭；后续可由微信系统设置注入
@@ -77,6 +79,8 @@ export function createWechatPlatform(): Platform {
     // S05-5：菜单激活门（屏蔽 gameplay 转发）+ 原生菜单路由注入（均仅微信端生效，Web 端不传）。
     setMenuActive: (active: boolean) => setGateMenuActive(active),
     setNativeMenuTap: (cb: (x: number, y: number) => void) => router.setRouteTap(cb),
+    // 微信分享（转发）+ 关卡深链；Web 端不传（undefined）。
+    share,
   };
 }
 
