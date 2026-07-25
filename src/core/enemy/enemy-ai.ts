@@ -46,6 +46,16 @@ import {
   stepCyclone,
   type CycloneCfg,
 } from './cyclone';
+import { applyFloat } from './float-math';
+import {
+  DEFAULT_DU_FU_SILHOUETTE_CFG,
+  createDufuSilhouetteState,
+  stepDufuSilhouette,
+  type DufuSilhouetteCfg,
+  type DufuSilhouetteGhost,
+  type DufuSilhouetteState,
+  type DufuSilhouetteTwist,
+} from './dufu-silhouette';
 
 /** 单类敌人参数（全部来自 enemy-config.json，禁止硬编码）。 */
 export interface EnemyConfigEntry {
@@ -165,6 +175,16 @@ export class EnemyAI implements StompableHazard {
   /** 本帧玩家是否在气柱内（render 读：气柱高亮）。 */
   private cycloneInZoneFlag = false;
 
+  // ── du_fu_silhouette 剪影状态机字段（GDD 16，零平台纯逻辑）──
+  /** 剪影本实例状态机数值（enemy-config.du_fu_silhouette + per-instance params 覆盖）。 */
+  private silCfg: DufuSilhouetteCfg = DEFAULT_DU_FU_SILHOUETTE_CFG;
+  /** 剪影运行时状态（stepDufuSilhouette 纯函数推进，零平台）。 */
+  private silState: DufuSilhouetteState = createDufuSilhouetteState(
+    DEFAULT_DU_FU_SILHOUETTE_CFG,
+    0,
+    0,
+  );
+
   constructor(
     type: EnemyTypeName,
     x: number,
@@ -228,7 +248,19 @@ export class EnemyAI implements StompableHazard {
       this.x = x; // 气柱左
       this.y = this.cycloneTop; // 气柱顶
       this.state = 'idle';
-      this.isStompable = false; // 非实体、非可踩
+      this.isStompable = false; // 非实体、非踩
+    }
+
+    // du_fu_silhouette：暗色镜像浮动敌（GDD 16）。复用 du_fu 浮动数学 + 反相/诱饵/幽灵 twist。
+    if (type === 'du_fu_silhouette') {
+      this.silCfg = buildSilhouetteCfg(this.cfg, params);
+      this.silState = createDufuSilhouetteState(this.silCfg, x, y, params);
+      this.width = this.silCfg.width;
+      this.height = this.silCfg.height;
+      this.x = this.silState.x;
+      this.y = this.silState.y; // 初始 = baseY（mirror/phaseghost 下一步浮动）
+      this.state = this.silState.mode; // 'FLOAT'(mirror) / 'IDLE'(decoy)
+      this.isStompable = this.silState.stompable;
     }
   }
 
@@ -313,6 +345,21 @@ export class EnemyAI implements StompableHazard {
     return this.cycloneInZoneFlag;
   }
 
+  /** 剪影幽灵子态（render 读：WRAITH 期半透）。 */
+  get silGhostState(): DufuSilhouetteGhost {
+    return this.silState.ghost;
+  }
+
+  /** 剪影行为扭曲类型（render 读：phaseghost 才需半透处理）。 */
+  get silTwist(): DufuSilhouetteTwist {
+    return this.silState.twist;
+  }
+
+  /** 剪影配对光嘟浮实例 id（render / 调试读）。 */
+  get silPairId(): number {
+    return this.silState.pairId;
+  }
+
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
    * @param player 玩家碰撞盒（chong_feng detect / shi_pao aim 需要；ci_li/du_fu 可省）。
@@ -341,6 +388,10 @@ export class EnemyAI implements StompableHazard {
       this.updateCyclone(dt, player);
       return NO_PROJECTILES;
     }
+    if (this.type === 'du_fu_silhouette') {
+      this.updateSilhouette(dt, player);
+      return NO_PROJECTILES;
+    }
     if (this.type === 'chong_feng') return this.updateChongFeng(dt, world, player);
     if (this.type === 'shi_pao') return this.updateShiPao(dt, player);
     return NO_PROJECTILES;
@@ -359,15 +410,20 @@ export class EnemyAI implements StompableHazard {
     this.vx = this.dir * speed;
   }
 
-  // ── du_fu 正弦浮动：y = baseY + amp·sin(phase)，phase 以「峰值速度」推进一步 ──
-  // 令 omega = floatSpeed / amp，则峰值竖直速度 = amp·omega = floatSpeed（数值全来自 config）。
+  // ── du_fu 正弦浮动：复用共享纯函数 applyFloat（与 du_fu_silhouette 同一套浮动数学，phaseOffset=0）──
+  // omega = floatSpeed / amp（rad/s），峰值竖直速度 = floatSpeed（数值全来自 config）。
   private updateFloat(dt: number): void {
     const floatSpeed = this.cfg.float ?? 0;
     const amp = this.cfg.amp ?? 0;
-    const omega = amp > 0 ? floatSpeed / amp : 0; // rad/s，使峰值竖直速度 = floatSpeed
-    this.phase += omega * dt;
-    this.y = this.baseY + amp * Math.sin(this.phase);
-    this.vy = floatSpeed * Math.cos(this.phase);
+    const res = applyFloat(
+      { baseY: this.baseY, amp, float: floatSpeed, phase: this.phase },
+      dt,
+      this.x,
+      0,
+    );
+    this.phase = res.phase;
+    this.y = res.y;
+    this.vy = res.vy;
     this.vx = 0;
   }
 
@@ -429,6 +485,27 @@ export class EnemyAI implements StompableHazard {
     this.cyclonePhase = res.phase;
     this.cycloneInZoneFlag = res.inZone;
     applyCycloneForce(res, player, dt, this.cycloneCfg.riseMax);
+  }
+
+  // ── du_fu_silhouette 剪影（GDD 16）：镜像/诱饵/幽灵 twist，全部由 stepDufuSilhouette 纯函数推导 ──
+  // decoy 激活：集成层每帧把玩家邻近布尔写入 silState.playerProximity（零平台，仅布尔）。
+  // 几何与危害/可踩全部由 stepDufuSilhouette 纯函数推导，本方法仅把结果落到实例字段（零平台）。
+  private updateSilhouette(dt: number, player?: Body): void {
+    if (this.silState.twist === 'decoy' && player) {
+      const pcx = player.x + player.w / 2;
+      const pcy = player.y + player.h / 2;
+      const ecx = this.x + this.width / 2;
+      const ecy = this.y + this.height / 2;
+      this.silState.playerProximity = Math.hypot(pcx - ecx, pcy - ecy) <= this.silState.decoyTriggerDist;
+    }
+    const res = stepDufuSilhouette(this.silState, dt);
+    this.silState = res.state;
+    this.x = this.silState.x;
+    this.y = this.silState.y;
+    this.vy = this.silState.vy;
+    this.vx = 0;
+    this.state = this.silState.mode; // FLOAT / IDLE
+    this.isStompable = this.silState.stompable; // SOLID/mirror=true，WRAITH/decoy-IDLE=false
   }
 
   // ── chong_feng 冲锋：idle 探测玩家 → charge 直线冲锋 → 撞墙 stun → 回 idle ──
@@ -518,7 +595,18 @@ export class EnemyAI implements StompableHazard {
     // 不进伤害管线（避免误伤 / 误踩）。overlaps 恒 false 保证零危害。
     if (this.type === 'bouncy_vine' || this.type === 'cyclone') return false;
     if (this.type === 'gu_bao' && this.guBaoState === 'DORMANT') return false; // 地下无碰撞、无害
+    if (this.type === 'du_fu_silhouette') {
+      // 危害期（mirror FLOAT / decoy FLOAT / phaseghost SOLID）才参与碰撞；
+      // decoy IDLE 与 phaseghost WRAITH 期可穿越（overlaps=false，纯视觉暗影）。
+      if (!this.silState.hazard) return false;
+      return this.aabbHit(body);
+    }
     if (this.state === 'stun') return false; // chong_feng 眩晕期 non-hazard（可被安全越过）
+    return this.aabbHit(body);
+  }
+
+  /** AABB 相交检测（与玩家 body 重叠）。 */
+  private aabbHit(body: Body): boolean {
     return (
       body.x < this.x + this.width &&
       body.x + body.w > this.x &&
@@ -617,6 +705,36 @@ function buildCycloneCfg(raw: EnemyConfigEntry, params?: Record<string, number>)
 }
 
 /**
+ * 由 enemy-config 的 du_fu_silhouette 项 + 每实例 params 构建 DufuSilhouetteCfg（数值全来自 config，禁止硬编码）。
+ * params 可覆盖：mirrorOffset（反相位差）/ pairId（配对光嘟浮实例 id）/ decoyTriggerDist /
+ * ghostPeriodMs / ghostSolidRatio（GDD 16 §3.2）。float/amp/width/height/stompable 沿用原嘟浮。
+ */
+function buildSilhouetteCfg(raw: EnemyConfigEntry, params?: Record<string, number>): DufuSilhouetteCfg {
+  const r = raw as unknown as Partial<DufuSilhouetteCfg>;
+  const base: DufuSilhouetteCfg = {
+    float: r.float ?? DEFAULT_DU_FU_SILHOUETTE_CFG.float,
+    amp: r.amp ?? DEFAULT_DU_FU_SILHOUETTE_CFG.amp,
+    width: r.width ?? DEFAULT_DU_FU_SILHOUETTE_CFG.width,
+    height: r.height ?? DEFAULT_DU_FU_SILHOUETTE_CFG.height,
+    stompable: r.stompable ?? DEFAULT_DU_FU_SILHOUETTE_CFG.stompable,
+    twist: r.twist ?? DEFAULT_DU_FU_SILHOUETTE_CFG.twist,
+    mirrorOffset: r.mirrorOffset ?? DEFAULT_DU_FU_SILHOUETTE_CFG.mirrorOffset,
+    decoyTriggerDist: r.decoyTriggerDist ?? DEFAULT_DU_FU_SILHOUETTE_CFG.decoyTriggerDist,
+    ghostPeriodMs: r.ghostPeriodMs ?? DEFAULT_DU_FU_SILHOUETTE_CFG.ghostPeriodMs,
+    ghostSolidRatio: r.ghostSolidRatio ?? DEFAULT_DU_FU_SILHOUETTE_CFG.ghostSolidRatio,
+    baseYAnchor: r.baseYAnchor ?? DEFAULT_DU_FU_SILHOUETTE_CFG.baseYAnchor,
+  };
+  if (!params) return base;
+  return {
+    ...base,
+    mirrorOffset: params.mirrorOffset ?? base.mirrorOffset,
+    decoyTriggerDist: params.decoyTriggerDist ?? base.decoyTriggerDist,
+    ghostPeriodMs: params.ghostPeriodMs ?? base.ghostPeriodMs,
+    ghostSolidRatio: params.ghostSolidRatio ?? base.ghostSolidRatio,
+  };
+}
+
+/**
  * 由关卡实体列表生成真实敌人（替代 C3 占位刺栗）。
  * 识别 ci_li / du_fu / chong_feng / shi_pao / gu_bao / bouncy_vine / cyclone 七类；
  * coin / checkpoint / 未来实体留待各自管线。gu_bao 透传 params（phaseOffset 等）；
@@ -635,7 +753,8 @@ export function createEnemies(
       e.type === 'shi_pao' ||
       e.type === 'gu_bao' ||
       e.type === 'bouncy_vine' ||
-      e.type === 'cyclone'
+      e.type === 'cyclone' ||
+      e.type === 'du_fu_silhouette'
     ) {
       out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }

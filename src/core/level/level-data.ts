@@ -27,7 +27,8 @@ export type EnemyEntityType =
   | 'shi_pao'
   | 'gu_bao'
   | 'bouncy_vine'
-  | 'cyclone';
+  | 'cyclone'
+  | 'du_fu_silhouette';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;

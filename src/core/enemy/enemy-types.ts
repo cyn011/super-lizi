@@ -9,7 +9,8 @@ export type EnemyTypeName =
   | 'shi_pao'
   | 'gu_bao'
   | 'bouncy_vine'
-  | 'cyclone';
+  | 'cyclone'
+  | 'du_fu_silhouette';
 
 /** 敌人运行时状态（可踩判定见 E3.S1/S2）。 */
 export interface EnemyState {

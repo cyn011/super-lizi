@@ -37,6 +37,10 @@ export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
     drawGuBao(g, e); // 鼓苞：地生苞 + 尖刺（危险）/ 软顶（可踩）
     return;
   }
+  if (e.type === 'du_fu_silhouette') {
+    drawSilhouette(g, e); // 嘟浮剪影：暗色 + 反向翅 + 暖黄发光边（GDD 16 §7.3）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -210,4 +214,47 @@ function drawBouncyVine(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   g.fillStyle(VINE_HIGHLIGHT, ringA);
   const ringH = Math.max(2, b.h * 0.35);
   g.fillRoundedRect(b.x + 3, b.y + (b.h - h), b.w - 6, ringH, { tl: b.w / 3, tr: b.w / 3, bl: 0, br: 0 });
+}
+
+/**
+ * 嘟浮剪影（du_fu_silhouette）占位绘制（GDD 16 §7.3，锁色板内 0 新增色）：
+ *   - 主体：暗涂 #2A1A12（描边色，与原嘟浮蓝紫 #6E7BF2 明度反差极大）。
+ *   - 反向翅：翅尖朝下（原嘟浮翅朝上），轮廓即分（art-bible §4.3 剪影法则）。
+ *   - 暖黄发光边 #FFD23F（1px）：把暗剪影从亮背景「勾」出来，且与原嘟浮（无暖黄边）双编码区分。
+ *   - 相位幽灵（phaseghost）WRAITH 期 alpha ≤ 0.4（半透可穿越）。
+ * 四重区分线索（暗色 + 反向翅 + 暖黄边 + 镜像动效）全部生效（GDD 16 §7.4）。
+ * 几何读 EnemyAI.getBounds()，单一真相源，与碰撞盒一致。
+ */
+const SIL_FILL = 0x2a1a12; // 暗涂描边 #2A1A12（锁色板 #5）
+const SIL_GLOW = 0xffd23f; // 暖黄发光边 #FFD23F（锁色板 #4）
+function drawSilhouette(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  const isWraith = e.silTwist === 'phaseghost' && e.silGhostState === 'WRAITH';
+  const alpha = isWraith ? 0.4 : 1; // WRAITH 期半透
+  const topR = b.h / 2;
+  const radii = { tl: topR, tr: topR, bl: 4, br: 4 }; // 顶圆角（软顶轮廓，暗示可踩）
+
+  // 暗色主体
+  g.fillStyle(SIL_FILL, alpha);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, radii);
+
+  // 反向翅（翅尖朝下，原嘟浮朝上；轮廓即分）
+  const cx = b.x + b.w / 2;
+  const wingBaseY = b.y + b.h * 0.5;
+  const wingTipY = b.y + b.h + b.h * 0.5; // 朝下伸出
+  g.fillStyle(SIL_FILL, alpha);
+  g.fillTriangle(b.x, wingBaseY, b.x, b.y + b.h, cx - b.w * 0.12, wingTipY);
+  g.fillTriangle(b.x + b.w, wingBaseY, b.x + b.w, b.y + b.h, cx + b.w * 0.12, wingTipY);
+
+  // 暖黄发光边（1px，强化「暗中显形」+ 双编码区分）
+  g.lineStyle(1, SIL_GLOW, alpha);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, radii);
+  g.strokeTriangle(b.x, wingBaseY, b.x, b.y + b.h, cx - b.w * 0.12, wingTipY);
+  g.strokeTriangle(b.x + b.w, wingBaseY, b.x + b.w, b.y + b.h, cx + b.w * 0.12, wingTipY);
+
+  // 双编码眼睛（暖黄，朝下轮廓区分；明度/形状/动效多重线索，色盲安全）
+  g.fillStyle(SIL_GLOW, alpha);
+  const eyeY = b.y + b.h * 0.58;
+  g.fillCircle(b.x + b.w * 0.36, eyeY, 2);
+  g.fillCircle(b.x + b.w * 0.64, eyeY, 2);
 }

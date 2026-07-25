@@ -16,6 +16,14 @@ export const ON_BOUNCE = 'ON_BOUNCE';
 export const ON_STOMP = 'ON_STOMP';
 export const ON_ENEMY_DEATH = 'ON_ENEMY_DEATH';
 export const ON_ENEMY_HIT_PLAYER = 'ON_ENEMY_HIT_PLAYER';
+/**
+ * 嘟浮剪影唤醒（decoy：IDLE→FLOAT，benign 占位）。复用既有通用占位音，**不新增音频键**（GDD 16 §6）。
+ */
+export const ON_SILHOUETTE_ACTIVATED = 'ON_SILHOUETTE_ACTIVATED';
+/**
+ * 嘟浮剪影相位幽灵切换（phaseghost：SOLID↔WRAITH，benign 占位）。复用既有通用占位音，**不新增音频键**（GDD 16 §6）。
+ */
+export const ON_SILHOUETTE_GHOST_SHIFT = 'ON_SILHOUETTE_GHOST_SHIFT';
 export const ON_PROJECTILE_SPAWN = 'ON_PROJECTILE_SPAWN';
 export const ON_HURT = 'ON_HURT';
 export const ON_DEATH = 'ON_DEATH';

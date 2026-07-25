@@ -2,6 +2,7 @@
   "ci_li":      { "speed": 40, "stompable": true, "width": 24, "height": 24 },
   "chong_feng": { "detect": 160, "chargeSpeed": 220, "stun": 1000, "attackRange": 48, "stompable": false, "width": 28, "height": 24 },
   "du_fu":      { "float": 60, "amp": 24, "stompable": true, "width": 24, "height": 24 },
+  "du_fu_silhouette": { "float": 60, "amp": 24, "stompable": true, "width": 24, "height": 24, "twist": "mirror", "mirrorOffset": 3.141592653589793, "decoyTriggerDist": 96, "ghostPeriodMs": 2000, "ghostSolidRatio": 0.4, "baseYAnchor": "air" },
   "shi_pao":    { "fireInterval": 2000, "projSpeed": 180, "stompable": false, "width": 28, "height": 28 },
   "gu_bao":     { "dormantMs": 1100, "emergeMs": 160, "activeMs": 700, "retractMs": 160, "height": 48, "width": 32, "stompable": false, "stompableWindow": "retract", "baseYAnchor": "ground" },
   "bouncy_vine": { "bounceVelocity": -680, "springMs": 80, "recoilMs": 180, "width": 40, "height": 16, "stompable": false, "hazard": false, "baseYAnchor": "ground" },
