@@ -1,7 +1,7 @@
 # Phase 7 发布清单（Release Checklist）· super-mali
 
 > 角色：release-ops-lead（路远行）· 任务：P7-REL-01（P0）
-> 基线 HEAD：`c199ad6`（feat(polish): Phase 6 打磨）｜上一发布候选：`6db53e5`（GDD12 种子蜕变）
+> 基线 HEAD：`55e5347`（docs(release): Phase 7 发布准备）｜发布候选：`c199ad6`（Phase 6 打磨）｜`6db53e5`（GDD12 种子蜕变）
 > 评审强度：lean｜双端：Web + 微信小游戏
 > 关联：`docs/phase-gates/phase5-phase6-gate.md`（G1–G9 条件通过）、`production/sprint-06/manual-regression-g3-g9.md`（G3/G9 真机清单）、`docs/wechat-blackscreen-fix.md`（四层兜底）、`docs/phase-gates/phase6-perf-report.md`（G4 包体 / 性能）
 
@@ -11,7 +11,7 @@
 
 ## 0. 发布版本号建议与判据
 
-当前 `package.json` 版本为 `0.1.0`（开发占位，**非正式版本号**）。建议首个对外发布版本按下表二选一：
+当前 `package.json` 版本已 bump 为 `0.9.0`（v0.9.0 预发布/灰度条件放行，已裁决）。建议首个对外发布版本按下表二选一：
 
 | 建议版本 | 适用判据 | 触发条件 |
 |---|---|---|
@@ -190,7 +190,7 @@ git tag -a v0.9.0 -m "super-mali v0.9.0 预发布" <发布commit>
 ### 6.3 商店 / 平台（release-ops + 用户侧）
 - [ ] 微信 `appid` 真实（§4.3）
 - [ ] 提审材料齐备（§5：软著/隐私/适龄/自审/IP）
-- [ ] 版本号 bump（0.1.0 → 0.9.0 或 1.0.0，主理人审批）
+- [x] 版本号 bump 已完成：0.1.0 → **0.9.0**（v0.9.0 灰度条件放行，G3/G9 不豁免）✅
 
 ### 6.4 法务 / IP
 - [ ] IP 红线自审通过（无任天堂符号）
@@ -222,8 +222,8 @@ git tag -a v0.9.0 -m "super-mali v0.9.0 预发布" <发布commit>
 
 ## 8. 待主理人审批项（Handoff）
 
-1. **版本号裁决**：v0.9.0（灰度，G3/G9 未跑）vs v1.0.0（G3/G9 闭合后正式）。
-2. **G3/G9 阻断性裁决**：是否豁免微信提审阻断（建议不豁免，先体验版真机验证）。
+1. **版本号裁决**：✅ 已裁决 **v0.9.0（灰度条件放行，G3/G9 不豁免）**；G3/G9 三端回归 Sign-off 后转 v1.0.0 GA。
+2. **G3/G9 阻断性裁决**：✅ 已裁决 **不豁免**——微信提审仍阻断至 G3/G9 三端 Sign-off；v0.9.0 仅发 Web 灰度 + 微信体验版内测。
 3. **用户侧提供项**：真实 appid、软著、隐私指引、适龄提示、类目/版号资质。
 4. **是否允许 bump 版本号 + git tag**（当前约束：release-ops 未 commit，须主理人授权工程侧执行）。
 
