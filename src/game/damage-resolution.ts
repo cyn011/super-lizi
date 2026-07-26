@@ -92,10 +92,13 @@ export function resolveHazardContact(params: {
       const cameFromAbove = prevBottom <= b.y + STOMP_EPS; // 上帧在敌顶之上 / 贴合
       const nowOverlap = playerBottom > b.y; // 本帧已陷入敌身顶
       if (body.vy > 0 && cameFromAbove && nowOverlap) {
-        s.markStomped(); // 敌消灭（dead → overlaps 返回 false）
         body.vy = characterConfig.stompBounce; // 向上反弹（stompBounce<0，来自 config）
         bus.emit(ON_STOMP, { type: s.enemyType ?? 'unknown', x: b.x + b.w / 2, y: b.y });
-        bus.emit(ON_ENEMY_DEATH, { type: s.enemyType ?? 'unknown', x: b.x + b.w / 2, y: b.y + b.h / 2 });
+        // persistentStomp（水母 jellyfish）：仅弹起、不消灭 → 可作持久踏脚石（区别于 du_fu 踩杀）
+        if (!(hazard as { persistentStomp?: boolean }).persistentStomp) {
+          s.markStomped(); // 敌消灭（dead → overlaps 返回 false）
+          bus.emit(ON_ENEMY_DEATH, { type: s.enemyType ?? 'unknown', x: b.x + b.w / 2, y: b.y + b.h / 2 });
+        }
         res.stomped = true;
         return res;
       }
@@ -104,6 +107,9 @@ export function resolveHazardContact(params: {
 
   // 无敌帧内（含 hitstun 窗口）→ 忽略受伤
   if (damage.invincibleTimer > 0) return res;
+
+  // nonDamaging（水母 jellyfish 触手/侧身）：重叠但不造成伤害，仅作踏脚石 → 跳过受伤分支
+  if ((hazard as { nonDamaging?: boolean }).nonDamaging) return res;
 
   const beforeState = damage.state;
   damage.hit();

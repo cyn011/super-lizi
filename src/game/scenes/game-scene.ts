@@ -52,7 +52,10 @@ import { resolveActiveMenu } from '../../core/state/menu-tap';
 // S05-4 薄音频总线：订阅事件总线 → platform.audio.play(name)；仅依赖 AudioPort 类型，不反向依赖平台实现。
 import { AudioBus } from '../audio/audio-bus';
 import { drawEnemy } from '../render/enemy-view';
-import { biomeForLevel } from '../render/theme-palette';
+import { biomeForLevel, type ThemePalette } from '../render/theme-palette';
+// GDD 1-3：潮汐水位线 + 暗流力场（core 零平台纯函数，本层仅消费）。
+import { tideSurfaceY, tideSegmentAt } from '../../core/tide/tide';
+import { riptideAt } from '../../core/tide/riptide';
 import { drawProjectile } from '../render/projectile-view';
 import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
@@ -118,6 +121,20 @@ export class GameScene extends Phaser.Scene {
   private pendingStartLevel?: string;
   /** 关卡地形 Graphics（loadLevel 重建时先销毁旧实例，避免泄漏）。 */
   private levelGfx?: Phaser.GameObjects.Graphics;
+  /** 海主题背景-天空/水面层（scrollFactor 0，depth -10，全屏竖直渐变，仅 sea 创建一次）。 */
+  private seaSkyGfx?: Phaser.GameObjects.Graphics;
+  /** 海主题背景-远景层（scrollFactor 0.3，depth -9，远礁剪影 + 海底剪影带，仅 sea 创建一次）。 */
+  private seaFarGfx?: Phaser.GameObjects.Graphics;
+  /** 海主题背景-中景层（scrollFactor 0.6，depth -8，浪线 + 珊瑚 + 气泡，仅 sea 创建一次）。 */
+  private seaMidGfx?: Phaser.GameObjects.Graphics;
+  /** 海主题背景-前景层（scrollFactor 1.2，depth 4，每帧 clear+重绘的动态浪花/气泡，仅 sea 创建一次）。 */
+  private seaNearGfx?: Phaser.GameObjects.Graphics;
+  /** 海主题潮汐水体叠层（世界坐标，随相机滚动；每帧按 waterSurfaceY 重绘，仅 sea 关卡创建）。 */
+  private tideGfx?: Phaser.GameObjects.Graphics;
+  /** 潮汐波浪相位累加器（≤2Hz，Reduce Motion 下冻结，仅海关使用）。 */
+  private tidePhase = 0;
+  /** 前景近景气泡相位累加器（≤3Hz，Reduce Motion 下冻结，仅海关使用）。 */
+  private seaNearPhase = 0;
   /** S05-1 节拍时钟：从关卡 beat 建；enabled 时每固定步门控。 */
   private beatClock?: BeatClock;
   /** S05-1 节拍驱动系统：按 tracks 在跨拍瞬间切平台 solid/ghost；无平台/无 track 时为 undefined。 */
@@ -619,6 +636,9 @@ export class GameScene extends Phaser.Scene {
 
     this.lastGrounded = res.grounded;
 
+    // A5 暗流（riptide）：区域内给栗宝叠加水平速度偏置（轻量、可被输入覆盖；core 零平台力场）。
+    this.applyRiptide(STEP_DT);
+
     // S04-1/S04-2：推进敌人 AI（表驱动；core 零平台，碰撞世界来自关卡 CollisionWorld）。
     // chong_feng detect / shi_pao aim 需玩家位置（this.body）；石炮 fire 产出弹丸 → projectiles。
     // bouncy_vine 触发回弹 → 套用上抛速度 + 发 ON_BOUNCE（零计分，GDD 14 §6 红线防刷分）。
@@ -704,6 +724,9 @@ export class GameScene extends Phaser.Scene {
 
     // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
     this.resolveHazards();
+
+    // A3 潮汐：脚底低于水位线 → 软伤害（扣 1 级 + 击退 + 无敌帧，不致死）
+    this.resolveTideHazard();
 
     // C5 终点检测：body AABB 与凯旋之门 AABB 重叠 → ON_LEVEL_COMPLETE（无敌人也可达）
     this.resolveGoal();
@@ -832,6 +855,85 @@ export class GameScene extends Phaser.Scene {
     if (overlap) {
       this.levelComplete = true;
       this.bus.emit(ON_LEVEL_COMPLETE, { levelId: this.runtime.data.id });
+    }
+  }
+
+  /**
+   * A5 暗流（riptide）力场：栗宝中心位于 riptide 区域内时，施加朝终点方向的水平速度偏置。
+   * 偏置叠加在 controller 已算出的水平速度之上，并以（vxBias + moveSpeed）为上限钳制，
+   * 既给出可感的「轻推」、又保证玩家输入可逆（按住反向仍可向左），不构成硬锁。
+   * 经 character-controller 的 body.vx 接口施加，不破坏 core 零平台铁律。
+   * @param dt 固定步长（秒）。
+   */
+  private applyRiptide(dt: number): void {
+    const zones = this.runtime.data.riptide;
+    if (!zones || zones.length === 0) return;
+    const cx = this.body.x + this.body.w / 2;
+    const cy = this.body.y + this.body.h / 2;
+    const z = riptideAt(zones, cx, cy);
+    if (!z) return;
+    const cap = z.vxBias + characterConfig.moveSpeed; // 偏置上限（含玩家自身最大水平速）
+    this.body.vx = Math.min(this.body.vx + z.vxBias, cap);
+  }
+
+  /**
+   * A3 潮汐水位线 hazard：栗宝脚底低于当前段 waterSurfaceY ⇒ 触水。
+   * 软伤害（守公平、不致死）：FULL→SMALL（扣 1 级）+ 向上击退 + 无敌帧；
+   * 已是 SMALL/DEAD 仅给击退 + 无敌（不致死，区别于真 pit）。
+   */
+  private resolveTideHazard(): void {
+    const segs = this.runtime.data.tideSegments;
+    if (!segs || segs.length === 0) return;
+    const cx = this.body.x + this.body.w / 2;
+    const seg = tideSegmentAt(segs, cx);
+    if (!seg) return;
+    const wy = tideSurfaceY(seg, this.elapsedMs);
+    const bottom = this.body.y + this.body.h;
+    if (bottom <= wy) return; // 脚底在水面之上，未触水
+    if (this.damage.invincibleTimer > 0) return; // 无敌帧内忽略（防连扣）
+    if (this.damage.state === 'FULL') {
+      this.damage.hit(); // FULL→SMALL（仅扣 1 级，不致死）
+      this.bus.emit(ON_HURT, { lives: this.damage.lives, state: this.damage.state });
+    }
+    // 不论 FULL/SMALL：触水均给向上击退 + 无敌帧（软伤害，不致死）
+    this.body.vy = -damageConfig.knockbackUp;
+    this.damage.invincibleTimer = Math.max(this.damage.invincibleTimer, damageConfig.invincibleMs);
+  }
+
+  /**
+   * A3 潮汐水体叠层渲染（每帧，仅 sea 关卡）：按各段 waterSurfaceY 绘制半透水体 + 水面线 + 浪花带。
+   * Reduce Motion 下波浪相位冻结（仅保留水位变化，必要玩法保留）。
+   * draw call：每段 ~2（水体 fillRect + 水面线 stroke）≈ 4，远低于预算。
+   */
+  private drawTideOverlay(): void {
+    const g = this.tideGfx;
+    if (!g) return;
+    const segs = this.runtime.data.tideSegments;
+    if (!segs || segs.length === 0) {
+      g.clear();
+      return;
+    }
+    g.clear();
+    const ts = this.world.tileSize;
+    const H = this.runtime.data.height * ts;
+    const WATER = 0x4a78c0; // 环境冷蓝 #4A78C0（淹没区水体，锁色板 #10）
+    const LINE = 0x5bc8f5; // 天空 #5BC8F5（水面线，锁色板 #11）
+    if (!this.reduceMotion) this.tidePhase += STEP_DT * 1.2; // ≤2Hz 相位推进
+    for (const seg of segs) {
+      const wy = tideSurfaceY(seg, this.elapsedMs);
+      // 淹没区半透水体（waterSurfaceY 以下）
+      g.fillStyle(WATER, 0.5);
+      g.fillRect(seg.xStart, wy, seg.xEnd - seg.xStart, H - wy);
+      // 水面线 + 浪花带（相位偏移，≤2Hz；Reduce Motion 冻结）
+      g.lineStyle(2, LINE, 0.6);
+      g.beginPath();
+      g.moveTo(seg.xStart, wy);
+      const step = 12;
+      for (let x = seg.xStart; x <= seg.xEnd; x += step) {
+        const off = Math.sin((x - seg.xStart) * 0.05 + this.tidePhase) * 2;
+        g.lineTo(x, wy + off);
+      }
+      g.strokePath();
     }
   }
 
@@ -1054,21 +1156,44 @@ export class GameScene extends Phaser.Scene {
     const ts = this.world.tileSize;
     // biome 氛围接线点：theme → palette（草原保持默认暖色；洞穴冷暗蓝），对齐 art/cave-biome-spec.md §6。
     const pal = biomeForLevel(this.runtime.data);
-    // 背景层：仅非空 palette（洞穴暗蓝 #1C2E49）绘制；草原 bg=null 跳过，零回归。
-    if (pal.bg !== null) {
+    const isSea = this.runtime.data.metadata.theme === 'sea';
+
+    // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
+    if (!isSea) {
+      this.seaSkyGfx?.destroy();
+      this.seaSkyGfx = undefined;
+      this.seaFarGfx?.destroy();
+      this.seaFarGfx = undefined;
+      this.seaMidGfx?.destroy();
+      this.seaMidGfx = undefined;
+      this.seaNearGfx?.destroy();
+      this.seaNearGfx = undefined;
+      this.tideGfx?.destroy();
+      this.tideGfx = undefined;
+    }
+
+    // 背景层：
+    //  - 非海关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
+    //  - 海关：跳过平铺（交给 drawSeaBackground 的天空渐变 + 视差层，depth -10）。
+    if (!isSea && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
+    // 海主题背景（天空渐变 + 远/中景视差），仅 sea 创建一次
+    if (isSea) this.drawSeaBackground(pal);
+
     for (let ty = 0; ty < this.runtime.data.height; ty++) {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {
         if (this.world.isSolidTile(tx, ty)) {
           g.fillStyle(pal.rockFace, 1);
           g.fillRect(tx * ts, ty * ts, ts, ts);
-          g.lineStyle(1, pal.outline, 1);
+          g.lineStyle(1, pal.outline, 1); // 强制 1px 描边 #2A1A12（可访问性，vs 天空≈8.8:1）
           g.strokeRect(tx * ts, ty * ts, ts, ts);
         } else if (this.world.isOneWayTile(tx, ty)) {
           g.fillStyle(pal.rockBody, 1);
           g.fillRect(tx * ts, ty * ts, ts, ts / 2);
+          g.lineStyle(1, pal.outline, 1); // 单向平台同样强制 1px 描边
+          g.strokeRect(tx * ts, ty * ts, ts, ts / 2);
         }
       }
     }
@@ -1077,6 +1202,178 @@ export class GameScene extends Phaser.Scene {
     g.fillRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
     g.lineStyle(2, pal.outline, 1);
     g.strokeRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
+
+    // 潮汐水体叠层（世界坐标，depth 3，位于地形之上、实体之下）；每帧按 waterSurfaceY 重绘
+    if (isSea && !this.tideGfx) this.tideGfx = this.add.graphics().setDepth(3);
+  }
+
+  /**
+   * 海主题背景层（GDD 1-3 / sea-visual-spec §1，仅 sea）：完整五层视差结构——
+   *   sky (scrollFactor 0,   depth -10) 天空/水面竖直渐变（SKY→ROCK_FACE），全屏一次
+   *   far (scrollFactor 0.3, depth -9)  远礁剪影(REEF_FAR 无描边) + 海底剪影带(ROCK_BODY 起伏带)
+   *   mid (scrollFactor 0.6, depth -8)  浪线(SKY α0.5) + 珊瑚(CORAL 枝 + FIRE 尖) + 静态气泡
+   * 远景/中景绘制范围覆盖整关世界宽（runtime.data.width*tileSize）以支撑视差；
+   * near 前景层（seaNearGfx，scrollFactor 1.2）由 drawSeaNear 每帧重绘，此处仅创建。
+   * 全程序化 Graphics（零 PNG，ADR-004），颜色仅用 11 色锁色板或 tint 派生（REEF_FAR=0x2c486f 为
+   * darken(#4A78C0,0.4) tint 派生，0 新增 hex）。
+   * draw call：sky 1 + far(礁×6 + 海床 1)≈7 + mid(浪线 1 + 珊瑚×2 + 气泡×4)≈7，均 ≤15。
+   */
+  private drawSeaBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts; // 世界宽：远景/中景据此铺满以支撑视差
+    const levelH = this.runtime.data.height * ts; // 世界高（= 内分辨率高，纵向不滚动 → scrollY 恒 0）
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const SKY = pal.bg ?? 0x5bc8f5; // 天空 #5BC8F5（#11）
+    const ROCK_FACE = pal.rockFace; // 环境冷蓝 #4A78C0（#10）
+    const REEF_FAR = 0x2c486f; // darken(#4A78C0, 0.4) 远景水幕剪影（tint 派生）
+    const ROCK_BODY = pal.rockBody; // darken(#4A78C0, 0.5) 海床暗面（tint 派生）
+    const CORAL = pal.crystalGlow; // 草绿 #7CC242（#1）
+    const FIRE = pal.firelight; // 暖橙 #F2933C（#3）
+    const BUBBLE_CORE = pal.crystalCore; // 暖黄 #FFD23F（#4）
+
+    // ── 1) 天空/水面层（scrollFactor 0, depth -10）：竖直渐变 SKY→ROCK_FACE，全屏一次 fillRect ──
+    if (!this.seaSkyGfx) this.seaSkyGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const sky = this.seaSkyGfx;
+    sky.clear();
+    sky.fillGradientStyle(SKY, SKY, ROCK_FACE, ROCK_FACE, 1);
+    sky.fillRect(0, 0, camW, camH);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：远礁剪影 + 海底剪影带，铺满 levelW ──
+    if (!this.seaFarGfx) this.seaFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+    const far = this.seaFarGfx;
+    far.clear();
+    // 远礁剪影（3 座，无描边、低饱和）
+    far.fillStyle(REEF_FAR, 1);
+    const reefClusters = [
+      { x: levelW * 0.12, y: levelH * 0.6, r: 46 },
+      { x: levelW * 0.5, y: levelH * 0.56, r: 54 },
+      { x: levelW * 0.84, y: levelH * 0.6, r: 48 },
+    ];
+    for (const c of reefClusters) {
+      far.fillCircle(c.x, c.y, c.r);
+      far.fillCircle(c.x + c.r * 0.62, c.y + c.r * 0.2, c.r * 0.72);
+    }
+    // 海底剪影带（ROCK_BODY 起伏带，贴底部/海床轮廓，纯氛围非碰撞）
+    const seabed: { x: number; y: number }[] = [];
+    const amp = 12;
+    const wl = 150;
+    for (let x = 0; x <= levelW; x += 32) {
+      seabed.push({ x, y: levelH - 16 + Math.sin(x * ((Math.PI * 2) / wl)) * amp });
+    }
+    seabed.push({ x: levelW, y: levelH });
+    seabed.push({ x: 0, y: levelH });
+    far.fillStyle(ROCK_BODY, 1);
+    far.fillPoints(seabed, true);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：浪线 + 珊瑚 + 气泡，铺满 levelW ──
+    if (!this.seaMidGfx) this.seaMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.seaMidGfx;
+    mid.clear();
+    // 浪线带（正弦，SKY α0.5，置于海平线附近）
+    mid.lineStyle(2, SKY, 0.5);
+    mid.beginPath();
+    const waveY = levelH * 0.66;
+    mid.moveTo(0, waveY);
+    for (let x = 0; x <= levelW; x += 16) {
+      mid.lineTo(x, waveY + Math.sin(x * 0.05) * 5);
+    }
+    mid.strokePath();
+    // 珊瑚（CORAL 枝 + FIRE 尖端圆点），2 处
+    const coralSpots = [
+      { x: levelW * 0.28, y: levelH * 0.86, h: 34 },
+      { x: levelW * 0.68, y: levelH * 0.9, h: 28 },
+    ];
+    for (const s of coralSpots) {
+      const w = 10;
+      mid.fillStyle(CORAL, 1);
+      mid.fillPoints(
+        [
+          { x: s.x, y: s.y },
+          { x: s.x - w, y: s.y - s.h },
+          { x: s.x - w * 0.3, y: s.y - s.h * 0.5 },
+          { x: s.x, y: s.y - s.h },
+          { x: s.x + w * 0.3, y: s.y - s.h * 0.5 },
+          { x: s.x + w, y: s.y - s.h },
+          { x: s.x, y: s.y },
+        ],
+        true,
+      );
+      mid.fillStyle(FIRE, 1);
+      mid.fillCircle(s.x - w, s.y - s.h, 2.5);
+      mid.fillCircle(s.x, s.y - s.h, 2.5);
+      mid.fillCircle(s.x + w, s.y - s.h, 2.5);
+    }
+    // 气泡（外圈 SKY α0.4 + 核心 BUBBLE_CORE），静态装饰 2 颗
+    const bubbleSpots = [
+      { x: levelW * 0.4, y: levelH * 0.4, r: 4 },
+      { x: levelW * 0.8, y: levelH * 0.35, r: 3.5 },
+    ];
+    for (const b of bubbleSpots) {
+      mid.fillStyle(SKY, 0.4);
+      mid.fillCircle(b.x, b.y, b.r);
+      mid.fillStyle(BUBBLE_CORE, 0.8);
+      mid.fillCircle(b.x, b.y, b.r * 0.4);
+    }
+
+    // ── 4) 前景 near（scrollFactor 1.2, depth 4）：每帧由 drawSeaNear 重绘，此处仅创建 ──
+    if (!this.seaNearGfx) this.seaNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /**
+   * 海主题前景 near 层（sea-visual-spec §1.5，仅 sea）：scrollFactor 1.2, depth 4，
+   * 每帧 clear+重绘；2–3 颗缓升气泡（相位驱动，BUBBLE_CORE 核心 + SKY 外圈，alpha 低，遮挡≤10%）。
+   * 另含一条极淡的近景浪花起伏线（前景微光 accent，刻意不锚定世界水位线——见回传偏差说明）。
+   * Reduce Motion 下相位冻结（仅保留静态首帧，防光敏 <3Hz）。
+   * 注：near 层 depth=4（低于实体层 7–12）以克制遮挡，与任务表一致；scrollFactor 1.2 提供前景快于世界的视差。
+   */
+  private drawSeaNear(): void {
+    const g = this.seaNearGfx;
+    if (!g) return;
+    const cam = this.cameras.main;
+    const camW = cam.width;
+    const camH = cam.height;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    g.clear();
+    const SKY = 0x5bc8f5; // 天空 #5BC8F5（#11）
+    const BUBBLE_CORE = 0xffd23f; // 暖黄 #FFD23F（#4）
+
+    // 每帧相位推进（≤3Hz；Reduce Motion 冻结首帧）
+    if (!this.reduceMotion) this.seaNearPhase += STEP_DT * 0.6;
+
+    // 2–3 颗缓升气泡：屏幕锚定（随相机 1.2 视差），y 由相位循环自底向上
+    const bubbles = [
+      { sx: camW * 0.2, offset: 0.0, rate: 0.16, rise: camH * 0.62, r: 3 },
+      { sx: camW * 0.55, offset: 0.33, rate: 0.13, rise: camH * 0.7, r: 2.4 },
+      { sx: camW * 0.82, offset: 0.66, rate: 0.18, rise: camH * 0.55, r: 2.8 },
+    ];
+    for (const b of bubbles) {
+      const prog = (this.seaNearPhase * b.rate + b.offset) % 1;
+      const screenY = camH - prog * b.rise; // 自底向上缓升，循环
+      const sway = Math.sin(this.seaNearPhase * 1.2 + b.offset * 6) * 4; // 轻微水平摇曳
+      const sx = b.sx + sway;
+      // 屏幕锚定：local = screen + scroll*f，抵消 1.2 视差 → 气泡贴视口并随相机相对移动（前景掠过感）
+      const lx = sx + scrollX * 1.2;
+      const ly = screenY + scrollY * 1.2;
+      g.fillStyle(SKY, 0.35);
+      g.fillCircle(lx, ly, b.r);
+      g.fillStyle(BUBBLE_CORE, 0.8);
+      g.fillCircle(lx, ly, b.r * 0.4);
+    }
+
+    // 可选：极淡近景浪花起伏线（前景微光 accent，不锚定世界水位线，纯氛围）
+    g.lineStyle(1, SKY, 0.22);
+    g.beginPath();
+    const baseY = camH * 0.82;
+    g.moveTo(scrollX * 1.2, baseY + scrollY * 1.2);
+    for (let i = 0; i <= camW; i += 16) {
+      const yy = baseY + Math.sin(i * 0.06 + this.seaNearPhase * 2) * 3;
+      g.lineTo(i + scrollX * 1.2, yy + scrollY * 1.2);
+    }
+    g.strokePath();
   }
 
   private drawSprite(): void {
@@ -1180,5 +1477,10 @@ export class GameScene extends Phaser.Scene {
     this.drawSprite();
     this.drawTopper();
     this.drawAura();
+    // A3 潮汐水体叠层（仅 sea 关卡每帧重绘）
+    if (this.runtime.data.metadata.theme === 'sea') {
+      this.drawTideOverlay();
+      this.drawSeaNear(); // 前景近景动态浪花/气泡（scrollFactor 1.2）
+    }
   }
 }

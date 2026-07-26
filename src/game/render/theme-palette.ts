@@ -104,6 +104,24 @@ const STORM_SKY: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（仅 chong_feng/shi_pao 等，与气旋友好色解耦）
 };
 
+/**
+ * 海调色板（1-3 content-spec / sea-biome-spec §1.2/§8.2 权威 8 槽，锁色板内，0 新增 hex）：
+ *   天空 #5BC8F5（水面天光 bg）/ 礁岩 #4A78C0（环境冷蓝 rockFace）/ 海床暗面 #254060（rockBody，tint 派生）/
+ *   描边 #2A1A12 / 暖橙 #F2933C（阳光透射 firelight）/ 暖黄 #FFD23F（气泡核心 crystalCore）/
+ *   草绿 #7CC242（海藻 crystalGlow）/ 警示红 #E8483B（危险双编码 danger）。
+ *   蓝紫 #6E7BF2 作为 jellyfish 触手 / riptide 辉光常量在渲染分支直接引用（不进 palette 槽，已在锁色板 #9）。
+ */
+const SEA: ThemePalette = {
+  bg: 0x5bc8f5, // 天空 #5BC8F5（水面天光，锁色板 #11）
+  rockFace: 0x4a78c0, // 环境冷蓝 #4A78C0（礁岩主面，锁色板 #10）
+  rockBody: 0x254060, // darken(#4A78C0, 0.5) 海床暗面（tint 派生，0 新增）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 暖橙 #F2933C（阳光透射，锁色板 #3）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（气泡/水母核心，锁色板 #4）
+  crystalGlow: 0x7cc242, // 草绿 #7CC242（海藻/辉光，锁色板 #1）
+  danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -113,6 +131,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   // 山川 mountain = 室外山道版 cave 调色板（art-theme 复用结论：零新资产、零新增 hex）。
   // 1-2 切 mountain 即借用冷蓝岩壁 cave palette，引擎 resolveBiome 自动换肤。
   mountain: CAVE,
+  // 海 sea = 1-3 海主题（批次 2，sea-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
+  sea: SEA,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

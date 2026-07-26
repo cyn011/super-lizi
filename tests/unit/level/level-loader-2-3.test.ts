@@ -87,7 +87,7 @@ describe('2-3 风暴天空关加载（注册表 + Loader）', () => {
 
 describe('nextLevelId 进度链（2-4 为末关 → null）', () => {
   it('LEVEL_ORDER 末关为 2-4；nextLevelId(LEVEL_ORDER, "2-3") === "2-4"，("2-4") === null', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '2-1', '2-2', '2-3', '2-4']);
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '2-1', '2-2', '2-3', '2-4']);
     expect(nextLevelId(LEVEL_ORDER, '2-3')).toBe('2-4');
     expect(nextLevelId(LEVEL_ORDER, '2-4')).toBeNull();
   });

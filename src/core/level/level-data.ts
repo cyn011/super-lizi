@@ -20,6 +20,19 @@ export type EntityDef =
   | CheckpointEntityDef
   | ChestnutEntityDef;
 
+/**
+ * 关卡主题联合类型（theme-system §8 / sea-biome-spec §1/§8 契约）。
+ * 未知 theme 经 resolveBiome 回退 'grass'（fail-safe，不抛错、零回归）。
+ * 'mountain' = cave palette 别名（1-2 复用）；'sea' = 1-3 海主题（本批次新增）。
+ */
+export type LevelTheme =
+  | 'grass'
+  | 'cave'
+  | 'mountain'
+  | 'vine_forest'
+  | 'storm_sky'
+  | 'sea';
+
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
   | 'ci_li'
@@ -29,7 +42,8 @@ export type EnemyEntityType =
   | 'gu_bao'
   | 'bouncy_vine'
   | 'cyclone'
-  | 'du_fu_silhouette';
+  | 'du_fu_silhouette'
+  | 'jellyfish';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;
@@ -106,6 +120,43 @@ export interface GoalDef {
   h?: number;
 }
 
+/**
+ * 潮汐段（GDD 1-3 §4.3）：水位线周期升降的地形机制。
+ * 水位线 worldY 随段内 x 与时间正弦起伏；worldY 以下视作水域 hazard（软伤害）。
+ * 全部单位 px / ms：`waterTopY(t) = mid + amp·sin(2π·(t+phase)/periodMs)`，
+ * `mid=(lowY+highY)/2`、`amp=(lowY-highY)/2`（lowY>highY，故 amp>0）。
+ */
+export interface TideSegmentDef {
+  /** 段 id（如 'tide_t1'）。 */
+  id: string;
+  /** 段 x 区间（px，含端点）。 */
+  xStart: number;
+  xEnd: number;
+  /** 低潮水位线 worldY（px，水位最低，露出最多地面）。 */
+  lowY: number;
+  /** 高潮水位线 worldY（px，水位最高，淹没最多）。 */
+  highY: number;
+  /** 周期（ms）。 */
+  periodMs: number;
+  /** 初始相位偏移（ms），用于多段反相（如 T2 错开 T1）。 */
+  phase: number;
+}
+
+/**
+ * 暗流（riptide）区域力场（GDD 1-3 §5.1）：区域内给栗宝叠加水平速度偏置（轻量、可被输入覆盖）。
+ * 类比 cyclone 力场，非实体、非碰撞；仅作 flavor 推力，不构硬锁。
+ */
+export interface RiptideDef {
+  /** 区域 x 区间（px，含端点）。 */
+  xStart: number;
+  xEnd: number;
+  /** 区域 y 区间（px）：yTop=顶、yBottom=底。 */
+  yTop: number;
+  yBottom: number;
+  /** 水平速度偏置（px/s，正=朝终点方向推进）。 */
+  vxBias: number;
+}
+
 /** 节拍相位：平台可踩/可碰撞(solid) vs 虚化/可穿过(ghost)。 */
 export type BeatPhase = 'solid' | 'ghost';
 
@@ -160,7 +211,11 @@ export interface LevelData {
   beat: BeatDef;
   /** 节拍平台实体声明（S05-1）：独立于 entities/props，tracks[].target 用 id 引用一组 tile。 */
   beatPlatforms?: BeatPlatformDef[];
-  metadata: { name: string; theme: string };
+  /** 潮汐段（GDD 1-3 §4）：水位线升降地形机制；缺省 = 无潮汐。 */
+  tideSegments?: TideSegmentDef[];
+  /** 暗流（riptide）区域力场（GDD 1-3 §5.1）；缺省 = 无暗流。 */
+  riptide?: RiptideDef[];
+  metadata: { name: string; theme: LevelTheme; parTimeMs?: number };
 }
 
 /** 最小化校验（E4.S1 扩展完整 schema 校验）。 */

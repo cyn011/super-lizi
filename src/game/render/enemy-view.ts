@@ -41,6 +41,10 @@ export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
     drawSilhouette(g, e); // 嘟浮剪影：暗色 + 反向翅 + 暖黄发光边（GDD 16 §7.3）
     return;
   }
+  if (e.type === 'jellyfish') {
+    drawJellyfish(g, e); // 水母：半透天空蓝伞 + 蓝紫触手 + 暖黄核心（sea 专属，GDD 1-3 §3.2）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -257,4 +261,47 @@ function drawSilhouette(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   const eyeY = b.y + b.h * 0.58;
   g.fillCircle(b.x + b.w * 0.36, eyeY, 2);
   g.fillCircle(b.x + b.w * 0.64, eyeY, 2);
+}
+
+/**
+ * 水母（jellyfish）占位绘制（GDD 1-3 §3.2 / sea-visual-spec §2，锁色板内 0 新增色）：
+ *   - 伞盖：半透天空蓝 #5BC8F5 alpha≤0.5 + 描边 #2A1A12 细边（半透穹顶，soft 顶暗示可踩）。
+ *   - 触手：蓝紫 #6E7BF2 alpha≤0.6 飘带（≤2Hz 摆，防光敏），相位随 sim 时间（取 phase 近似）。
+ *   - 核心：暖黄 #FFD23F 小点（生命感）。
+ * 与 du_fu（实心蓝紫扁圆+翅）三重区分：半透天空蓝 vs 蓝紫实心 + 透明度 + 伞+触手 vs 扁圆+翅（色盲安全）。
+ * 几何读 EnemyAI.getBounds()（盒随浮动上下，单一真相源，与碰撞盒一致）。
+ */
+const JELLY_CAP = 0x5bc8f5; // 天空蓝伞盖（锁色板 #11）
+const JELLY_TENTACLE = 0x6e7bf2; // 蓝紫触手辉光（锁色板 #9，常量直接引用，不进 palette）
+const JELLY_CORE = 0xffd23f; // 暖黄核心（锁色板 #4）
+function drawJellyfish(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const ph = e.floatPhase;
+  // 伞盖脉冲（±6% 缩放，≤1Hz，柔和；render-only micro-bob，不进碰撞）
+  const pulse = 1 + Math.sin(ph) * 0.06;
+  const capW = b.w * pulse;
+  const capH = b.h * 0.55 * pulse;
+
+  // 触手（3–4 条蓝紫半透飘带，相位摆动）
+  g.lineStyle(3, JELLY_TENTACLE, 0.6);
+  for (let i = 0; i < 4; i++) {
+    const tx = b.x + 4 + i * ((b.w - 8) / 3);
+    g.beginPath();
+    g.moveTo(tx, cy - capH * 0.3);
+    g.lineTo(tx + Math.sin(ph * 2 + i) * 3, cy + capH * 0.4);
+    g.lineTo(tx + Math.sin(ph * 2 + i + 1) * 4, b.y + b.h - 2);
+    g.strokePath();
+  }
+
+  // 伞盖（半透天空蓝穹顶 + 描边细边）
+  g.fillStyle(JELLY_CAP, 0.5);
+  g.fillEllipse(cx, cy - capH * 0.2, capW, capH);
+  g.lineStyle(1, OUTLINE, 1);
+  g.strokeEllipse(cx, cy - capH * 0.2, capW, capH);
+
+  // 核心（暖黄小点）
+  g.fillStyle(JELLY_CORE, 0.8);
+  g.fillCircle(cx, cy - capH * 0.2, 3);
 }

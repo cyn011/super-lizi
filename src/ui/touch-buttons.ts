@@ -3,12 +3,14 @@
  *
  * 设计要点：
  * - 左下：左/右合并为一个"方向药丸"长条，中间竖线分隔，视觉连续、命中区分独立。
- * - 右下：跳（暖黄大圆 + 白色上三角）、扔栗子（栗色大圆 + 白色栗子嫩芽）。
- * - 右上：暂停小圆钮（白边 + 双竖线）。
+ * - 右下：跳（暖黄大圆 + 白色上三角）、扔栗子（暖橙大圆 + 白色栗子嫩芽）。
+ * - 右上：暂停小圆钮（白边 + 浅色磨砂玻璃底 + 深褐双竖线）。
  * - 全部 Phaser Graphics 实时绘制（fillRoundedRect / strokeRoundedRect / fillTriangle 等），**零位图资产**（ADR-004）。
  * - 命中区/坐标/半径仍来自 inputConfig.wechat.buttons，与 wechat-touch 命中公式一致，不破坏平台输入层。
  *
- * 视觉风格：深色半透明底 + 白图标/白边，按下时缩回 + 描边切暖黄，整体比截图更干净、对比度更高。
+ * 视觉风格（方案 E · 更淡玻璃）：静止态低 alpha（方向 0.20 / 跳·扔 0.30 / 暂停 0.18）+ 1px 白细边，降低抢眼度；
+ * 填充色仍取自 11 色锁色板（暖黄 #FFD23F / 暖橙 #F2933C）或中性白，方向键中性白低权重；
+ * 按下时缩回 + 描边切暖黄 #FFD23F + 线宽 +1（保留方案 A 已验证反馈），整体轻盈透气；无内圈高光、无投影。
  */
 import Phaser from 'phaser';
 import { inputConfig } from '../core/config';
@@ -38,21 +40,25 @@ export function resolveButtonId(signalId: SignalId): ButtonId | null {
   return null;
 }
 
-// ---- 颜色（参考用户第二张截图：红色半透明药丸 + 白色箭头风格，在深棕色地面上高对比）----
-/** 控件深色底（栗壳棕），用于暂停图标 */
-const COLOR_BG_DARK = 0x3e2723;
-/** 方向药丸填充：警示红 #DC4438（暗 5%，半透明但高饱和，在蓝天/地面均可见） */
-const COLOR_FILL_DIRECTION = 0xdc4438;
-/** 动作键（跳）填充：暖黄 #F2C83C（暗 5%，art-bible §3.1） */
-const COLOR_FILL_ACTION = 0xf2c83c;
-/** 动作键（扔栗子）填充：栗色 #AC703B（暗 5%，art-bible §4.2，呼应栗宝） */
-const COLOR_FILL_THROW = 0xac703b;
-/** 默认描边：白边，在彩色底上清晰 */
+// ---- 颜色（全部取自 11 色锁色板；白为通用 UI 中性色，不计入新增 hue）----
+/** 通用描边 / 图标（中性白） */
 const COLOR_OUTLINE = 0xffffff;
-/** 按下态描边：暖黄高亮 */
+/** 按下态描边：暖黄 #FFD23F（锁色板 #4）✅ 替代原 off-lock #B5763E */
 const COLOR_PRESSED_OUTLINE = 0xffd23f;
-/** 图标色：白 */
+/** 图标色：白（中性） */
 const COLOR_ICON = 0xffffff;
+/** 暂停双竖线：描边 #2A1A12（锁色板 #5），浅底深图标 */
+const COLOR_PAUSE_ICON = 0x2a1a12;
+/** 暂停圆底填充：中性白（浅色磨砂玻璃，替代原近黑 #3E2723） */
+const COLOR_FILL_PAUSE = 0xffffff;
+/** 填充（全部锁色板 / 中性）。方向键回归中性白（呼应变体 B「方向=白低权重」） */
+const COLOR_FILL_DIRECTION = 0xffffff; // 中性白（原 #DC4438 离板 → 移除）
+const COLOR_FILL_ACTION = 0xffd23f;    // 暖黄 #FFD23F（锁色板 #4，原 #F2C83C 离板 → 修正）
+const COLOR_FILL_THROW = 0xf2933c;     // 暖橙 #F2933C（锁色板 #3，原 #AC703B 离板 → 修正）
+
+/** 暂停圆底 alpha（方案 E · 更淡玻璃：默认 0.18 / 按下 0.28；lineWidth 1px；PauseIcon 当前无按压态，静态用 PAUSE_ALPHA_DEFAULT） */
+const PAUSE_ALPHA_DEFAULT = 0.18;
+const PAUSE_ALPHA_PRESSED = 0.28;
 
 // ---- 视觉规格（导出给测试回归）----
 export interface ButtonVisualSpec {
@@ -67,42 +73,46 @@ export interface ButtonVisualSpec {
 }
 
 export const BUTTON_VISUAL_SPEC: Record<ButtonId, ButtonVisualSpec> = {
+  // 方向药丸（左）—— 方案 E：中性白低权重，静止 0.20/1px，按下填 0.30 + 描边暖黄(线宽 +1)
   left: {
     fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.82,
-    fillAlphaPressed: 0.95,
-    lineWidthDefault: 3,
-    lineWidthPressed: 4,
+    fillAlphaDefault: 0.20,
+    fillAlphaPressed: 0.30,
+    lineWidthDefault: 1,
+    lineWidthPressed: 2,
     lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.97,
   },
+  // 方向药丸（右）—— 与 left 同
   right: {
     fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.82,
-    fillAlphaPressed: 0.95,
-    lineWidthDefault: 3,
-    lineWidthPressed: 4,
+    fillAlphaDefault: 0.20,
+    fillAlphaPressed: 0.30,
+    lineWidthDefault: 1,
+    lineWidthPressed: 2,
     lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.97,
   },
+  // 跳圆钮 —— 暖黄 #FFD23F（锁 #4），方案 E：静止 0.30/1px，按下填 0.42 + 描边暖黄(线宽 +1)
   jump: {
     fillColor: COLOR_FILL_ACTION,
-    fillAlphaDefault: 0.55,
-    fillAlphaPressed: 0.68,
-    lineWidthDefault: 4,
-    lineWidthPressed: 5,
+    fillAlphaDefault: 0.30,
+    fillAlphaPressed: 0.42,
+    lineWidthDefault: 1,
+    lineWidthPressed: 2,
     lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.92,
   },
+  // 扔栗圆钮 —— 暖橙 #F2933C（锁 #3），方案 E：静止 0.30/1px，按下填 0.42 + 描边暖黄(线宽 +1)
   action: {
     fillColor: COLOR_FILL_THROW,
-    fillAlphaDefault: 0.55,
-    fillAlphaPressed: 0.68,
-    lineWidthDefault: 4,
-    lineWidthPressed: 5,
+    fillAlphaDefault: 0.30,
+    fillAlphaPressed: 0.42,
+    lineWidthDefault: 1,
+    lineWidthPressed: 2,
     lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.92,
@@ -336,12 +346,6 @@ class TouchCircle {
       g.strokeCircle(0, 0, r);
     }
 
-    // 内圈高光（让大圆钮更立体）
-    if (!this.disabled) {
-      g.lineStyle(2, 0xffffff, 0.15);
-      g.strokeCircle(0, 0, r * 0.82);
-    }
-
     // 图标
     g.fillStyle(COLOR_ICON, this.disabled ? 0.6 : 1.0);
     this.drawIcon(g, r);
@@ -380,17 +384,17 @@ class PauseIcon {
   constructor(scene: Phaser.Scene, cx: number, cy: number, r: number) {
     this.g = scene.add.graphics().setDepth(1000).setScrollFactor(0);
 
-    // 圆底
-    this.g.fillStyle(COLOR_BG_DARK, 0.6);
+    // 圆底（浅色磨砂玻璃：中性白半透，替代原近黑 #3E2723）
+    this.g.fillStyle(COLOR_FILL_PAUSE, PAUSE_ALPHA_DEFAULT);
     this.g.fillCircle(cx, cy, r);
-    this.g.lineStyle(2, COLOR_OUTLINE, 0.9);
+    this.g.lineStyle(1, COLOR_OUTLINE, 0.9);
     this.g.strokeCircle(cx, cy, r);
 
-    // 双竖线
+    // 双竖线（浅底深图标：#2A1A12 描边色，替代原白色图标，对比 ≥ 4.5:1）
     const barW = Math.max(2, r * 0.18);
     const barH = r * 0.55;
     const gap = barW * 0.8;
-    this.g.fillStyle(COLOR_ICON, 1.0);
+    this.g.fillStyle(COLOR_PAUSE_ICON, 1.0);
     this.g.fillRect(cx - gap - barW, cy - barH / 2, barW, barH);
     this.g.fillRect(cx + gap, cy - barH / 2, barW, barH);
   }

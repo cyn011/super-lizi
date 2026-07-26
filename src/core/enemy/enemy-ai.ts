@@ -79,6 +79,10 @@ export interface EnemyConfigEntry {
   projSpeed?: number;
   /** 是否可踩消灭。 */
   stompable: boolean;
+  /** 触手/侧身是否不造成伤害（水母 jellyfish：仅踏脚石，侧身无害）。 */
+  nonDamaging?: boolean;
+  /** 被踩是否仅弹起、不被消灭（水母 jellyfish：持久踏脚石）。 */
+  persistentStomp?: boolean;
   /** 碰撞盒宽（px）。 */
   width: number;
   /** 碰撞盒高（px）。 */
@@ -100,6 +104,10 @@ export class EnemyAI implements StompableHazard {
   readonly type: EnemyTypeName;
   /** 可踩标记：旧 4 敌为静态 cfg 值；gu_bao 随态动态赋值（仅 RETRACTING=true）。 */
   isStompable: boolean;
+  /** 触手/侧身不造成伤害（水母 jellyfish：仅踏脚石，侧身无害）。 */
+  nonDamaging: boolean;
+  /** 被踩仅弹起、不被消灭（水母 jellyfish：持久踏脚石，区别于 du_fu 踩杀）。 */
+  persistentStomp: boolean;
   readonly enemyType: string;
   /** 碰撞盒宽 / 高（px）：旧 4 敌恒定；gu_bao 高度随升起进度 p 变化（DORMANT=0）。 */
   width: number;
@@ -198,12 +206,19 @@ export class EnemyAI implements StompableHazard {
     this.enemyType = type;
     this.cfg = config[type] as EnemyConfigEntry;
     this.isStompable = this.cfg.stompable;
+    this.nonDamaging = this.cfg.nonDamaging ?? false;
+    this.persistentStomp = this.cfg.persistentStomp ?? false;
     this.width = this.cfg.width ?? DEFAULT_ENEMY_W;
     this.height = this.cfg.height ?? DEFAULT_ENEMY_H;
     this.x = x;
     this.y = y;
     this.baseY = y;
-    this.state = type === 'ci_li' ? 'patrol' : type === 'du_fu' ? 'float' : 'idle';
+    this.state =
+      type === 'ci_li'
+        ? 'patrol'
+        : type === 'du_fu' || type === 'jellyfish'
+          ? 'float'
+          : 'idle';
 
     // gu_bao：地面锚点 = y；按 phaseOffset 推导初始态；盒顶随 p 上移。
     if (type === 'gu_bao') {
@@ -300,6 +315,21 @@ export class EnemyAI implements StompableHazard {
     return { x: this.aimX, y: this.aimY };
   }
 
+  /** 触手/侧身是否无害（水母 jellyfish：true ⇒ damage-resolution 跳过受伤分支）。 */
+  get isNonDamaging(): boolean {
+    return this.nonDamaging;
+  }
+
+  /** 被踩是否仅弹起、不被消灭（水母 jellyfish：true ⇒ 持久踏脚石）。 */
+  get isPersistentStomp(): boolean {
+    return this.persistentStomp;
+  }
+
+  /** 浮动相位（rad，du_fu / jellyfish 正弦浮动用），渲染伞盖 pulse 读取。 */
+  get floatPhase(): number {
+    return this.phase;
+  }
+
   /** 开火口闪光剩余（ms），>0 时渲染炮口闪光。 */
   get flash(): number {
     return this.fireFlash;
@@ -372,7 +402,7 @@ export class EnemyAI implements StompableHazard {
       this.updatePatrol(dt, world);
       return NO_PROJECTILES;
     }
-    if (this.type === 'du_fu') {
+    if (this.type === 'du_fu' || this.type === 'jellyfish') {
       this.updateFloat(dt);
       return NO_PROJECTILES;
     }
@@ -765,7 +795,8 @@ export function createEnemies(
       e.type === 'gu_bao' ||
       e.type === 'bouncy_vine' ||
       e.type === 'cyclone' ||
-      e.type === 'du_fu_silhouette'
+      e.type === 'du_fu_silhouette' ||
+      e.type === 'jellyfish'
     ) {
       out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }

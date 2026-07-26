@@ -7,5 +7,6 @@
   "gu_bao":     { "dormantMs": 1100, "emergeMs": 160, "activeMs": 700, "retractMs": 160, "height": 48, "width": 32, "stompable": false, "stompableWindow": "retract", "baseYAnchor": "ground" },
   "bouncy_vine": { "bounceVelocity": -680, "springMs": 80, "recoilMs": 180, "width": 40, "height": 16, "stompable": false, "hazard": false, "baseYAnchor": "ground" },
   "cyclone":    { "liftAcc": 2600, "riseMax": 220, "dragX": 0, "width": 96, "height": 160, "phaseSpeed": 3.0, "stompable": false, "hazard": false },
+  "jellyfish":  { "float": 50, "amp": 24, "stompable": true, "nonDamaging": true, "persistentStomp": true, "width": 36, "height": 40 },
   "projectile": { "width": 10, "height": 10 }
 }

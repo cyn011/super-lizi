@@ -38,8 +38,8 @@ describe('关卡注册表（1-2 流水线复用）', () => {
     expect(inTiles).toBe(false);
   });
 
-  it('LEVEL_ORDER = ["1-1","1-2","2-1","2-2","2-3","2-4"]', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '2-1', '2-2', '2-3', '2-4']);
+  it('LEVEL_ORDER = ["1-1","1-2","1-3","2-1","2-2","2-3","2-4"]', () => {
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '2-1', '2-2', '2-3', '2-4']);
   });
 
   it('levels 注册表含 2-1 且通过 validateLevelData（P-LEVEL-04）', () => {
@@ -59,7 +59,7 @@ describe('nextLevelId（进度链推导）', () => {
     expect(nextLevelId(['1-1', '1-2'], '9-9')).toBeNull();
   });
 
-  it('nextLevelId(LEVEL_ORDER, "1-2") === "2-1"（进度链由 1-2 续接 2-1）', () => {
-    expect(nextLevelId(LEVEL_ORDER, '1-2')).toBe('2-1');
+  it('nextLevelId(LEVEL_ORDER, "1-2") === "1-3"（进度链由 1-2 续接 1-3）', () => {
+    expect(nextLevelId(LEVEL_ORDER, '1-2')).toBe('1-3');
   });
 });

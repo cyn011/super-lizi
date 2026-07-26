@@ -76,10 +76,10 @@ describe('2-1 洞穴关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（1-2 → 2-1 → 2-2 → 2-3 → 2-4）', () => {
-  it('LEVEL_ORDER 续接为 6 关；nextLevelId(LEVEL_ORDER, "1-2") === "2-1"', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '2-1', '2-2', '2-3', '2-4']);
-    expect(nextLevelId(LEVEL_ORDER, '1-2')).toBe('2-1');
+describe('nextLevelId 进度链（1-2 → 1-3 → 2-1 → 2-2 → 2-3 → 2-4）', () => {
+  it('LEVEL_ORDER 续接为 7 关；nextLevelId(LEVEL_ORDER, "1-2") === "1-3"', () => {
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '2-1', '2-2', '2-3', '2-4']);
+    expect(nextLevelId(LEVEL_ORDER, '1-2')).toBe('1-3');
   });
   it('2-1 已非末关 → nextLevelId 返回 "2-2"；末关 2-4 返回 null', () => {
     expect(nextLevelId(LEVEL_ORDER, '2-1')).toBe('2-2');
