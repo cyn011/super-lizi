@@ -18,7 +18,7 @@ import {
   characterConfig,
   damageConfig,
   economyConfig,
-  inputConfig,
+  attackConfig,
   STEP_MS,
   STEP_DT,
   levels,
@@ -31,7 +31,7 @@ import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE, ON_CHESTNUT_THROWN, ON_AMMO_CHANGED, ON_AMMO_EMPTY, ON_CHESTNUT_HIT, ON_PROJECTILE_CANCEL } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { BeatClock } from '../../core/beat/beat-clock';
 import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
@@ -58,6 +58,11 @@ import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
 import { drawCheckpoint } from '../render/checkpoint-view';
 import { resolvePickups } from '../pickup-resolution';
+// GDD 17 扔栗子机制：控制器 + 弹丸（core 零平台）/ 弹药 HUD / 弹丸渲染（ui / game 层）。
+import { ThrowController } from '../../core/attack/throw-controller';
+import { ChestnutProjectile } from '../../core/attack/chestnut-projectile';
+import { AmmoHud } from '../../ui/ammo-hud';
+import { ChestnutView } from '../render/chestnut-view';
 import { createSeedRuntime, accumulateOnCollect } from '../../core/seed/seed-runtime';
 import { drawMaliTopper, playMetamorphAura, drawSeedAura } from '../render/mali-topper';
 import type { Stage, SeedRuntimeState } from '../../core/seed/seed-types';
@@ -65,7 +70,7 @@ import { EnemyAI, createEnemies } from '../../core/enemy/enemy-ai';
 import { Projectile } from '../../core/enemy/projectile';
 import type { HazardSource } from '../../core/damage/hazard-source';
 import { EconomyController } from '../../core/economy/economy';
-import { LOGICAL_WIDTH, LOGICAL_HEIGHT, detectEnv } from '../../platform/detect';
+import { detectEnv } from '../../platform/detect';
 import { createPlatform } from '../../platform';
 
 const PLAYER_W = 24;
@@ -95,6 +100,9 @@ const NEUTRAL_INPUT: InputState = {
   actionHeld: false,
   actionReleased: false,
   jumpPressedAt: 0,
+  throwPressed: false,
+  throwHeld: false,
+  throwReleased: false,
 };
 
 export class GameScene extends Phaser.Scene {
@@ -192,6 +200,18 @@ export class GameScene extends Phaser.Scene {
   private resultScreen?: ResultScreen;
   /** S05-3：存档管理器（经平台注入 storage，core 零平台 API）。通关时落盘最优成绩。 */
   private saveManager!: SaveManager;
+
+  // ── GDD 17 扔栗子机制 ──
+  /** 投掷/弹药控制器（core 零平台纯逻辑）：tryThrow / addAmmo / update / reset。 */
+  private throwController!: ThrowController;
+  /** 当前飞行中的栗子弹丸列表（己方，不触发受伤）；每步积分 + 与敌人/炮弹矩阵 + 压缩。 */
+  private chestnuts: ChestnutProjectile[] = [];
+  /** 弹药 HUD（右上角，订阅 ON_AMMO_CHANGED 刷新）；一次性创建，每关 loadLevel 内 reset。 */
+  private ammoHud?: AmmoHud;
+  /** 栗子弹丸渲染（世界坐标，depth 10）。 */
+  private chestnutView?: ChestnutView;
+  /** 已拾取栗子补给去重集合（索引 → 防重复事件）。 */
+  private collectedChestnuts = new Set<number>();
 
   // ── HUD + 受伤 juice（design/ux/hud-spec.md）──
   /** 命数 HUD + 形态指示 + Game Over 覆盖层（ui 层，Phaser）。 */
@@ -300,6 +320,12 @@ export class GameScene extends Phaser.Scene {
     // S05-3：存档管理器（经平台注入 storage + 关卡顺序 LEVEL_ORDER，通关解锁下一关）。
     this.saveManager = new SaveManager(this.platform.storage, undefined, LEVEL_ORDER);
 
+    // GDD 17：扔栗子机制实例化（控制器 + 弹药 HUD + 弹丸渲染；每关 loadLevel 内 reset 弹药）。
+    // 必须在 loadLevel（首关）之前创建，使 loadLevel 的 ON_AMMO_CHANGED 重绘命中订阅。
+    this.throwController = new ThrowController(attackConfig);
+    this.ammoHud = new AmmoHud(this, this.bus, attackConfig.ammoStart, attackConfig.ammoCap);
+    this.chestnutView = new ChestnutView(this);
+
     // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。
     // 不破坏 S04-1 已落地的踩敌链路（ON_STOMP 由 damage-resolution 发放）；此处仅订阅/计算。
     this.economy = new EconomyController(economyConfig);
@@ -347,6 +373,8 @@ export class GameScene extends Phaser.Scene {
     this.bus.on(ON_SEED_METAMORPHOSIS, (stage) => {
       this.currentSeedStage = stage as Stage;
       this.topperDirty = true; // 阶段切换才重绘 topper 几何（节流）
+      // GDD 17 §3.1 / D2-A：种子达 fruit 阶段 → 多段跳加成 =1（ landings 后 airJumpsLeft = airJumps + bonus）。
+      if (stage === 'fruit') this.controller.airJumpBonus = 1;
       const cx = this.body.x + PLAYER_W / 2;
       const topY = this.body.y;
       // 光晕中心=头顶上方 6px（spec §2/§10.2，S2 中心修正：body 中部→头顶上方）；
@@ -385,20 +413,19 @@ export class GameScene extends Phaser.Scene {
       this.pauseMenu?.destroy();
       this.resultScreen?.destroy();
       this.hud.destroy();
+      // GDD 17：清理弹药 HUD + 栗子弹丸渲染（解绑 ON_AMMO_CHANGED 等订阅）。
+      this.ammoHud?.destroy();
+      this.chestnutView?.destroy();
     });
 
     // S04-3 去重集合初始化（关卡实体渲染在 loadLevel 内完成）。
     this.collectedCoins = new Set<number>();
     this.collectedSeeds = new Set<number>();
 
-    // 输入布局：结构性检测 input 是否为手势提供方（实现 PointerSink）→ gesture；否则 virtual 四钮。
-    // 微信 ?buttons=1 / 配置 layout:"virtual" 回退四钮；gesture 为默认（见 click-to-move-design.md）。
-    const isGesture = this.isGestureInput();
-    if (!isGesture) {
-      // virtual 布局：挂载旧四钮（命中 → simulatePress → touch:* → consume）。
-      this.touchButtons = new TouchButtons(this);
-    }
-    this.setupPointerInput(isGesture);
+    // 融合唯一模式：按钮浮层常驻可点 + Phaser pointer 转发融合层（按钮命中优先，未命中走手势）。
+    // 微信端 ?buttons=1 / 配置 layout 二选一语义已移除，永远走融合（见 fusion-input / click-to-move-design.md）。
+    this.touchButtons = new TouchButtons(this);
+    this.setupPointerInput();
 
     // 分享深链：优先用 Boot 传入的 startLevel，回退到冷启动 query.level。
     // platform 已在此前 resolve 完毕（registry → globalThis → 重建三层兜底）。
@@ -479,6 +506,12 @@ export class GameScene extends Phaser.Scene {
     // S04-3：由关卡实体生成 coin/seed/checkpoint 占位渲染 + 去重集合初始化。
     this.collectedCoins = new Set<number>();
     this.collectedSeeds = new Set<number>();
+
+    // GDD 17：投掷复位（弹药回满 + 清空飞行弹丸 + 栗子补给去重）；并重绘弹药 HUD。
+    this.throwController.reset(attackConfig.ammoStart);
+    this.chestnuts = [];
+    this.collectedChestnuts = new Set<number>();
+    this.bus.emit(ON_AMMO_CHANGED, { ammo: this.throwController.ammo, cap: this.throwController.ammoCap });
     if (!this.coinGfx) this.coinGfx = this.add.graphics().setDepth(8);
     if (!this.seedGfx) this.seedGfx = this.add.graphics().setDepth(8);
     if (!this.checkpointGfx) this.checkpointGfx = this.add.graphics().setDepth(7);
@@ -610,6 +643,65 @@ export class GameScene extends Phaser.Scene {
       if (!p.dead) p.update(dt, this.world);
     }
 
+    // ── GDD 17 扔栗子机制每步推进 ──
+    // 投掷消费：throwPressed 边沿 → 扣弹/冷却校验 → 发弹 + ON_CHESTNUT_THROWN + ON_AMMO_CHANGED；
+    // 弹药 0 时尝试扔 → ON_AMMO_EMPTY（HUD 红闪）。
+    if (input.throwPressed) {
+      const facing = this.controller.state.facing;
+      const ox = this.body.x + this.body.w / 2 + facing * (this.body.w / 2 + 2);
+      const oy = this.body.y + this.body.h * 0.4;
+      const p = this.throwController.tryThrow(facing, ox, oy);
+      if (p) {
+        this.chestnuts.push(p);
+        this.bus.emit(ON_CHESTNUT_THROWN, { x: ox, y: oy, facing });
+        this.bus.emit(ON_AMMO_CHANGED, { ammo: this.throwController.ammo, cap: this.throwController.ammoCap });
+      } else if (this.throwController.ammo <= 0) {
+        this.bus.emit(ON_AMMO_EMPTY, { ammo: this.throwController.ammo });
+      }
+    }
+    this.throwController.update(dt * 1000);
+
+    // 栗子弹丸每步积分移动（飞出/撞墙 → dead）。
+    for (const c of this.chestnuts) {
+      if (!c.dead) c.update(dt, this.world);
+    }
+
+    // 栗子 vs 敌人 / 石炮炮弹 对消矩阵（GDD 17 §7）。
+    for (const c of this.chestnuts) {
+      if (c.dead) continue;
+      for (const e of this.enemies) {
+        if (e.dead) continue;
+        if (!c.overlapsRect(e.x, e.y, e.width, e.height)) continue;
+        if (e.type === 'chong_feng') {
+          // 冲锋怪：栗子打断冲锋 → stun（同撞墙态），栗子消失。
+          e.applyStun(attackConfig.enemyStunMs);
+          c.dead = true;
+          this.bus.emit(ON_PROJECTILE_CANCEL, { x: c.x, y: c.y });
+        } else if (e.type === 'shi_pao') {
+          // 石炮：不可击杀，栗子抵消消失（不发敌死事件）。
+          c.dead = true;
+          this.bus.emit(ON_PROJECTILE_CANCEL, { x: c.x, y: c.y });
+        } else if (e.isStompable) {
+          // 可踩敌人（ci_li / du_fu / 可踩期 gu_bao / sil）：复用踩杀管线（markStomped + 计分 + 事件）。
+          e.markStomped();
+          this.bus.emit(ON_STOMP, { type: e.enemyType, x: e.x + e.width / 2, y: e.y });
+          this.bus.emit(ON_CHESTNUT_HIT, { type: e.enemyType, x: e.x + e.width / 2, y: e.y + e.height / 2 });
+          c.dead = true;
+        }
+        // 其余（穿透型：bouncy_vine / cyclone / 不可踩期 gu_bao / sil）→ 栗子继续飞。
+      }
+      if (c.dead) continue;
+      // 石炮炮弹对消：双方消失 + ON_PROJECTILE_CANCEL（clink）。
+      for (const pr of this.projectiles) {
+        if (pr.dead) continue;
+        if (c.overlapsRect(pr.x, pr.y, pr.width, pr.height)) {
+          c.dead = true;
+          pr.dead = true;
+          this.bus.emit(ON_PROJECTILE_CANCEL, { x: c.x, y: c.y });
+        }
+      }
+    }
+
     // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
     this.resolveHazards();
 
@@ -618,6 +710,8 @@ export class GameScene extends Phaser.Scene {
 
     // S04-3：实体拾取 / 检查点解算（委托单一真实实现 resolvePickups）。
     this.resolvePickups();
+    // GDD 17：栗子补给拾取（独立去重集合，避免动到共享纯函数 resolvePickups 的集成测试）。
+    this.resolveChestnutPickups();
 
     // S05-1 节拍门控：对齐 headless——每固定步只调一次 advanceBeat（内部 crossedBeat）。
     // 跨拍时先刷平台相位、再 emit ON_BEAT（让音频/juice 读到新相位）。
@@ -625,6 +719,9 @@ export class GameScene extends Phaser.Scene {
     if (this.beatClock) {
       advanceBeat(this.beatClock, simTimeMs, this.bus, (idx) => this.beatSystem?.applyBeat(idx));
     }
+
+    this.compactChestnuts();
+    this.chestnutView?.sync(this.chestnuts);
 
     this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y));
   }
@@ -682,6 +779,47 @@ export class GameScene extends Phaser.Scene {
       else arr[w++] = p;
     }
     arr.length = w;
+  }
+
+  /** 原地压缩栗子弹丸列表：移除 dead（无对象池，仅数组压缩）。 */
+  private compactChestnuts(): void {
+    const arr = this.chestnuts;
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const c = arr[i];
+      if (c.dead) continue;
+      arr[w++] = c;
+    }
+    arr.length = w;
+  }
+
+  /**
+   * GDD 17 §6.2 栗子补给拾取：遍历关卡 chestnut 实体（runtime 已分桶），与玩家 AABB 重叠且未拾取过
+   * → 弹药 +amount（封顶 ammoCap）+ 发 ON_AMMO_CHANGED（HUD 刷新）；去重防重复计数。独立去重集合，
+   * 不改动共享纯函数 resolvePickups（保留其作为集成测试单一事实来源的地位）。
+   */
+  private resolveChestnutPickups(): void {
+    const items = this.runtime.chestnuts;
+    const bw = this.body.w;
+    const bh = this.body.h;
+    const PICKUP_BOX = 24; // 栗子补给占位盒（与主角同量级，level-data 未带 w/h）
+    for (let i = 0; i < items.length; i++) {
+      if (this.collectedChestnuts.has(i)) continue;
+      const def = items[i];
+      if (
+        def.x < this.body.x + bw &&
+        this.body.x < def.x + PICKUP_BOX &&
+        def.y < this.body.y + bh &&
+        this.body.y < def.y + PICKUP_BOX
+      ) {
+        this.collectedChestnuts.add(i);
+        const amount = def.params?.amount ?? attackConfig.pickupAmount;
+        const gained = this.throwController.addAmmo(amount);
+        if (gained > 0) {
+          this.bus.emit(ON_AMMO_CHANGED, { ammo: this.throwController.ammo, cap: this.throwController.ammoCap });
+        }
+      }
+    }
   }
 
   /** 每固定步检测玩家 AABB 与凯旋之门 AABB 重叠，命中发 ON_LEVEL_COMPLETE（仅一次）。 */
@@ -948,56 +1086,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 输入路由（click-to-move-design.md §7.3）：
-   * - gesture 布局：把 Phaser pointerdown/move/up（逻辑坐标）转发到平台输入提供方的 PointerSink 方法，
-   *   由 GestureProvider 完成屏幕分区 / 双态判定，产出与原四钮完全一致的 touch:* 信号。
-   *   微信模拟器鼠标模式只报 pointerdown（无 move/up）→ 自动走 Tap 段路径（点区域走/点上方跳）。
-   * - virtual 布局：保留旧逻辑——命中四钮 → simulatePress → touch:*。
+   * 输入路由（融合唯一模式，click-to-move-design.md §7.3）：
+   * - 按钮浮层（TouchButtons）在 create() 已常驻创建——视觉 + 由 stepSim 的 syncDown(frame.down) 同步按下态。
+   * - Web：把 Phaser pointerdown/move/up（逻辑坐标）转发到平台输入（融合层）的 PointerSink 方法，
+   *   融合层内部按落点路由：命中按钮 → 按钮 press（simulateDown/Up），未命中 → GestureProvider 手势。
+   *   通道在 pointerDown 时依落点决定并稳定到抬起（避免手势 pointer 泄漏）。
+   * - 微信：skip Phaser pointer 注册。微信小游戏 + Scale.NONE + 原生上屏 canvas 下 Phaser pointer 坐标失真/不触发，
+   *   坐标改由融合层经 wx.onTouch* + screenCanvas.click 统一绑一次后路由（见 fusion-input.ts）。
    */
-  private setupPointerInput(isGesture: boolean): void {
-    // virtual：命中四钮 → simulatePress（旧逻辑，保留）。gesture 默认布局时 isGesture=false 才走这里。
-    if (!isGesture) {
-      const b = inputConfig.wechat.buttons;
-      const btns = [
-        { id: 'touch:left' as const,  cx: b.left.x   * LOGICAL_WIDTH,  cy: b.left.y   * LOGICAL_HEIGHT, r: b.left.r   * LOGICAL_WIDTH },
-        { id: 'touch:right' as const, cx: b.right.x  * LOGICAL_WIDTH,  cy: b.right.y  * LOGICAL_HEIGHT, r: b.right.r  * LOGICAL_WIDTH },
-        { id: 'touch:jump' as const,  cx: b.jump.x   * LOGICAL_WIDTH,  cy: b.jump.y   * LOGICAL_HEIGHT, r: b.jump.r   * LOGICAL_WIDTH },
-        { id: 'touch:action' as const,cx: b.action.x * LOGICAL_WIDTH,  cy: b.action.y * LOGICAL_HEIGHT, r: b.action.r * LOGICAL_WIDTH },
-      ];
-      this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        for (const btn of btns) {
-          const dx = pointer.x - btn.cx;
-          const dy = pointer.y - btn.cy;
-          if (dx * dx + dy * dy <= btn.r * btn.r) {
-            (this.platform.input as { simulatePress?: (id: string) => void }).simulatePress?.(btn.id);
-            break;
-          }
-        }
-      });
-      return;
-    }
-
-    // gesture 布局：按平台分流坐标来源（根因修复）。
-    // 微信小游戏 + Scale.NONE + 原生上屏 canvas 下，Phaser pointer 坐标失真（拿不到 DOM boundingRect）
-    // 甚至不触发 → GestureProvider 收到恒在死区中心的坐标 → 永远判"停"。
-    // 故微信端坐标改由平台层通过 wx.onTouch* + screenCanvas.click 喂给 GestureProvider，
-    // 这里【不再注册】Phaser pointer，避免失真坐标干扰。
+  private setupPointerInput(): void {
+    // 微信端：原生触屏/鼠标通道由融合层统一绑定路由，这里不注册 Phaser pointer，避免失真坐标干扰。
     if (this.platform.env === 'wechat') {
-      console.log('[gesture] wechat: using native touch/click channel, skip Phaser pointer');
+      console.log('[fusion] wechat: using native touch/click channel, skip Phaser pointer');
       return;
     }
 
-    // Web 端：浏览器里 Phaser pointer 坐标正确（0-512 逻辑分辨率），保留转发到 PointerSink。
+    // Web 端：浏览器里 Phaser pointer 坐标正确（0–512 逻辑分辨率），转发到融合层 PointerSink。
     const sink = this.platform.input as unknown as PointerSink;
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => sink.pointerDown(pointer.x, pointer.y, pointer.id));
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => sink.pointerMove(pointer.x, pointer.y, pointer.id));
     this.input.on('pointerup',   (pointer: Phaser.Input.Pointer) => sink.pointerUp(pointer.x, pointer.y, pointer.id));
-    console.log('[gesture] registered Phaser pointer (web only)');
-  }
-
-  /** 结构性检测：平台输入是否手势提供方（实现 PointerSink）→ gesture，否则 virtual 四钮。 */
-  private isGestureInput(): boolean {
-    return typeof (this.platform.input as { pointerDown?: unknown }).pointerDown === 'function';
+    console.log('[fusion] registered Phaser pointer (web only)');
   }
 
   update(time: number, delta: number): void {

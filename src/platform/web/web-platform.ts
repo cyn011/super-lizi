@@ -1,111 +1,25 @@
 /**
  * platform/web/web-platform — Web 平台聚合（架构 §5）。
- * 输入 = 键盘（WebKeyboardProvider） + 指针手势（GestureProvider）并存：
- *   - gesture（默认）：点击/划屏驱动 touch:*，键盘仍可用（web.* 映射已含 touch:*）。
- *   - virtual（?buttons=1 或 layout=virtual 调试回退）：旧四钮（WechatTouchProvider），
- *     键盘照常工作。注：Web 无真实四钮，仅为与微信 ?buttons=1 回归一致的调试态。
+ *
+ * 融合为唯一模式（用户拍板）：键盘（WebKeyboardProvider）始终合并 + 融合层（按钮 + 手势）。
+ * - 按钮浮层常驻可点（TouchButtons 在 game-scene 创建）+ 屏幕任意其它区域拖拽即手势
+ *   （GestureProvider，以主角屏幕位置为原点判定）+ 键盘始终可用。不再有二选一开关。
+ * - 旧 `?gesture=1` / `?buttons=1` 覆盖与 `isForceVirtual` 二选一逻辑已移除：融合永远是默认。
+ * - input-config.json 的 wechat.gesture 参数块仍由 FusionInput 读取（手势层仍需），但 layout 切换删除。
  */
 import type { Platform } from '../platform';
-import type { RawInputProvider, RawInputFrame, SignalId } from '../../core/input/raw-input';
-import { GestureProvider, type GestureParams } from '../gesture-provider';
-import type { PointerSink } from '../raw-input-provider';
+import { makeCompositeInput } from '../composite-input';
 import { WebKeyboardProvider } from './web-keyboard';
 import { WebStorage } from './web-storage';
 import { WebAudio } from './web-audio';
-import { WechatTouchProvider } from '../wechat/wechat-touch';
-import { inputConfig } from '../../core/config';
-import { LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../detect';
-
-function readGestureParams(): GestureParams {
-  const g = (inputConfig.wechat as unknown as { gesture?: Record<string, number> }).gesture;
-  if (!g) {
-    throw new Error('[web-platform] inputConfig.wechat.gesture 缺失，无法启用 gesture 布局');
-  }
-  return {
-    deadzone: g.playerDeadzone ?? g.deadzone ?? 16,
-    jumpZoneTop: g.jumpZoneTop,
-    jumpSwipeSlope: g.jumpSwipeSlope,
-    swipeMinDist: g.swipeMinDist,
-    walkSegmentMs: g.walkSegmentMs,
-    jumpHoldMs: g.jumpHoldMs,
-  };
-}
-
-function isForceVirtual(): boolean {
-  if (typeof location === 'undefined') return false;
-  try {
-    const qp = new URLSearchParams(location.search);
-    if (qp.get('buttons') === '1') return true;
-  } catch {
-    /* ignore */
-  }
-  return inputConfig.wechat.layout === 'virtual';
-}
-
-/**
- * 合并键盘与次级（手势/按钮）输入：
- * - sample：合并 down/pressedEdge/releasedEdge。
- * - 仅在次级实现 PointerSink 时挂上 pointer* 方法（gesture 有、virtual 无），
- *   使 game-scene 可用 `('pointerDown' in input)` 结构性区分手势/虚拟布局。
- * - advance 仅在次级支持时转发（驱动手势计时器）。
- */
-function makeCompositeInput(
-  keyboard: WebKeyboardProvider,
-  secondary: RawInputProvider,
-): RawInputProvider & Partial<PointerSink> & { advance?(dt: number): void } {
-  const sink = secondary as Partial<PointerSink>;
-  const adv = secondary as Partial<{ advance(dt: number): void }>;
-
-  // 复用合并帧，避免每 sample() 新建三组 Set（稳态 GC 优化，见 Phase 6 报告候选④）。
-  const merged: RawInputFrame = {
-    down: new Set<SignalId>(),
-    pressedEdge: new Set<SignalId>(),
-    releasedEdge: new Set<SignalId>(),
-  };
-
-  const obj: RawInputProvider & Partial<PointerSink> & { advance?(dt: number): void } = {
-    sample(): RawInputFrame {
-      const kf = keyboard.sample();
-      const sf = secondary.sample();
-      merged.down.clear();
-      for (const s of kf.down) merged.down.add(s);
-      for (const s of sf.down) merged.down.add(s);
-      merged.pressedEdge.clear();
-      for (const s of kf.pressedEdge) merged.pressedEdge.add(s);
-      for (const s of sf.pressedEdge) merged.pressedEdge.add(s);
-      merged.releasedEdge.clear();
-      for (const s of kf.releasedEdge) merged.releasedEdge.add(s);
-      for (const s of sf.releasedEdge) merged.releasedEdge.add(s);
-      return merged;
-    },
-    reset(): void {
-      keyboard.reset?.();
-      secondary.reset?.();
-    },
-  };
-
-  if (typeof sink.pointerDown === 'function') {
-    obj.pointerDown = (x: number, y: number, id?: number) => sink.pointerDown!(x, y, id);
-    obj.pointerMove = (x: number, y: number, id?: number) => sink.pointerMove?.(x, y, id);
-    obj.pointerUp = (x: number, y: number, id?: number) => sink.pointerUp?.(x, y, id);
-  }
-  if (typeof adv.advance === 'function') {
-    obj.advance = (dt: number) => adv.advance!(dt);
-  }
-  return obj;
-}
+import { FusionInput } from '../fusion-input';
 
 export function createWebPlatform(): Platform {
   const keyboard = new WebKeyboardProvider();
   keyboard.attach(); // F4 修复：绑定 DOM 键盘监听，否则 Web 键盘输入完全失效
 
-  const secondary = isForceVirtual()
-    ? new WechatTouchProvider(LOGICAL_WIDTH, LOGICAL_HEIGHT)
-    : new GestureProvider(readGestureParams());
-  const input = makeCompositeInput(keyboard, secondary);
-
-  // 把主角屏幕坐标转发给次级输入（gesture 有 setPlayerScreenPos，virtual 无 → no-op）。
-  const posSink = secondary as Partial<{ setPlayerScreenPos?(x: number, y: number): void }>;
+  // 融合唯一模式：键盘 + 融合层（按钮命中优先，未命中走手势）合并为单一输入。
+  const input = makeCompositeInput(keyboard, new FusionInput());
 
   return {
     env: 'web',
@@ -117,7 +31,8 @@ export function createWebPlatform(): Platform {
       onHide: () => {},
       onShow: () => {},
     },
-    setPlayerScreenPos: (x: number, y: number) => posSink.setPlayerScreenPos?.(x, y),
+    // 把主角屏幕坐标转发给融合层 → 手势层 setPlayerScreenPos（按钮层无此方法 → no-op）。
+    setPlayerScreenPos: (x: number, y: number) => input.setPlayerScreenPos?.(x, y),
     // 微信分享端口：Web 端无此能力，no-op（undefined → game/boot 用 ?. 安全跳过）。
     share: undefined,
   };

@@ -42,6 +42,9 @@ function mkNeutral(): InputState {
     actionHeld: false,
     actionReleased: false,
     jumpPressedAt: 0,
+    throwPressed: false,
+    throwHeld: false,
+    throwReleased: false,
   };
 }
 

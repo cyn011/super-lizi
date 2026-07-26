@@ -11,6 +11,7 @@ import damageJson from '../../config/damage-config.json';
 import inputJson from '../../config/input-config.json';
 import uiJson from '../../config/ui-config.json';
 import audioJson from '../../config/audio-config.json';
+import attackJson from '../../config/attack-config.json';
 import level1_1Json from '../../config/levels/1-1.json';
 import level1_2Json from '../../config/levels/1-2.json';
 import level2_1Json from '../../config/levels/2-1.json';
@@ -37,11 +38,18 @@ export const enemyConfig = enemyJson;
 export const economyConfig = economyJson;
 export const damageConfig = damageJson;
 export const inputConfig = inputJson as {
-  web: { left: string[]; right: string[]; jump: string[]; action: string[] };
-  wechat: { layout: string; buttons: Record<string, { x: number; y: number; r: number }> };
+  web: { left: string[]; right: string[]; jump: string[]; action: string[]; throw: string[] };
+  wechat: {
+    layout: string;
+    buttons: Record<string, { x: number; y: number; r: number }>;
+    pauseIcon?: { x: number; y: number; r: number };
+    gesture?: Record<string, number>;
+  };
 };
 export const uiConfig = uiJson;
 export const audioConfig = audioJson;
+/** 扔栗子机制配置（GDD 17 §6.1，集中可调，零硬编码）。 */
+export const attackConfig = attackJson;
 export const level1_1 = level1_1Json;
 
 // ---- 关卡注册表（S06 进度链）：id → LevelData，单一事实来源；game-scene 经此按 currentLevelId 取关 ----
@@ -63,13 +71,17 @@ export const webInputConfig: InputMapping = {
   right: inputConfig.web.right,
   jump: inputConfig.web.jump,
   action: inputConfig.web.action,
+  throw: inputConfig.web.throw,
 };
 // 微信：物理信号 = 虚拟按钮 id（由 wechat-touch 产出）。
+// - action 按钮（touch:action）→ INPUT_THROW（扔栗子，GDD 17 §5.1）
+// - 暂停图标（touch:pause，由 wechat-touch 命中 pauseIcon 产出）→ INPUT_ACTION（暂停）
 export const wechatInputConfig: InputMapping = {
   left: ['touch:left'],
   right: ['touch:right'],
   jump: ['touch:jump'],
-  action: ['touch:action'],
+  action: ['touch:pause'],
+  throw: ['touch:action'],
 };
 
 // ---- 聚合（供调试/快照）----

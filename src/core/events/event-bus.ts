@@ -25,6 +25,16 @@ export const ON_SILHOUETTE_ACTIVATED = 'ON_SILHOUETTE_ACTIVATED';
  */
 export const ON_SILHOUETTE_GHOST_SHIFT = 'ON_SILHOUETTE_GHOST_SHIFT';
 export const ON_PROJECTILE_SPAWN = 'ON_PROJECTILE_SPAWN';
+/** 扔栗子发射（GDD 17 §5.4）：payload `{ x, y, facing }`，驱动 sfx:chestnut_throw。 */
+export const ON_CHESTNUT_THROWN = 'ON_CHESTNUT_THROWN';
+/** 弹药变化（GDD 17 §5.4）：payload `{ ammo, cap }`，驱动弹药 HUD 刷新。 */
+export const ON_AMMO_CHANGED = 'ON_AMMO_CHANGED';
+/** 弹药耗尽时尝试投掷（GDD 17 §3.2，可选）：payload `{ ammo }`，驱动弱提示音 sfx:chestnut_empty。 */
+export const ON_AMMO_EMPTY = 'ON_AMMO_EMPTY';
+/** 栗子弹丸 vs 石炮炮弹对消（GDD 17 §3.5）：payload `{ x, y }`，驱动 sfx:chestnut_clink。 */
+export const ON_PROJECTILE_CANCEL = 'ON_PROJECTILE_CANCEL';
+/** 栗子弹丸命中可踩敌人（GDD 17 §7）：payload `{ type, x, y }`，驱动 sfx:chestnut_hit（与玩家踩杀的 enemy_death 区分）。 */
+export const ON_CHESTNUT_HIT = 'ON_CHESTNUT_HIT';
 export const ON_HURT = 'ON_HURT';
 export const ON_DEATH = 'ON_DEATH';
 export const ON_RESPAWN = 'ON_RESPAWN';

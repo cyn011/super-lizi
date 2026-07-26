@@ -1,20 +1,14 @@
 /**
- * ui/touch-buttons — 微信触屏四按钮可视化（art/ui/touch-buttons-spec §3-B 方案）。
+ * ui/touch-buttons — 微信触屏虚拟控件可视化（参考用户截图药丸长条 + 大圆钮风格）。
  *
- * 设计要点（对照 spec §5 工程参数表）：
- * - 仅 env==='wechat' 时挂载（由 game-scene 决策）。
- * - 命中区/坐标/半径来自 inputConfig.wechat.buttons（位置/半径**零变更**，与 wechat-touch 命中公式一致）。
- * - 4 个独立 Phaser.Container，每个内部 1 个 Graphics，按钮按下时独立 setScale+tween。
- * - 双层配色：方向键（left/right）白 0.18 描边 2px；动作键（jump/action）暖黄 #FFD23F 0.32 描边 3px。
- * - 按下态：scale 0.94（方向键）/ 0.92（动作键）+ 描边色切 #B5763E（栗色）+ 描边加粗 1px + 填充 alpha +0.15。
- * - 弹起：Phaser tween Back.Out，200ms 弹性回 1.0（自动过冲 1.0 → ~1.02 → 1.0）。
- * - action 预留态：setActionDisabled(true) → 整体 alpha ×0.6 + 描边改虚线（48 段 2 实 1 空 ≈ 4:2 比例）。
- * - 图标全部用 Phaser Graphics 原子 API 实时绘制（fillTriangle / fillRect），**零新增资产**。
+ * 设计要点：
+ * - 左下：左/右合并为一个"方向药丸"长条，中间竖线分隔，视觉连续、命中区分独立。
+ * - 右下：跳（暖黄大圆 + 白色上三角）、扔栗子（栗色大圆 + 白色栗子嫩芽）。
+ * - 右上：暂停小圆钮（白边 + 双竖线）。
+ * - 全部 Phaser Graphics 实时绘制（fillRoundedRect / strokeRoundedRect / fillTriangle 等），**零位图资产**（ADR-004）。
+ * - 命中区/坐标/半径仍来自 inputConfig.wechat.buttons，与 wechat-touch 命中公式一致，不破坏平台输入层。
  *
- * 接入策略（与 wechat-touch 解耦）：
- *   按下态从 platform.input.sample().down Set 同步。游戏场景在 stepSim 中调 syncDown(frame.down)，
- *   TouchButtons 内部检测边沿变化（按下/弹起）触发 tween + 内部 redraw。
- *   这样 wechat-touch.ts / input-config.json 完全不动；只动 ui 层 + game-scene 一处一行。
+ * 视觉风格：深色半透明底 + 白图标/白边，按下时缩回 + 描边切暖黄，整体比截图更干净、对比度更高。
  */
 import Phaser from 'phaser';
 import { inputConfig } from '../core/config';
@@ -26,7 +20,7 @@ export type ButtonType = 'direction' | 'action';
 /** 物理信号 id（来自 RawInputFrame.down）。对微信端为 'touch:left' / 'touch:right' / 'touch:jump' / 'touch:action'。 */
 export type SignalId = string;
 
-// ---- 常量表（导出用于测试 + 可供设计自检）----
+// ---- 常量表（导出用于测试 + 设计自检）----
 export const BUTTON_ORDER: readonly ButtonId[] = ['left', 'right', 'jump', 'action'] as const;
 export const BUTTON_IDS: readonly ButtonId[] = BUTTON_ORDER;
 export const BUTTON_TYPE: Record<ButtonId, ButtonType> = {
@@ -44,145 +38,170 @@ export function resolveButtonId(signalId: SignalId): ButtonId | null {
   return null;
 }
 
-// ---- 颜色（与 art-bible §3.1 + spec §5.3 严格对齐）----
-/** 描边色（统一：placeholder-spec §0 / spec §5.2） */
-const COLOR_OUTLINE = 0x2a1a12;
-/** 按下态描边色：栗色（spec §5.3，呼应栗宝 art-bible §4.2） */
-const COLOR_PRESSED_OUTLINE = 0xb5763e;
-/** 方向键填色：白（spec §5.2） */
-const COLOR_FILL_DIRECTION = 0xffffff;
-/** 动作键填色：暖黄 #FFD23F（art-bible §3.1 主色板） */
-const COLOR_FILL_ACTION = 0xffd23f;
-/** 图标色 = 描边色（spec §4.3，色盲安全 + 在暖黄上对比度 > 7:1） */
-const COLOR_ICON = COLOR_OUTLINE;
+// ---- 颜色（参考用户第二张截图：红色半透明药丸 + 白色箭头风格，在深棕色地面上高对比）----
+/** 控件深色底（栗壳棕），用于暂停图标 */
+const COLOR_BG_DARK = 0x3e2723;
+/** 方向药丸填充：警示红 #DC4438（暗 5%，半透明但高饱和，在蓝天/地面均可见） */
+const COLOR_FILL_DIRECTION = 0xdc4438;
+/** 动作键（跳）填充：暖黄 #F2C83C（暗 5%，art-bible §3.1） */
+const COLOR_FILL_ACTION = 0xf2c83c;
+/** 动作键（扔栗子）填充：栗色 #AC703B（暗 5%，art-bible §4.2，呼应栗宝） */
+const COLOR_FILL_THROW = 0xac703b;
+/** 默认描边：白边，在彩色底上清晰 */
+const COLOR_OUTLINE = 0xffffff;
+/** 按下态描边：暖黄高亮 */
+const COLOR_PRESSED_OUTLINE = 0xffd23f;
+/** 图标色：白 */
+const COLOR_ICON = 0xffffff;
 
-// ---- 视觉规格（spec §5.3 全量参数表，按钮可零成本切换）----
+// ---- 视觉规格（导出给测试回归）----
 export interface ButtonVisualSpec {
-  /** 填充色（不随按下变化） */
   fillColor: number;
-  /** 默认态填充 alpha（spec §5.3 表格） */
   fillAlphaDefault: number;
-  /** 按下态填充 alpha（默认 +0.15） */
   fillAlphaPressed: number;
-  /** 默认态描边宽度（方向键 2、动作键 3） */
   lineWidthDefault: number;
-  /** 按下态描边宽度（默认 +1px） */
   lineWidthPressed: number;
-  /** 默认态描边 alpha（方向键 0.85、动作键 0.95） */
   lineAlphaDefault: number;
-  /** 按下态描边 alpha（默认 +0.05~0.10） */
   lineAlphaPressed: number;
-  /** 按下态 scale（方向键 0.94、动作键 0.92；squash 强度差 0.02 强化动作键"重按"感） */
   pressedScale: number;
 }
 
 export const BUTTON_VISUAL_SPEC: Record<ButtonId, ButtonVisualSpec> = {
   left: {
     fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.18,
-    fillAlphaPressed: 0.33,
-    lineWidthDefault: 2,
-    lineWidthPressed: 3,
-    lineAlphaDefault: 0.85,
-    lineAlphaPressed: 0.95,
-    pressedScale: 0.94,
+    fillAlphaDefault: 0.82,
+    fillAlphaPressed: 0.95,
+    lineWidthDefault: 3,
+    lineWidthPressed: 4,
+    lineAlphaDefault: 1.0,
+    lineAlphaPressed: 1.0,
+    pressedScale: 0.97,
   },
   right: {
     fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.18,
-    fillAlphaPressed: 0.33,
-    lineWidthDefault: 2,
-    lineWidthPressed: 3,
-    lineAlphaDefault: 0.85,
-    lineAlphaPressed: 0.95,
-    pressedScale: 0.94,
+    fillAlphaDefault: 0.82,
+    fillAlphaPressed: 0.95,
+    lineWidthDefault: 3,
+    lineWidthPressed: 4,
+    lineAlphaDefault: 1.0,
+    lineAlphaPressed: 1.0,
+    pressedScale: 0.97,
   },
   jump: {
     fillColor: COLOR_FILL_ACTION,
-    fillAlphaDefault: 0.32,
-    fillAlphaPressed: 0.50,
-    lineWidthDefault: 3,
-    lineWidthPressed: 4,
-    lineAlphaDefault: 0.95,
+    fillAlphaDefault: 0.55,
+    fillAlphaPressed: 0.68,
+    lineWidthDefault: 4,
+    lineWidthPressed: 5,
+    lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.92,
   },
   action: {
-    fillColor: COLOR_FILL_ACTION,
-    fillAlphaDefault: 0.32,
-    fillAlphaPressed: 0.50,
-    lineWidthDefault: 3,
-    lineWidthPressed: 4,
-    lineAlphaDefault: 0.95,
+    fillColor: COLOR_FILL_THROW,
+    fillAlphaDefault: 0.55,
+    fillAlphaPressed: 0.68,
+    lineWidthDefault: 4,
+    lineWidthPressed: 5,
+    lineAlphaDefault: 1.0,
     lineAlphaPressed: 1.0,
     pressedScale: 0.92,
   },
 };
 
-/** 弹起弹性回弹 tween 参数（spec §5.4：Back.Out 1.0 → ~1.02 → 1.0）。 */
+/** 弹起弹性回弹 tween 参数。 */
 const RELEASE_TWEEN_MS = 200;
 const RELEASE_TWEEN_EASE = 'Back.Out';
-/** 虚线圆周采样段数（48 = 2 实 1 空循环，弧长比 ~2:1 ≈ spec §4.6 4 实 2 间隔）。 */
+/** 虚线圆周采样段数（48 = 2 实 1 空循环）。 */
 const DASH_SEGMENTS = 48;
 
-// ---- 按钮几何（按 inputConfig 归一化坐标 × 逻辑分辨率）----
-interface ButtonGeom {
+// ---- 几何 ----
+interface BarGeom {
+  cx: number;
+  cy: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+
+interface CircleGeom {
   cx: number;
   cy: number;
   r: number;
 }
 
-// ---- 单按钮内部状态机 ----
-class TouchButton {
-  readonly id: ButtonId;
-  readonly type: ButtonType;
-  readonly geom: ButtonGeom;
-  /** 容器：用于 setScale 缩放（中心 (0,0) 局部坐标 + setPosition 到 (cx,cy) 父坐标） */
-  readonly container: Phaser.GameObjects.Container;
-  /** 子 Graphics：相对容器中心 (0,0) 绘制 */
-  readonly g: Phaser.GameObjects.Graphics;
+// ---- 辅助：绘制虚线圆 ----
+function drawDashedCircle(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  color: number,
+  alpha: number,
+  lineWidth: number,
+): void {
+  g.lineStyle(lineWidth, color, alpha);
+  const step = (Math.PI * 2) / DASH_SEGMENTS;
+  for (let i = 0; i < DASH_SEGMENTS; i += 3) {
+    const a1 = i * step;
+    const a2 = (i + 2) * step;
+    const x1 = cx + Math.cos(a1) * r;
+    const y1 = cy + Math.sin(a1) * r;
+    const x2 = cx + Math.cos(a2) * r;
+    const y2 = cy + Math.sin(a2) * r;
+    g.lineBetween(x1, y1, x2, y2);
+  }
+}
 
+// ---- 左/右方向药丸 ----
+class TouchBar {
+  private readonly container: Phaser.GameObjects.Container;
+  private readonly g: Phaser.GameObjects.Graphics;
   private readonly scene: Phaser.Scene;
-  private pressed = false;
+  private readonly geom: BarGeom;
+  private readonly spec = BUTTON_VISUAL_SPEC.left;
+
+  private pressedLeft = false;
+  private pressedRight = false;
   private disabled = false;
 
-  constructor(scene: Phaser.Scene, id: ButtonId, geom: ButtonGeom) {
+  constructor(scene: Phaser.Scene, left: CircleGeom, right: CircleGeom) {
     this.scene = scene;
-    this.id = id;
-    this.type = BUTTON_TYPE[id];
-    this.geom = geom;
+    // 药丸覆盖左右两个命中圆的外接矩形，半径取二者较小者保证两端圆润一致。
+    const radius = Math.min(left.r, right.r);
+    const width = right.cx + right.r - (left.cx - left.r);
+    const height = radius * 2;
+    const cx = (left.cx + right.cx) / 2;
+    const cy = (left.cy + right.cy) / 2;
+    this.geom = { cx, cy, width, height, radius };
 
-    // 容器位于 (cx, cy)，内部 Graphics 坐标 (0,0) 即按钮中心 → setScale 以中心为基点
-    this.container = scene.add.container(geom.cx, geom.cy);
-    this.container.setDepth(1000); // 保持最上层（spec §5.6）
-    this.g = scene.add.graphics();
+    this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
+    this.g = scene.add.graphics().setScrollFactor(0);
     this.container.add(this.g);
-
     this.redraw();
   }
 
-  /** 切按下态：立即 squash（setScale）+ 弹起时 Back.Out 弹性回 1.0（spec §5.5 状态机）。 */
-  setPressed(pressed: boolean): void {
-    if (this.pressed === pressed) return;
-    this.pressed = pressed;
-    // 取消任何进行中的回弹 tween（避免"按下时 tween 还在把 scale 拉回 1.0"）
-    this.scene.tweens.killTweensOf(this.container);
-    if (pressed) {
-      // pointer-down 即时 squash（GameJuice 共识：按下瞬时反馈，30ms 内可达）
-      this.container.setScale(BUTTON_VISUAL_SPEC[this.id].pressedScale);
-    } else {
-      // 释放：Back.Out 自动过冲 1.0 → ~1.02 → 1.0
-      this.scene.tweens.add({
-        targets: this.container,
-        scale: 1.0,
-        duration: RELEASE_TWEEN_MS,
-        ease: RELEASE_TWEEN_EASE,
-      });
+  setPressed(id: 'left' | 'right', pressed: boolean): void {
+    const prevAny = this.pressedLeft || this.pressedRight;
+    if (id === 'left') this.pressedLeft = pressed;
+    else this.pressedRight = pressed;
+    const nowAny = this.pressedLeft || this.pressedRight;
+    if (prevAny !== nowAny) {
+      this.scene.tweens.killTweensOf(this.container);
+      if (nowAny) {
+        this.container.setScale(this.spec.pressedScale);
+      } else {
+        this.scene.tweens.add({
+          targets: this.container,
+          scale: 1.0,
+          duration: RELEASE_TWEEN_MS,
+          ease: RELEASE_TWEEN_EASE,
+        });
+      }
     }
     this.redraw();
   }
 
-  /** action 预留态（spec §4.6）：整体 alpha ×0.6 + 描边改虚线 + 图标 alpha ×0.6。 */
   setDisabled(disabled: boolean): void {
     if (this.disabled === disabled) return;
     this.disabled = disabled;
@@ -194,119 +213,241 @@ class TouchButton {
     this.container.destroy();
   }
 
-  // ---- 内部绘制（一次 redraw = 一次状态快照） ----
+  private redraw(): void {
+    const { width: w, height: h, radius: r } = this.geom;
+    const g = this.g;
+    g.clear();
+
+    const anyPressed = this.pressedLeft || this.pressedRight;
+    const lineWidth = anyPressed ? this.spec.lineWidthPressed : this.spec.lineWidthDefault;
+    const lineAlpha = (anyPressed ? this.spec.lineAlphaPressed : this.spec.lineAlphaDefault) * (this.disabled ? 0.6 : 1);
+    const lineColor = anyPressed ? COLOR_PRESSED_OUTLINE : COLOR_OUTLINE;
+    const baseAlpha = this.disabled ? 0.3 : 1;
+
+    const x = -w / 2;
+    const y = -h / 2;
+    const hw = w / 2;
+
+    // 左半
+    const leftAlpha = (this.pressedLeft ? this.spec.fillAlphaPressed : this.spec.fillAlphaDefault) * baseAlpha;
+    g.fillStyle(this.spec.fillColor, leftAlpha);
+    g.fillRoundedRect(x, y, hw, h, { tl: r, tr: 0, bl: r, br: 0 });
+
+    // 右半
+    const rightAlpha = (this.pressedRight ? this.spec.fillAlphaPressed : this.spec.fillAlphaDefault) * baseAlpha;
+    g.fillStyle(this.spec.fillColor, rightAlpha);
+    g.fillRoundedRect(x + hw, y, hw, h, { tl: 0, tr: r, bl: 0, br: r });
+
+    // 外描边
+    g.lineStyle(lineWidth, lineColor, lineAlpha);
+    g.strokeRoundedRect(x, y, w, h, r);
+
+    // 中间分隔线
+    g.lineStyle(2, COLOR_OUTLINE, 0.6 * baseAlpha);
+    g.lineBetween(0, -h / 2 + r * 0.3, 0, h / 2 - r * 0.3);
+
+    // 左/右箭头
+    g.fillStyle(COLOR_ICON, this.disabled ? 0.5 : 1.0);
+    const arrowW = h * 0.35;
+    const arrowH = h * 0.45;
+    // 左箭头
+    const lx = -hw / 2;
+    g.fillTriangle(lx - arrowW / 2, 0, lx + arrowW / 2, -arrowH / 2, lx + arrowW / 2, arrowH / 2);
+    g.fillRect(lx - arrowW / 2 - 3, -2, 3, 4);
+    // 右箭头
+    const rx = hw / 2;
+    g.fillTriangle(rx + arrowW / 2, 0, rx - arrowW / 2, -arrowH / 2, rx - arrowW / 2, arrowH / 2);
+    g.fillRect(rx + arrowW / 2, -2, 3, 4);
+  }
+}
+
+// ---- 跳 / 扔栗子 大圆钮 ----
+class TouchCircle {
+  readonly id: ButtonId;
+  private readonly container: Phaser.GameObjects.Container;
+  private readonly g: Phaser.GameObjects.Graphics;
+  private readonly scene: Phaser.Scene;
+  private readonly geom: CircleGeom;
+  private readonly spec: ButtonVisualSpec;
+
+  private pressed = false;
+  private disabled = false;
+
+  constructor(scene: Phaser.Scene, id: 'jump' | 'action', geom: CircleGeom) {
+    this.scene = scene;
+    this.id = id;
+    this.geom = geom;
+    this.spec = BUTTON_VISUAL_SPEC[id];
+
+    this.container = scene.add.container(geom.cx, geom.cy).setDepth(1000).setScrollFactor(0);
+    this.g = scene.add.graphics().setScrollFactor(0);
+    this.container.add(this.g);
+    this.redraw();
+  }
+
+  setPressed(pressed: boolean): void {
+    if (this.pressed === pressed) return;
+    this.pressed = pressed;
+    this.scene.tweens.killTweensOf(this.container);
+    if (pressed) {
+      this.container.setScale(this.spec.pressedScale);
+    } else {
+      this.scene.tweens.add({
+        targets: this.container,
+        scale: 1.0,
+        duration: RELEASE_TWEEN_MS,
+        ease: RELEASE_TWEEN_EASE,
+      });
+    }
+    this.redraw();
+  }
+
+  setDisabled(disabled: boolean): void {
+    if (this.disabled === disabled) return;
+    this.disabled = disabled;
+    this.redraw();
+  }
+
+  destroy(): void {
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.destroy();
+  }
+
   private redraw(): void {
     const { r } = this.geom;
     const g = this.g;
-    const spec = BUTTON_VISUAL_SPEC[this.id];
+    const spec = this.spec;
     g.clear();
 
-    // 1. 填充圆（按下 +0.15 alpha；disabled ×0.6）
     const fillAlpha = (this.pressed ? spec.fillAlphaPressed : spec.fillAlphaDefault) * (this.disabled ? 0.6 : 1);
+    const lineWidth = this.pressed ? spec.lineWidthPressed : spec.lineWidthDefault;
+    const lineAlpha = (this.pressed ? spec.lineAlphaPressed : spec.lineAlphaDefault) * (this.disabled ? 0.6 : 1);
+    const lineColor = this.pressed ? COLOR_PRESSED_OUTLINE : COLOR_OUTLINE;
+
+    // 填充圆
     g.fillStyle(spec.fillColor, fillAlpha);
     g.fillCircle(0, 0, r);
 
-    // 2. 描边（按下切栗色 + 加粗 1px；disabled 改虚线 + alpha ×0.6）
-    const lineWidth = this.pressed ? spec.lineWidthPressed : spec.lineWidthDefault;
-    const lineAlphaBase = this.pressed ? spec.lineAlphaPressed : spec.lineAlphaDefault;
-    const lineColor = this.pressed ? COLOR_PRESSED_OUTLINE : COLOR_OUTLINE;
-    const lineAlpha = lineAlphaBase * (this.disabled ? 0.6 : 1);
+    // 描边（disabled 改虚线）
     if (this.disabled) {
-      this.drawDashedCircle(g, 0, 0, r, lineColor, lineAlpha, lineWidth);
+      drawDashedCircle(g, 0, 0, r, lineColor, lineAlpha * 0.6, lineWidth);
     } else {
       g.lineStyle(lineWidth, lineColor, lineAlpha);
       g.strokeCircle(0, 0, r);
     }
 
-    // 3. 图标（统一 fillStyle 一次，原子 API 实时绘制；disabled alpha ×0.6）
-    g.fillStyle(COLOR_ICON, this.disabled ? 0.6 : 1.0);
-    this.drawIcon(g);
-  }
-
-  /** 虚线圆：48 段 lineBetween 循环（2 实 1 空 ≈ 4 实 2 间隔弧长比，spec §4.6）。 */
-  private drawDashedCircle(
-    g: Phaser.GameObjects.Graphics,
-    cx: number,
-    cy: number,
-    r: number,
-    color: number,
-    alpha: number,
-    lineWidth: number,
-  ): void {
-    g.lineStyle(lineWidth, color, alpha);
-    const step = (Math.PI * 2) / DASH_SEGMENTS;
-    for (let i = 0; i < DASH_SEGMENTS; i += 3) {
-      // 每 3 段中前 2 段为实线（lineBetween 画线段）
-      const a1 = i * step;
-      const a2 = (i + 2) * step;
-      const x1 = cx + Math.cos(a1) * r;
-      const y1 = cy + Math.sin(a1) * r;
-      const x2 = cx + Math.cos(a2) * r;
-      const y2 = cy + Math.sin(a2) * r;
-      g.lineBetween(x1, y1, x2, y2);
+    // 内圈高光（让大圆钮更立体）
+    if (!this.disabled) {
+      g.lineStyle(2, 0xffffff, 0.15);
+      g.strokeCircle(0, 0, r * 0.82);
     }
+
+    // 图标
+    g.fillStyle(COLOR_ICON, this.disabled ? 0.6 : 1.0);
+    this.drawIcon(g, r);
   }
 
-  /** 像素图标：4 钮 4 套，全部 fillTriangle/fillRect 实时绘制（spec §5.2 表格）。 */
-  private drawIcon(g: Phaser.GameObjects.Graphics): void {
-    switch (this.id) {
-      case 'left':
-        // ◀：大三角（尖端朝左）+ 2 个尾翼小方块
-        g.fillTriangle(-10, 0, 6, -8, 6, 8);
-        g.fillRect(-12, -3, 4, 2);
-        g.fillRect(-12, 1, 4, 2);
-        break;
-      case 'right':
-        // ▶：left 的水平镜像
-        g.fillTriangle(10, 0, -6, -8, -6, 8);
-        g.fillRect(8, -3, 4, 2);
-        g.fillRect(8, 1, 4, 2);
-        break;
-      case 'jump':
-        // ▲：大三角朝上 + 底部 1px 横线（"脚"）
-        g.fillTriangle(0, -10, -8, 4, 8, 4);
-        g.fillRect(-10, 6, 20, 2);
-        break;
-      case 'action':
-        // ✦：八角光芒（"+" 4 段 + 4 个 4×4 斜位小方块）
-        g.fillRect(-10, -1, 20, 2); // 横
-        g.fillRect(-1, -10, 2, 20); // 竖
-        g.fillRect(-6, -6, 4, 4); // 斜 ↖
-        g.fillRect(2, -6, 4, 4); // 斜 ↗
-        g.fillRect(-6, 2, 4, 4); // 斜 ↙
-        g.fillRect(2, 2, 4, 4); // 斜 ↘
-        break;
+  private drawIcon(g: Phaser.GameObjects.Graphics, r: number): void {
+    if (this.id === 'jump') {
+      // 上三角（箭头）+ 底部横线
+      const h = r * 0.55;
+      const w = r * 0.6;
+      const t = r * 0.18;
+      g.fillTriangle(0, -h / 2 - 2, -w / 2, h / 2 - 2, w / 2, h / 2 - 2);
+      g.fillRect(-w / 2 - 2, h / 2, w + 4, 3);
+      // 加一条小横线表示"地面"
+      g.fillStyle(COLOR_ICON, 0.6);
+      g.fillRect(-w / 2 - 4, h / 2 + 4, w + 8, 2);
+    } else {
+      // 栗子：圆身 + 顶部嫩芽（呼应栗宝）
+      const bodyR = r * 0.35;
+      g.fillCircle(0, r * 0.1, bodyR);
+      // 栗身顶部小缺口
+      g.fillStyle(this.spec.fillColor, 1.0);
+      g.fillCircle(0, -r * 0.28, r * 0.12);
+      // 重新画图标色嫩芽
+      g.fillStyle(COLOR_ICON, 1.0);
+      g.fillTriangle(-r * 0.12, -r * 0.22, -r * 0.22, -r * 0.45, 0, -r * 0.28);
+      g.fillTriangle(r * 0.12, -r * 0.22, r * 0.22, -r * 0.45, 0, -r * 0.28);
     }
   }
 }
 
-/** 顶层：4 钮聚合 + 与 RawInputProvider 的同步入口。 */
+// ---- 暂停小圆钮 ----
+class PauseIcon {
+  private readonly g: Phaser.GameObjects.Graphics;
+
+  constructor(scene: Phaser.Scene, cx: number, cy: number, r: number) {
+    this.g = scene.add.graphics().setDepth(1000).setScrollFactor(0);
+
+    // 圆底
+    this.g.fillStyle(COLOR_BG_DARK, 0.6);
+    this.g.fillCircle(cx, cy, r);
+    this.g.lineStyle(2, COLOR_OUTLINE, 0.9);
+    this.g.strokeCircle(cx, cy, r);
+
+    // 双竖线
+    const barW = Math.max(2, r * 0.18);
+    const barH = r * 0.55;
+    const gap = barW * 0.8;
+    this.g.fillStyle(COLOR_ICON, 1.0);
+    this.g.fillRect(cx - gap - barW, cy - barH / 2, barW, barH);
+    this.g.fillRect(cx + gap, cy - barH / 2, barW, barH);
+  }
+
+  destroy(): void {
+    this.g.destroy();
+  }
+}
+
+// ---- 顶层：控件聚合 + 与 RawInputProvider 的同步入口 ----
 export class TouchButtons {
-  private readonly buttons: Map<ButtonId, TouchButton>;
+  private readonly bar: TouchBar;
+  private readonly circles: Record<'jump' | 'action', TouchCircle>;
+  private readonly pauseIcon?: PauseIcon;
   /** 上一次同步的 down 集合（用于边沿检测：触发 squash/弹起 tween） */
   private readonly down: Set<ButtonId> = new Set();
 
   constructor(scene: Phaser.Scene) {
-    this.buttons = new Map();
     const cfg = inputConfig.wechat.buttons;
-    for (const id of BUTTON_ORDER) {
-      const b = cfg[id];
-      if (!b) continue; // 容错：config 缺键跳过
-      const geom: ButtonGeom = {
-        cx: b.x * LOGICAL_WIDTH,
-        cy: b.y * LOGICAL_HEIGHT,
-        r: b.r * LOGICAL_WIDTH, // 与 wechat-touch 命中公式一致（按宽换算）
-      };
-      this.buttons.set(id, new TouchButton(scene, id, geom));
+    const left: CircleGeom = {
+      cx: cfg.left.x * LOGICAL_WIDTH,
+      cy: cfg.left.y * LOGICAL_HEIGHT,
+      r: cfg.left.r * LOGICAL_WIDTH,
+    };
+    const right: CircleGeom = {
+      cx: cfg.right.x * LOGICAL_WIDTH,
+      cy: cfg.right.y * LOGICAL_HEIGHT,
+      r: cfg.right.r * LOGICAL_WIDTH,
+    };
+    this.bar = new TouchBar(scene, left, right);
+
+    this.circles = {
+      jump: new TouchCircle(scene, 'jump', {
+        cx: cfg.jump.x * LOGICAL_WIDTH,
+        cy: cfg.jump.y * LOGICAL_HEIGHT,
+        r: cfg.jump.r * LOGICAL_WIDTH,
+      }),
+      action: new TouchCircle(scene, 'action', {
+        cx: cfg.action.x * LOGICAL_WIDTH,
+        cy: cfg.action.y * LOGICAL_HEIGHT,
+        r: cfg.action.r * LOGICAL_WIDTH,
+      }),
+    };
+
+    const pIcon = inputConfig.wechat.pauseIcon;
+    if (pIcon) {
+      this.pauseIcon = new PauseIcon(
+        scene,
+        pIcon.x * LOGICAL_WIDTH,
+        pIcon.y * LOGICAL_HEIGHT,
+        pIcon.r * LOGICAL_WIDTH,
+      );
     }
   }
 
   /**
    * 由场景固定步循环调：传入 platform.input.sample().down，TouchButtons 自检边沿并触发 tween。
-   * - 新进入 down：对应按钮 setPressed(true)（即时 squash + 重绘按下态）
-   * - 离开 down：对应按钮 setPressed(false)（Back.Out 200ms 弹性回 1.0 + 重绘默认态）
-   * - 未变化：不重绘（spec §5.6 静止态 0 重绘）
-   *
    * 不修改 wechat-touch.ts：通过既有的 RawInputFrame.down 这条渠道同步，单一事实来源保持。
    */
   syncDown(downSet: Set<SignalId>): void {
@@ -319,25 +460,26 @@ export class TouchButtons {
       const was = this.down.has(id);
       const now = next.has(id);
       if (was !== now) {
-        this.buttons.get(id)?.setPressed(now);
+        if (id === 'left' || id === 'right') {
+          this.bar.setPressed(id, now);
+        } else {
+          this.circles[id].setPressed(now);
+        }
       }
     }
-    // 复制而非直接持有外部 Set（避免外部清空/重置后我们读到空集）
     this.down.clear();
     for (const id of next) this.down.add(id);
   }
 
-  /**
-   * action 预留态：disabled=true 时该按钮整体 alpha ×0.6 + 描边改虚线（spec §4.6）。
-   * 当 action 尚未绑定功能时由场景调用一次即可；后续启用再调 false 恢复。
-   */
+  /** action 预留态：disabled=true 时该按钮整体 alpha ×0.6 + 描边改虚线。 */
   setActionDisabled(disabled: boolean): void {
-    this.buttons.get('action')?.setDisabled(disabled);
+    this.circles.action.setDisabled(disabled);
   }
 
   destroy(): void {
-    for (const b of this.buttons.values()) b.destroy();
-    this.buttons.clear();
+    this.bar.destroy();
+    for (const c of Object.values(this.circles)) c.destroy();
+    this.pauseIcon?.destroy();
     this.down.clear();
   }
 }

@@ -5,18 +5,16 @@
  * 微信模拟器鼠标模式下 mousedown/mouseup 不触发，只触发 click → 退化为
  * "短按 100ms"语义：按一下 = 一跳/一步（~6 帧 @ 60fps，足够触发 controller 反馈）。
  * 真机触屏不受影响（仍走 touch 路径）。
- * 按钮位置来自 inputConfig.wechat.buttons：左 (0.08, 0.82) r=0.07, 跳 (0.82, 0.82) r=0.08。
+ * 按钮位置来自 inputConfig.wechat.buttons，测试中 deviceW === logicalW。
  * 设备/逻辑均为 512×288（测试环境无 wx.getSystemInfoSync）。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WechatTouchProvider } from '../../../src/platform/wechat/wechat-touch';
 import { LOGICAL_WIDTH, LOGICAL_HEIGHT } from '../../../src/platform/detect';
+import { inputConfig } from '../../../src/core/config';
 
 function buttonCenterDevice(id: 'left' | 'right' | 'jump' | 'action'): { x: number; y: number } {
-  const b = (id === 'left') ? { x: 0.08, y: 0.82 }
-    : (id === 'right') ? { x: 0.22, y: 0.82 }
-    : (id === 'jump') ? { x: 0.82, y: 0.82 }
-    : { x: 0.92, y: 0.7 };
+  const b = inputConfig.wechat.buttons[id];
   // 测试中 deviceW === logicalW，转换比例 = 1
   return { x: b.x * LOGICAL_WIDTH, y: b.y * LOGICAL_HEIGHT };
 }

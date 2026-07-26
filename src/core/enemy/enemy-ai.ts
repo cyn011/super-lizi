@@ -624,6 +624,17 @@ export class EnemyAI implements StompableHazard {
     this.dead = true;
     this.state = 'dead';
   }
+
+  /**
+   * 栗子打断冲锋（GDD 17 §7）：chong_feng 被栗子命中 → 进入 stun 状态 `ms` 毫秒（与撞墙 stun 同态）。
+   * 仅对 chong_feng 生效（其余敌人不进 stun 态）；已死亡忽略。stun 期 overlaps 返回 false（non-hazard，安全越过）。
+   */
+  applyStun(ms: number): void {
+    if (this.dead || this.type !== 'chong_feng') return;
+    this.state = 'stun';
+    this.stunTimer = ms;
+    this.vx = 0;
+  }
 }
 
 /**

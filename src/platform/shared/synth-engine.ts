@@ -93,6 +93,11 @@ export const SFX_BASE_GAIN: Record<string, number> = {
   'sfx:projectile_fire': 0.25,
   // §3.1 表未列 double_jump（仅 §2 行 2 描述），此处据 §2 派生补全，使 ON_DOUBLE_JUMP 预留映射可用。
   'sfx:double_jump': 0.45,
+  // GDD 17 扔栗子机制 4 音（audio-design §3.1 派生，统一"木质/清脆"音色）
+  'sfx:chestnut_throw': 0.40,
+  'sfx:chestnut_empty': 0.30,
+  'sfx:chestnut_clink': 0.35,
+  'sfx:chestnut_hit': 0.45,
 };
 
 /** SFX name → 合成规格（全部来自 audio-design.md §3.1，多音类按序排布）。 */
@@ -176,6 +181,24 @@ export const SFX_SPECS: Record<string, SfxSpec> = {
   'sfx:double_jump': {
     // §2 行 2 描述（§3.1 未列）：三角 480→700，90ms
     tones: [{ type: 'triangle', f0: 480, f1: 700, t0: 0, dur: 0.09, attack: 0.005, release: 0.085, gain: 1 }],
+  },
+  // GDD 17 扔栗子机制 4 音（木质短促 / 清脆对消）
+  'sfx:chestnut_throw': {
+    // 投掷：短促下滑"噗"声（三角 520→200，80ms）
+    tones: [{ type: 'triangle', f0: 520, f1: 200, t0: 0, dur: 0.08, attack: 0.003, release: 0.077, gain: 1 }],
+  },
+  'sfx:chestnut_empty': {
+    // 空弹：低频闷响提示（正弦 180→120，120ms）
+    tones: [{ type: 'sine', f0: 180, f1: 120, t0: 0, dur: 0.12, attack: 0.006, release: 0.114, gain: 1 }],
+  },
+  'sfx:chestnut_clink': {
+    // 对消：清脆双音金属感（方波 900→1400，60ms）
+    tones: [{ type: 'square', f0: 900, f1: 1400, t0: 0, dur: 0.06, attack: 0.002, release: 0.058, gain: 1 }],
+  },
+  'sfx:chestnut_hit': {
+    // 命中可踩敌人：木质击打 + 短噪（方波 600→260，70ms + 轻噪）
+    tones: [{ type: 'square', f0: 600, f1: 260, t0: 0, dur: 0.07, attack: 0.003, release: 0.067, gain: 1 }],
+    noise: { t0: 0, dur: 0.02, gain: 0.3 },
   },
 };
 

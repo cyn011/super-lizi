@@ -1,0 +1,15 @@
+{
+  "chestnutSpeed": 320,
+  "chestnutGravity": 0,
+  "chestnutCooldownMs": 220,
+  "chestnutMaxRange": 320,
+  "chestnutWidth": 12,
+  "chestnutHeight": 12,
+  "ammoCap": 8,
+  "ammoStart": 5,
+  "pickupAmount": 5,
+  "enemyStunMs": 800,
+  "scorePerKill": 100,
+  "multiJumpStageUnlock": "fruit",
+  "multiJumpBonus": 1
+}

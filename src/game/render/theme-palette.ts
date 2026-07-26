@@ -7,7 +7,7 @@
  * 契约对齐：art-director 的 art/cave-biome-spec.md §6 为本解析器的权威接口（THEME_PALETTES /
  * ThemePalette 8 语义槽 + metadata.theme 联合类型取值）。本文件按其 hex 落地。
  *
- *  - 'grass'（默认/1-1/1-2）：**刻意保持现有暖色硬编码**（task 红铁律：1-1/1-2 不受影响）。
+ *  - 'grass'（默认/1-1）：**刻意保持现有暖色硬编码**（task 红铁律：1-1 不受影响；1-2 已切 mountain=cave 别名）。
  *    注：art 文档 §5/§6.3 建议将草地越界棕迁回锁色板，属未来 reconcile，本任务不动旧关。
  *  - 'cave'（2-1）：冷暗洞穴，hex 全部取自 art/cave-biome-spec.md §6.2 权威映射——
  *    岩壁 #4A78C0 / 描边 #2A1A12 / 火光 #F2933C / 晶体核心 #FFD23F / 辉光 #6E7BF2 /
@@ -44,7 +44,7 @@ export interface ThemePalette {
   danger: number;
 }
 
-/** 草原调色板（与 1-1/1-2 现有硬编码色完全一致，保证零回归）。 */
+/** 草原调色板（与 1-1 现有硬编码色一致，保证零回归；1-2 已切 mountain=cave 别名，不在此处）。 */
 const GRASS: ThemePalette = {
   bg: null, // 草原关不绘背景层（保持原行为）
   rockFace: 0x3a2a1f, // 现有瓦片填充（暖棕岩土，越界色但本任务不动旧关）
@@ -110,6 +110,9 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   cave: CAVE,
   vine_forest: VINE_FOREST,
   storm_sky: STORM_SKY,
+  // 山川 mountain = 室外山道版 cave 调色板（art-theme 复用结论：零新资产、零新增 hex）。
+  // 1-2 切 mountain 即借用冷蓝岩壁 cave palette，引擎 resolveBiome 自动换肤。
+  mountain: CAVE,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

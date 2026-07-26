@@ -96,7 +96,7 @@ describe('biome 解析器（theme → theme-palette，对齐 art/cave-biome-spec
     expect(pal.crystalCore).toBe(0xffd23f);
     expect(pal.outline).toBe(0x2a1a12);
   });
-  it('grass → 草原默认暖色（bg=null，保持 1-1/1-2 零改动）', () => {
+  it('grass → 草原默认暖色（bg=null，保持 1-1 零改动；1-2 已切 mountain 不影响 grass palette）', () => {
     const pal = resolveBiome('grass');
     expect(pal.bg).toBeNull();
     expect(pal.rockFace).toBe(0x3a2a1f);

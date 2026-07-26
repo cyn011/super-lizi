@@ -537,25 +537,131 @@
     }
   ],
   "entities": [
-    { "type": "ci_li", "x": 320, "y": 200 },
-    { "type": "ci_li", "x": 560, "y": 200 },
-    { "type": "chong_feng", "x": 880, "y": 200 },
-    { "type": "du_fu", "x": 720, "y": 120 },
-    { "type": "shi_pao", "x": 704, "y": 100 },
-    { "type": "coin", "x": 200, "y": 200 },
-    { "type": "coin", "x": 400, "y": 200 },
-    { "type": "coin", "x": 480, "y": 200 },
-    { "type": "coin", "x": 620, "y": 150 },
-    { "type": "coin", "x": 760, "y": 96 },
-    { "type": "coin", "x": 840, "y": 200 },
-    { "type": "coin", "x": 1080, "y": 200 },
-    { "type": "seed", "x": 380, "y": 200, "seedId": "seed_01" },
-    { "type": "seed", "x": 1010, "y": 200, "seedId": "seed_02" },
-    { "type": "seed", "x": 600, "y": 200, "seedId": "seed_03" },
-    { "type": "seed", "x": 920, "y": 200, "seedId": "seed_04" },
-    { "type": "seed", "x": 1100, "y": 200, "seedId": "seed_05" },
-    { "type": "seed", "x": 1150, "y": 200, "seedId": "seed_06" },
-    { "type": "checkpoint", "x": 960, "y": 176 }
+    {
+      "type": "ci_li",
+      "x": 320,
+      "y": 200
+    },
+    {
+      "type": "ci_li",
+      "x": 560,
+      "y": 200
+    },
+    {
+      "type": "chong_feng",
+      "x": 880,
+      "y": 200
+    },
+    {
+      "type": "du_fu",
+      "x": 720,
+      "y": 120
+    },
+    {
+      "type": "shi_pao",
+      "x": 704,
+      "y": 100
+    },
+    {
+      "type": "coin",
+      "x": 200,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 400,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 480,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 620,
+      "y": 150
+    },
+    {
+      "type": "coin",
+      "x": 760,
+      "y": 96
+    },
+    {
+      "type": "coin",
+      "x": 840,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 1080,
+      "y": 200
+    },
+    {
+      "type": "seed",
+      "x": 380,
+      "y": 200,
+      "seedId": "seed_01"
+    },
+    {
+      "type": "seed",
+      "x": 1010,
+      "y": 200,
+      "seedId": "seed_02"
+    },
+    {
+      "type": "seed",
+      "x": 600,
+      "y": 200,
+      "seedId": "seed_03"
+    },
+    {
+      "type": "seed",
+      "x": 920,
+      "y": 200,
+      "seedId": "seed_04"
+    },
+    {
+      "type": "seed",
+      "x": 1100,
+      "y": 200,
+      "seedId": "seed_05"
+    },
+    {
+      "type": "seed",
+      "x": 1150,
+      "y": 200,
+      "seedId": "seed_06"
+    },
+    {
+      "type": "checkpoint",
+      "x": 960,
+      "y": 176
+    },
+    {
+      "type": "chestnut",
+      "x": 150,
+      "y": 200,
+      "params": {
+        "amount": 5
+      }
+    },
+    {
+      "type": "chestnut",
+      "x": 680,
+      "y": 200,
+      "params": {
+        "amount": 5
+      }
+    },
+    {
+      "type": "chestnut",
+      "x": 1000,
+      "y": 200,
+      "params": {
+        "amount": 5
+      }
+    }
   ],
   "props": [],
   "checkpoints": [],
@@ -571,11 +677,27 @@
     "bpm": 120,
     "grid": 8,
     "tracks": [
-      { "target": "bp_pulse_a", "pattern": "SSSSSSSSGGGGGGGG" }
+      {
+        "target": "bp_pulse_a",
+        "pattern": "SSSSSSSSGGGGGGGG"
+      }
     ]
   },
   "beatPlatforms": [
-    { "id": "bp_pulse_a", "initial": "solid", "tiles": [ { "tx": 17, "ty": 4 }, { "tx": 18, "ty": 4 } ] }
+    {
+      "id": "bp_pulse_a",
+      "initial": "solid",
+      "tiles": [
+        {
+          "tx": 17,
+          "ty": 4
+        },
+        {
+          "tx": 18,
+          "ty": 4
+        }
+      ]
+    }
   ],
   "metadata": {
     "name": "翠野序章",

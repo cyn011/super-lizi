@@ -83,8 +83,8 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
   });
 
   it('entities 透传 + 敌人由实体生成 EnemyAI（S04-1 ci_li/du_fu + S04-2 chong_feng/shi_pao）+ S04-3 实体分桶', () => {
-    // 5 敌(ci_li×2, chong_feng×1, du_fu×1, shi_pao×1) + 7 币 + 6 种子 + 1 检查点 = 19
-    expect(rt.entities.length).toBe(19);
+    // 5 敌(ci_li×2, chong_feng×1, du_fu×1, shi_pao×1) + 7 币 + 6 种子 + 1 检查点 + 3 栗子补给(GDD 17) = 22
+    expect(rt.entities.length).toBe(22);
     expect(rt.enemies.length).toBe(5);
     expect(rt.enemies[0].type).toBe('ci_li');
     expect(rt.enemies[1].type).toBe('ci_li');

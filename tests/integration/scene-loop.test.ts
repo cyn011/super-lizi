@@ -32,6 +32,9 @@ function mkInput(over: Partial<InputState> = {}): InputState {
     actionHeld: false,
     actionReleased: false,
     jumpPressedAt: 0,
+    throwPressed: false,
+    throwHeld: false,
+    throwReleased: false,
     ...over,
   };
 }
@@ -280,9 +283,10 @@ describe('C1 同步协议 + C2 手感集成验证 (headless, control-list §1)',
 
   it('action 字段正确透传（controller 暂未消费，F10）', () => {
     const ia = new InputAbstraction(wechatInputConfig);
+    // GDD 17 §5：action 通道现映射为暂停图标（touch:pause），throw 通道映射为原 action 按钮（touch:action）。
     const frame = {
-      down: new Set(['touch:action']),
-      pressedEdge: new Set(['touch:action']),
+      down: new Set(['touch:pause']),
+      pressedEdge: new Set(['touch:pause']),
       releasedEdge: new Set<string>(),
     };
     const s = ia.sample(frame, 123);
@@ -294,6 +298,19 @@ describe('C1 同步协议 + C2 手感集成验证 (headless, control-list §1)',
     runStepSim({ body, controller: cc, world: undefined }, s, true, STEP_DT);
     expect(cc.state.vx).toBe(0);
     expect(cc.state.vy).toBe(0);
+  });
+
+  it('throw 通道正确透传（GDD 17 §5：touch:action → throwPressed）', () => {
+    const ia = new InputAbstraction(wechatInputConfig);
+    const frame = {
+      down: new Set(['touch:action']),
+      pressedEdge: new Set(['touch:action']),
+      releasedEdge: new Set<string>(),
+    };
+    const s = ia.sample(frame, 123);
+    expect(s.throwHeld).toBe(true);
+    expect(s.throwPressed).toBe(true);
+    expect(s.actionPressed).toBe(false); // touch:action 不再触发暂停
   });
 
   it('C4 微信 touch:jump 经 wechatInputConfig → consume → 真实起跳（headless 链路）', () => {

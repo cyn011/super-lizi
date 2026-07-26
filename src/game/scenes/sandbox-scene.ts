@@ -80,6 +80,9 @@ export class SandboxScene extends Phaser.Scene {
       actionHeld: false,
       actionReleased: false,
       jumpPressedAt: simTimeMs,
+      throwPressed: false,
+      throwHeld: false,
+      throwReleased: false,
     };
 
     const prevVy = this.controller.state.vy;

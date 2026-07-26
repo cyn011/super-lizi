@@ -12,6 +12,7 @@ export const INPUT_LEFT = 'INPUT_LEFT';
 export const INPUT_RIGHT = 'INPUT_RIGHT';
 export const INPUT_JUMP = 'INPUT_JUMP';
 export const INPUT_ACTION = 'INPUT_ACTION';
+export const INPUT_THROW = 'INPUT_THROW';
 
 /**
  * 单端输入映射：每个抽象动作对应一组「物理信号 id」。
@@ -23,6 +24,8 @@ export interface InputMapping {
   right: string[];
   jump: string[];
   action: string[];
+  /** 扔栗子信号（GDD 17 §5.1，第 5 抽象信号）。Web=KeyJ，微信=touch:throw。 */
+  throw: string[];
 }
 
 /**
@@ -41,6 +44,10 @@ export interface InputState {
   actionHeld: boolean;
   actionReleased: boolean;
   jumpPressedAt: number;
+  /** 第 5 抽象信号：扔栗子（GDD 17 §5.1）。无 throwPressedAt（与 action 对称，铁律简洁）。 */
+  throwPressed: boolean;
+  throwHeld: boolean;
+  throwReleased: boolean;
 }
 
 const EMPTY_STATE: InputState = {
@@ -53,6 +60,9 @@ const EMPTY_STATE: InputState = {
   actionHeld: false,
   actionReleased: false,
   jumpPressedAt: 0,
+  throwPressed: false,
+  throwHeld: false,
+  throwReleased: false,
 };
 
 export class InputAbstraction {
@@ -82,6 +92,9 @@ export class InputAbstraction {
       actionReleased: released(m.action),
       // 仅在「本帧刚按下跳」时记录仿真时钟；否则 0（与上一帧无关，零平台分支）
       jumpPressedAt: jumpPressed ? simTimeMs : 0,
+      throwPressed: pressed(m.throw),
+      throwHeld: held(m.throw),
+      throwReleased: released(m.throw),
     };
   }
 }

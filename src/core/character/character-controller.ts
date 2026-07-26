@@ -62,6 +62,13 @@ export class CharacterController {
   /** 最近一次 consume 是否执行了跳跃（供 game-scene 在真实运行路径补 emit ON_JUMP，D1）。每步 consume 重算。 */
   lastJumped = false;
 
+  /**
+   * 多段跳动态加成（GDD 17 §3.1 / D2-A）：默认 0（维持二段跳基线 airJumps=1 不变）。
+   * 种子达 fruit 阶段时由 game-scene 置 1 → airJumpsLeft = airJumps + airJumpBonus（三段跳）。
+   * 仅增强不削弱，每局/蜕变阶段变化重置（不改变已调手感，零平台分支）。
+   */
+  airJumpBonus = 0;
+
   constructor(
     private readonly config: CharacterConfig = characterConfig,
     initial?: Partial<CharacterState>,
@@ -77,8 +84,8 @@ export class CharacterController {
       facing: 1,
       coyoteTimer: 0,
       jumpBufferTimer: 0,
-      airJumpsLeft: config.airJumps,
-      sizeScale: 1,
+        airJumpsLeft: config.airJumps + this.airJumpBonus,
+        sizeScale: 1,
       ...initial,
     };
   }
@@ -100,7 +107,7 @@ export class CharacterController {
     // 3. grounded 处理（开头）：着地则刷新土狼窗口与空中跳额度；离地则衰减土狼计时（钳≥0）。
     if (s.grounded) {
       s.coyoteTimer = cfg.coyoteMs;
-      s.airJumpsLeft = cfg.airJumps;
+      s.airJumpsLeft = cfg.airJumps + this.airJumpBonus;
       this.shortHopApplied = false; // 落地复位短跳标志
     } else {
       s.coyoteTimer = Math.max(0, s.coyoteTimer - ms);

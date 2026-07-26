@@ -17,7 +17,8 @@ export type EntityDef =
   | EnemyEntityDef
   | CoinEntityDef
   | SeedEntityDef
-  | CheckpointEntityDef;
+  | CheckpointEntityDef
+  | ChestnutEntityDef;
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -68,6 +69,14 @@ export interface CheckpointEntityDef {
   type: 'checkpoint';
   x: number;
   y: number;
+}
+
+/** Phase 5 栗子补给实体（GDD 17 §6.2）：碰玩家 → 弹药 +amount（封顶 ammoCap），发 ON_AMMO_CHANGED。不进分数经济。 */
+export interface ChestnutEntityDef {
+  type: 'chestnut';
+  x: number;
+  y: number;
+  params?: { amount?: number };
 }
 
 export interface PropDef {

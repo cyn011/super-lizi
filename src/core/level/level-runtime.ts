@@ -17,6 +17,7 @@ import type {
   CoinEntityDef,
   SeedEntityDef,
   CheckpointEntityDef,
+  ChestnutEntityDef,
   BeatPhase,
 } from './level-data';
 import type { CollisionWorld } from '../physics/collision';
@@ -52,6 +53,8 @@ export class RuntimeLevel {
   readonly seeds: SeedEntityDef[];
   /** S04-3：由 entities 过滤生成的检查点实例（碰玩家 → 更新 respawnPoint + ON_CHECKPOINT）。 */
   readonly checkpoints: CheckpointEntityDef[];
+  /** Phase 5：由 entities 过滤生成的栗子补给实例（碰玩家 → addAmmo + ON_AMMO_CHANGED）。 */
+  readonly chestnuts: ChestnutEntityDef[];
 
   private readonly solid: boolean[][];
   private readonly oneWay: boolean[][];
@@ -107,6 +110,9 @@ export class RuntimeLevel {
     );
     this.checkpoints = (data.entities ?? []).filter(
       (e): e is CheckpointEntityDef => e.type === 'checkpoint',
+    );
+    this.chestnuts = (data.entities ?? []).filter(
+      (e): e is ChestnutEntityDef => e.type === 'chestnut',
     );
   }
 

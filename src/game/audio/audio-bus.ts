@@ -36,6 +36,10 @@ import {
   ON_SEED_METAMORPHOSIS,
   ON_FORM_CHANGED,
   ON_PROJECTILE_SPAWN,
+  ON_CHESTNUT_THROWN,
+  ON_AMMO_EMPTY,
+  ON_CHESTNUT_HIT,
+  ON_PROJECTILE_CANCEL,
 } from '../../core/events/event-bus';
 
 /** 事件名 → SFX name 映射（name 对齐 audio-design.md §3.1）。 */
@@ -61,6 +65,11 @@ export const EVENT_TO_SFX: Record<string, string> = {
   [ON_SEED_METAMORPHOSIS]: 'sfx:seed_metamorph', // 种子蜕变 stage up（GDD 12 §5.1 / D4）：仅跨阈值 emit 才响，每次 GROWTH 不响
   [ON_FORM_CHANGED]: 'sfx:seed_metamorph', // GDD 06 元气果/form 变化（MVP 未 emit）；暂复用"绽放"音，待独立 sfx:form_change
   [ON_PROJECTILE_SPAWN]: 'sfx:projectile_fire', // D3 本 Story 已补 emit
+  // GDD 17 扔栗子机制 4 音映射
+  [ON_CHESTNUT_THROWN]: 'sfx:chestnut_throw', // 投掷发射
+  [ON_AMMO_EMPTY]: 'sfx:chestnut_empty', // 空弹尝试投掷 → 弱提示
+  [ON_CHESTNUT_HIT]: 'sfx:chestnut_hit', // 命中可踩敌人（区别于玩家踩杀的 enemy_death）
+  [ON_PROJECTILE_CANCEL]: 'sfx:chestnut_clink', // 栗子弹丸 vs 石炮炮弹对消
   // 注意：ON_SCORE_CHANGED 默认不映射（D7，高频避免 spam）
   // 注意：ON_ENEMY_HIT_PLAYER 由 ON_HURT 覆盖，不单列
 };

@@ -3,16 +3,18 @@
     "left":  ["ArrowLeft", "KeyA", "touch:left"],
     "right": ["ArrowRight", "KeyD", "touch:right"],
     "jump":  ["Space", "ArrowUp", "KeyW", "touch:jump"],
-    "action": ["KeyJ", "ShiftLeft", "touch:action"]
+    "action": ["Escape"],
+    "throw": ["KeyJ"]
   },
   "wechat": {
-    "layout": "gesture",
+    "layout": "buttons",
     "buttons": {
-      "left":   { "x": 0.08, "y": 0.82, "r": 0.07 },
-      "right":  { "x": 0.22, "y": 0.82, "r": 0.07 },
-      "jump":   { "x": 0.82, "y": 0.82, "r": 0.08 },
-      "action": { "x": 0.92, "y": 0.70, "r": 0.07 }
+      "left":   { "x": 0.070, "y": 0.902, "r": 0.029 },
+      "right":  { "x": 0.170, "y": 0.902, "r": 0.029 },
+      "jump":   { "x": 0.840, "y": 0.892, "r": 0.030 },
+      "action": { "x": 0.930, "y": 0.892, "r": 0.028 }
     },
+    "pauseIcon": { "x": 0.950, "y": 0.060, "r": 0.022 },
     "gesture": {
       "horizontalDeadzoneX": 24,
       "playerDeadzone": 16,
