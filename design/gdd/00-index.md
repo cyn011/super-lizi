@@ -68,6 +68,8 @@
 | 14 | 弹藤敌种 Bouncy Vine（依赖 04/02/03/06/09） | 14-bouncy-vine-enemy.md | Must（新元素深） |
 | 15 | 气旋力场 Cyclone（依赖 02/03/05/09） | 15-cyclone-enemy.md | Must（新元素深） |
 | 16 | 嘟浮剪影敌种 Du Fu Silhouette（依赖 04/06/07 · 可选 biome 复用 vine_forest/cave · audio 复用占位） | 16-dufu-silhouette-enemy.md | Must（新敌种变体深） |
+| 17 | 扔栗子+多段跳+弹药经济 Throw Chestnut（依赖 01/03/04/05/06/07/08/12） | 17-throw-chestnut-gdd.md | Must（远程攻击/弹药经济深） |
+| 18 | 环境主题化 Theme System（依赖 05 Level/02·03 机制 flag/04·07 专属敌·死亡判定 · art biome-spec 提供 palette） | theme-system.md | Must（配置深）/ 跨系统（关卡数据语义层 + 配置注册表，不独立运行） |
 
 ### 2.2 依赖图（文字版，箭头 = 依赖）
 ```
@@ -98,6 +100,8 @@
         │
 16 Du Fu Silhouette ──> 04/06/07 (敌种基础/经济 ON_STOMP/受伤管线) · 复用 du_fu 浮动数学(core, 零平台) · 可选 biome 复用(vine_forest 推荐/cave 备选, 0 新增色) · 09 音频复用占位(无新增键)
         │
+17 Throw Chestnut ──> 03/04/07/06/08/12 (角色加跳/敌种互动/受伤取消/弹药经济/HUD/种子 fruit 增益) · 依赖 01 Input/虚拟控制(INPUT_THROW 第 5 信号) · 05 Level(栗子实体/弹药补给放置)
+        │
 09 Audio Placeholder ── (被 03/04/06/07/08 调用 playSfx，无强依赖)
 ```
 
@@ -127,6 +131,8 @@
 | 14 弹藤敌种 | `design/gdd/14-bouncy-vine-enemy.md` |
 | 15 气旋力场 | `design/gdd/15-cyclone-enemy.md` |
 | 16 嘟浮剪影敌种 | `design/gdd/16-dufu-silhouette-enemy.md` |
+| 17 扔栗子+多段跳+弹药经济 | `design/gdd/17-throw-chestnut-gdd.md` |
+| 18 环境主题化 | `design/gdd/theme-system.md` |
 | 一致性评审 | `design/gdd/99-consistency-review.md` |
 
 ---

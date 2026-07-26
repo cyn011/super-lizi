@@ -35,7 +35,8 @@
 - **蜕变仅视觉**：MVP 不改 `form`、不改 `sizeScale`、不改任何数值能力。
 
 ### Could（后续迭代，明确标注）
-- **能力增益**：bloom/果 阶段解锁温和能力（如二段跳强化 / 短暂滞空），**不破坏 P1 手感前提**下做（建议仅增强不削弱、幅度可调）。
+- **能力增益（本期已实现 · D2-A）**：`fruit` 阶段临时 `airJumps` +1（即三段跳），每局重置（不持久化），**仅增强不削弱**，守 P1 手感红线前提。落地机制、配置字段 `airJumpBonus`、每局重置语义与验收见 **GDD 17 · 扔栗子+多段跳+弹药经济**（design/gdd/throw-chestnut-gdd.md）§3 D2 / §5。
+  > **交叉引用 → GDD 17**：种子 `fruit` 阶段 airJumps 临时 +1 与 GDD 17 多段跳决策（D2-A）同源；实现侧由 17 提供 `ThrowController`/`airJumpBonus` 契约，本系统仅在 `fruit` 阶段通知角色控制器加跳，不写 form/尺寸（与 §3.4 正交一致）。
 - **meta 元成长（hybrid）**：`SeedMeta.totalCollected` 跨关解锁更高 stage 上限 / 形态（art §1.3 `source:'meta'` 路径）；当前 MVP 仅记录计数，gating 留 Could。
 - **图鉴 / 成长面板**：ux §6.3 的成长图鉴壳，按 `seedProgress: Record<seedId,SeedProgress>` 渲染；MVP 仅做数据契约，UI 留壳。
 - **云端同步**：随 11 云存档 Could。

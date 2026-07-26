@@ -15,7 +15,7 @@
 | `tileSize` | `32` | 与 1-1 一致 |
 | `width` | `48` | 比 1-1(40) 略长，展示流水线可扩展（**D2 待拍板，可回退 40**） |
 | `height` | `9` | 与 1-1 一致 |
-| `metadata.name` | `"翠野·续章"` | 命名建议（D1：theme 可改） |
+| `metadata.name` | `"黛峦·续章"` | 命名建议（D1：theme 可改） |
 | `metadata.theme` | `"grass"` | 与 1-1 调色板/资产零改动复用 |
 | `metadata.parTimeMs` | `84000` | 建议基准值，待 QA 调校（D6） |
 | `spawn.x/y` | `64` / `190` | 同 1-1（tx2，脚底贴地面 ty7 顶 y=224） |
@@ -235,7 +235,7 @@
     { "id": "bp_1_2", "initial": "ghost", "tiles": [ { "tx": 19, "ty": 5 }, { "tx": 20, "ty": 5 }, { "tx": 21, "ty": 5 } ] }
   ],
   "metadata": {
-    "name": "翠野·续章",
+    "name": "黛峦·续章",
     "theme": "grass",
     "parTimeMs": 84000
   },
