@@ -134,8 +134,17 @@
 | 17 扔栗子+多段跳+弹药经济 | `design/gdd/17-throw-chestnut-gdd.md` |
 | 18 环境主题化 | `design/gdd/theme-system.md` |
 | 一致性评审 | `design/gdd/99-consistency-review.md` |
+| 1-3 海·澜屿 关卡设计 | `design/gdd/level-1-3-design.md` |
 
 ---
+
+## 4. 关卡内容设计文档（world 1 扩展 · 设计稿）
+
+> 此类文档为「具体关卡内容设计稿」（GDD 级，纯设计、不直接编号系统），供 engineering-lead 落地为 `src/config/levels/*.json`。与 §2.1 编号系统（01–18）正交，不占用系统编号。
+
+| 文档 | 绝对路径 | 关联 |
+|---|---|---|
+| 1-3 海·澜屿 关卡设计 | `design/gdd/level-1-3-design.md` | 批次 2 海 1-3；上游 theme-system §4.1 / sea-biome-spec；进度链接 2-1 |
 
 ## 附录 A：Could 系统 Stub（Boss / 道具树 / 编辑器 / 社交）
 以下系统本期不做深设计，仅给八节轻量 stub，供后续 Phase 唤醒。完整节拍机制已并入 10-beat-reservation 的 Could 节。

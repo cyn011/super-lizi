@@ -244,4 +244,19 @@
 
 ---
 
-*本文件为海 biome 美术规格（加法），roadmap 批次 2 优先（世界 1 第 3 关 1-3）；未修改现有 GDD / 资产文档 / `src/`；未 git commit。待主理人（游承峰）审批后由 art-director 与 engineering-lead 分别落地（美术走像素化路径、工程走 §8 契约）。*
+## 9. 视觉落实交叉引用（→ sea-visual-spec.md）
+
+> 本 biome-spec 专注"8 槽权威映射 + tint + jellyfish/障碍视觉意图"；**程序化绘制落地规格**见 `art/sea-visual-spec.md`（同项目、lean、0 新增 hex）。
+
+- 背景层画法（天空渐变 / 海平线 / 远中近三层视差 / 动态浪花带 / 海底剪影）→ sea-visual-spec **§1**。
+- jellyfish 绘制伪代码（伞盖半透 + 触手 + 核心 + 漂浮 pulse）→ sea-visual-spec **§2**（对齐本文件 §3）。
+- 潮汐水位视觉（`waterSurfaceY` 参数联动背景 / 浪花 / 淹没叠层 / edge foam）→ sea-visual-spec **§3**（对齐本文件 §4.1/§4.2）。
+- 障碍换皮矩阵（ci_li→珊瑚刺 / chong_feng→潮蟹 / du_fu→实心水母近亲 / shi_pao→蚌炮 + 专属陷阱视觉）→ sea-visual-spec **§4**（对齐本文件 §4）。
+- 可访问性校验（Standard 档，含对比度临界缓解）→ sea-visual-spec **§5**（对齐本文件 §6）。
+- theme-palette 8 槽注册 + fail-safe → sea-visual-spec **§6**（对齐本文件 §1/§8）。
+
+> 实现须以本文件 §1/§8 的 8 槽权威 hex + tint 为准；sea-visual-spec 不引入新 hex。
+
+---
+
+*本文件为海 biome 美术规格（加法），roadmap 批次 2 优先（世界 1 第 3 关 1-3）；未修改现有 GDD / 资产文档 / `src/`；未 git commit。待主理人（游承峰）审批后由 art-director 与 engineering-lead 分别落地（美术走像素化路径、工程走 §8 契约 + sea-visual-spec 绘制参数）。*
