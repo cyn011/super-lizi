@@ -13,7 +13,9 @@ export type EnemyTypeName =
   | 'du_fu_silhouette'
   | 'jellyfish'
   | 'scorpion'
-  | 'cactus';
+  | 'cactus'
+  | 'pet'
+  | 'toy';
 
 /** 敌人运行时状态（可踩判定见 E3.S1/S2）。 */
 export interface EnemyState {

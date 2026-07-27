@@ -5,8 +5,17 @@
 export interface TileDef {
   tx: number;
   ty: number;
-  kind: string;
+  /** 瓦片种类：solid/oneway 基础碰撞；家具 sofa/table/cabinet 复用既有 solid/oneway 碰撞语义（仅换皮）。 */
+  kind: TileKind;
 }
+
+/**
+ * 瓦片种类联合类型（S04-3 扩展）：
+ *   - 'solid' / 'oneway'：基础碰撞（实心 / 单向平台），由 CollisionWorld 直接消费。
+ *   - 'sofa' / 'cabinet'：家具实心（映射 solid，顶面可踩、四壁/底面挡）；'table'：家具单向（映射 oneway，仅顶可踩）。
+ * 家具碰撞零新增逻辑：level-runtime.setTile 仅扩展 kind→碰撞映射表（sofa/cabinet→solid、table→oneway）。
+ */
+export type TileKind = 'solid' | 'oneway' | 'sofa' | 'table' | 'cabinet';
 
 /**
  * 实体联合类型（S04-3 扩展）：敌人（保留 S04-1）/ 金币 / 种子 / 检查点，
@@ -32,7 +41,8 @@ export type LevelTheme =
   | 'vine_forest'
   | 'storm_sky'
   | 'sea'
-  | 'desert';
+  | 'desert'
+  | 'home';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -46,7 +56,9 @@ export type EnemyEntityType =
   | 'du_fu_silhouette'
   | 'jellyfish'
   | 'scorpion'
-  | 'cactus';
+  | 'cactus'
+  | 'pet'
+  | 'toy';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;

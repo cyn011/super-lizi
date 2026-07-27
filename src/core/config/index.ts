@@ -16,6 +16,7 @@ import level1_1Json from '../../config/levels/1-1.json';
 import level1_2Json from '../../config/levels/1-2.json';
 import level1_3Json from '../../config/levels/1-3.json';
 import level1_4Json from '../../config/levels/1-4.json';
+import level1_5Json from '../../config/levels/1-5.json';
 import level2_1Json from '../../config/levels/2-1.json';
 import level2_2Json from '../../config/levels/2-2.json';
 import level2_3Json from '../../config/levels/2-3.json';
@@ -60,13 +61,24 @@ export const levels: Record<string, LevelData> = {
   '1-2': level1_2Json as LevelData,
   '1-3': level1_3Json as LevelData,
   '1-4': level1_4Json as LevelData,
+  '1-5': level1_5Json as LevelData,
   '2-1': level2_1Json as LevelData,
   '2-2': level2_2Json as LevelData,
   '2-3': level2_3Json as LevelData,
   '2-4': level2_4Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
-export const LEVEL_ORDER: string[] = ['1-1', '1-2', '1-3', '1-4', '2-1', '2-2', '2-3', '2-4'];
+export const LEVEL_ORDER: string[] = [
+  '1-1',
+  '1-2',
+  '1-3',
+  '1-4',
+  '1-5',
+  '2-1',
+  '2-2',
+  '2-3',
+  '2-4',
+];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----
 // Web：物理信号 = 键码。

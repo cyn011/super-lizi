@@ -218,9 +218,9 @@ export class EnemyAI implements StompableHazard {
         ? 'patrol'
         : type === 'du_fu' || type === 'jellyfish'
           ? 'float'
-          : type === 'scorpion'
-            ? 'patrol'
-            : 'idle';
+      : type === 'scorpion' || type === 'pet'
+        ? 'patrol'
+        : 'idle';
 
     // gu_bao：地面锚点 = y；按 phaseOffset 推导初始态；盒顶随 p 上移。
     if (type === 'gu_bao') {
@@ -409,11 +409,19 @@ export class EnemyAI implements StompableHazard {
     return this.scorpionPhase;
   }
 
+  /** pet 视觉微动相位（rad，≤1Hz），render 读（耳摆 / 矮胖 bob），Reduce Motion 由渲染层冻结首帧。 */
+  get petBobPhaseState(): number {
+    return this.petBobPhase;
+  }
+
   // ── scorpion 沙漠专属敌状态机字段（GDD 1-4 §3.2，零平台纯逻辑）──
   /** scorpion 是否处于 charge telegraph（玩家进入 detect 范围）：尾刺上扬 + 尾尖红闪。 */
   private scorpionChargingState = false;
   /** scorpion charge 相位（仅视觉红闪，≤2Hz），render 读。 */
   private scorpionPhase = 0;
+
+  /** pet 视觉微动相位（耳摆 / 矮胖 bob，≤1Hz），render 读；Reduce Motion 由渲染层冻结。 */
+  private petBobPhase = 0;
 
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
@@ -451,6 +459,15 @@ export class EnemyAI implements StompableHazard {
     if (this.type === 'shi_pao') return this.updateShiPao(dt, player);
     if (this.type === 'scorpion') return this.updateScorpion(dt, world, player);
     if (this.type === 'cactus') return NO_PROJECTILES; // 静态障碍，无 AI
+    if (this.type === 'pet') {
+      // 地面小幅往返巡逻（复用 updatePatrol 边缘/墙掉头）；硬顶不可踩（isStompable=false 走伤害分支）。
+      // 接触玩家 = 非致死扣血（复用 damage-resolution 的 resolveHazardContact 非致死路径，非 applyFatalDeath）。
+      this.updatePatrol(dt, world);
+      // 视觉微动相位（≤1Hz 耳摆 / 矮胖 bob），仅渲染读取；Reduce Motion 由渲染层冻结首帧。
+      this.petBobPhase += dt * (2 * Math.PI * 0.8);
+      return NO_PROJECTILES;
+    }
+    if (this.type === 'toy') return NO_PROJECTILES; // 静止贴地小障碍，无 AI
     return NO_PROJECTILES;
   }
 
@@ -848,7 +865,9 @@ export function createEnemies(
       e.type === 'du_fu_silhouette' ||
       e.type === 'jellyfish' ||
       e.type === 'scorpion' ||
-      e.type === 'cactus'
+      e.type === 'cactus' ||
+      e.type === 'pet' ||
+      e.type === 'toy'
     ) {
       out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }

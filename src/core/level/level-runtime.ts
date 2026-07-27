@@ -118,8 +118,11 @@ export class RuntimeLevel {
 
   private setTile(t: TileDef, w: number, h: number): void {
     if (t.tx < 0 || t.tx >= w || t.ty < 0 || t.ty >= h) return; // 越界忽略
-    if (t.kind === 'oneway') this.oneWay[t.ty][t.tx] = true;
-    else this.solid[t.ty][t.tx] = true; // 'solid' 或未来其它实心 kind 一律按实心处理
+    // 家具 tile-kind 复用既有碰撞语义（S04-3 / level-1-5-design §4.1）：
+    //   table → oneway（仅顶可踩，从下/侧可穿透）；sofa/cabinet → solid（全 AABB 实心）。
+    // 碰撞逻辑零改，仅扩展 kind→碰撞映射表。
+    if (t.kind === 'oneway' || t.kind === 'table') this.oneWay[t.ty][t.tx] = true;
+    else this.solid[t.ty][t.tx] = true; // 'solid' | 'sofa' | 'cabinet' 一律按实心处理
   }
 
   private inBounds(tx: number, ty: number): boolean {

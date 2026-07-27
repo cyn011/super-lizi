@@ -23,7 +23,11 @@ const VINE_GREEN = 0x7cc242; // 草绿（弹藤藤体，锁色板 #1）
 const VINE_HIGHLIGHT = 0xffd23f; // 暖黄（弹藤高光环，友好辅助提示，锁色板 #4）
 
 /** 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。 */
-export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+export function drawEnemy(
+  g: Phaser.GameObjects.Graphics,
+  e: EnemyAI,
+  reduceMotion = false,
+): void {
   if (e.dead) return; // 已消灭不绘制
   if (e.type === 'bouncy_vine') {
     drawBouncyVine(g, e); // 弹藤：草绿线圈（纯辅助，友好色）
@@ -51,6 +55,14 @@ export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   }
   if (e.type === 'cactus') {
     drawCactus(g, e); // 仙人掌：草绿柱 + 红刺 + 硬顶不可踩（desert 专属固定障碍，GDD 1-4 §3.3）
+    return;
+  }
+  if (e.type === 'pet') {
+    drawPet(g, e, reduceMotion); // 宠物：暖橙圆润四足 + 暖黄耳 + 红铃（home 专属，GDD 1-5 §3.2）
+    return;
+  }
+  if (e.type === 'toy') {
+    drawToy(g, e); // 玩具：经济金小方块 + 红尖角（home 专属静止小 hazard，GDD 1-5 §3.3）
     return;
   }
   const b = e.getBounds();
@@ -422,4 +434,83 @@ function drawCactus(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   // 5) 顶刺（强化 hard 顶）
   g.lineBetween(cx, b.y, cx - 3, b.y - 5);
   g.lineBetween(cx, b.y, cx + 3, b.y - 5);
+}
+
+/**
+ * 宠物（pet）占位绘制（GDD 1-5 §3.2 / home-visual-spec §2.1，锁色板内 0 新增色）：
+ *   - 主体：暖橙 #F2933C + 描边 #2A1A12（矮圆身，bbox 36×28）。
+ *   - 耳（上×2）：暖黄 #FFD23F 小三角（微动 ±6°）。
+ *   - 暗部：沙岩暗面 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）。
+ *   - 四足：暖橙短腿。
+ *   - 眼：天空 #5BC8F5（#11）。
+ *   - 铃铛（颈）：警示红 #E8483B（#7，硬顶不可踩双编码「非安全」）。
+ * 友好圆润外形 + 红铃 telegraph（形状+颜色双编码，色盲安全，避用命粉 #F26D8B）。
+ * 矮胖 bob / 耳摆 ≤1Hz（render-only micro-bob，Reduce Motion 冻结首帧）；patrol 位移为玩法不冻结。
+ * 几何读 EnemyAI.getBounds()（盒随碰撞盒，单一真相源）。
+ */
+const PET_BODY = 0xf2933c; // 暖橙 #F2933C（#3）
+const PET_EAR = 0xffd23f; // 暖黄 #FFD23F（#4）
+const PET_DARK = 0x79491e; // 沙岩暗面 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）
+const PET_EYE = 0x5bc8f5; // 天空 #5BC8F5（#11）
+const PET_BELL = 0xe8483b; // 警示红 #E8483B（#7）
+const PET_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+function drawPet(g: Phaser.GameObjects.Graphics, e: EnemyAI, reduceMotion: boolean): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const cx = b.x + b.w / 2;
+  const ph = reduceMotion ? 0 : e.petBobPhaseState; // Reduce Motion 冻结微动首帧
+  const bob = Math.sin(ph) * 3; // 矮胖 bob ±3px（≤1Hz）
+  const yOff = b.y + bob;
+  // 1) 主体（矮圆）
+  g.fillStyle(PET_BODY, 1);
+  g.fillRoundedRect(b.x, yOff, b.w, b.h, { tl: 14, tr: 14, bl: 10, br: 10 });
+  g.lineStyle(1, PET_OUT, 1);
+  g.strokeRoundedRect(b.x, yOff, b.w, b.h, { tl: 14, tr: 14, bl: 10, br: 10 });
+  // 2) 暗部（底 1/3）
+  g.fillStyle(PET_DARK, 1);
+  g.fillRoundedRect(b.x + 2, yOff + b.h * 0.7, b.w - 4, b.h * 0.3, { tl: 0, tr: 0, bl: 8, br: 8 });
+  // 3) 耳（上×2，暖黄，±6° 微动近似像素偏移）
+  const earWig = Math.sin(ph) * 1.2;
+  g.fillStyle(PET_EAR, 1);
+  g.fillTriangle(cx - 10, yOff + 2, cx - 2, yOff + 2, cx - 6 + earWig, yOff - 8);
+  g.fillTriangle(cx + 10, yOff + 2, cx + 2, yOff + 2, cx + 6 + earWig, yOff - 8);
+  g.lineStyle(1, PET_OUT, 1);
+  g.strokeTriangle(cx - 10, yOff + 2, cx - 2, yOff + 2, cx - 6 + earWig, yOff - 8);
+  g.strokeTriangle(cx + 10, yOff + 2, cx + 2, yOff + 2, cx + 6 + earWig, yOff - 8);
+  // 4) 四足（下×4）
+  g.fillStyle(PET_BODY, 1);
+  for (let i = 0; i < 4; i++) g.fillRoundedRect(b.x + 4 + i * 9, yOff + b.h - 4, 6, 7, 2);
+  // 5) 眼（天空蓝点）
+  g.fillStyle(PET_EYE, 1);
+  g.fillCircle(cx - 6, yOff + 11, 2);
+  g.fillCircle(cx + 6, yOff + 11, 2);
+  // 6) 铃铛（颈，警示红，双编码「非安全」）
+  g.fillStyle(PET_BELL, 1);
+  g.fillCircle(cx, yOff + b.h * 0.55, 2.5);
+}
+
+/**
+ * 玩具（toy）占位绘制（GDD 1-5 §3.3 / home-visual-spec §2.2，锁色板内 0 新增色）：
+ *   - 主体：经济金 #F2C94C（#8）+ 描边 #2A1A12（小圆角块，bbox 20×16，底中贴地）。
+ *   - 尖角/危险边：警示红 #E8483B（#7）四角小三角（硬顶不可踩双编码，与 cactus 红刺同源但更小）。
+ * 静止贴地小 hazard（与 cactus 同族静态障碍），无 idle/charge 区分（静态 telegraph 即可读）。
+ * 几何读 EnemyAI.getBounds()（盒随碰撞盒，单一真相源）。
+ */
+const TOY_BODY = 0xf2c94c; // 经济金 #F2C94C（#8）
+const TOY_SPIKE = 0xe8483b; // 警示红 #E8483B（#7）
+const TOY_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+function drawToy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  // 1) 主体（小圆角块）
+  g.fillStyle(TOY_BODY, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, 5);
+  g.lineStyle(1, TOY_OUT, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, 5);
+  // 2) 尖角（上×2 + 侧×2，警示红，hard 顶不可踩双编码）
+  g.fillStyle(TOY_SPIKE, 1);
+  g.fillTriangle(b.x + 2, b.y, b.x + 7, b.y, b.x + 4.5, b.y - 5); // 左上尖
+  g.fillTriangle(b.x + 13, b.y, b.x + 18, b.y, b.x + 15.5, b.y - 5); // 右上尖
+  g.fillTriangle(b.x, b.y + 4, b.x, b.y + 12, b.x - 5, b.y + 8); // 左尖
+  g.fillTriangle(b.x + 20, b.y + 4, b.x + 20, b.y + 12, b.x + 25, b.y + 8); // 右尖
 }

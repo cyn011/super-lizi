@@ -160,6 +160,20 @@ export class GameScene extends Phaser.Scene {
   private desertSunPhase = 0;
   /** 前景沙幕相位累加器（Reduce Motion 下冻结，仅沙漠关使用）。 */
   private desertVeilPhase = 0;
+  /** 家主题背景-天花板+后墙层（scrollFactor 0，depth -10，全屏竖直渐变，仅 home 创建一次）。 */
+  private homeWallGfx?: Phaser.GameObjects.Graphics;
+  /** 家主题背景-远景层（scrollFactor 0.3，depth -9，窗光 + 家具剪影带，仅 home 创建一次）。 */
+  private homeFarGfx?: Phaser.GameObjects.Graphics;
+  /** 家主题背景-中景层（scrollFactor 0.6，depth -8，相框 + 盆栽 + 灯架，仅 home 创建一次）。 */
+  private homeMidGfx?: Phaser.GameObjects.Graphics;
+  /** 家主题背景-中景台灯脉冲层（scrollFactor 0.6，depth -8，每帧重绘，仅 home 创建一次）。 */
+  private homeLampGfx?: Phaser.GameObjects.Graphics;
+  /** 家主题背景-前景窗帘层（scrollFactor 1.2，depth 4，每帧重绘，仅 home 创建一次）。 */
+  private homeNearGfx?: Phaser.GameObjects.Graphics;
+  /** 台灯脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅家关使用）。 */
+  private homeLampPhase = 0;
+  /** 窗帘飘移相位累加器（≤2Hz，Reduce Motion 下冻结，仅家关使用）。 */
+  private homeCurtainPhase = 0;
   /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
   private qsZone: QuicksandDef | null = null;
   /** 流沙下陷累计时间（ms），用于 telegraph 渐变速率。 */
@@ -1303,6 +1317,7 @@ export class GameScene extends Phaser.Scene {
     const pal = biomeForLevel(this.runtime.data);
     const isSea = this.runtime.data.metadata.theme === 'sea';
     const isDesert = this.runtime.data.metadata.theme === 'desert';
+    const isHome = this.runtime.data.metadata.theme === 'home';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1335,11 +1350,26 @@ export class GameScene extends Phaser.Scene {
       this.qsSinkDepth = 0;
       this.qsZone = null;
     }
+    // 非家关：清理可能残留的家背景层（切换关卡安全）。镜像沙漠清理块。
+    if (!isHome) {
+      this.homeWallGfx?.destroy();
+      this.homeWallGfx = undefined;
+      this.homeFarGfx?.destroy();
+      this.homeFarGfx = undefined;
+      this.homeMidGfx?.destroy();
+      this.homeMidGfx = undefined;
+      this.homeLampGfx?.destroy();
+      this.homeLampGfx = undefined;
+      this.homeNearGfx?.destroy();
+      this.homeNearGfx = undefined;
+      this.homeLampPhase = 0;
+      this.homeCurtainPhase = 0;
+    }
 
     // 背景层：
-    //  - 非海关/非沙漠关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
-    //  - 海关/沙漠关：跳过平铺（交给 drawSeaBackground / drawDesertBackground 的天空渐变 + 视差层）。
-    if (!isSea && !isDesert && pal.bg !== null) {
+    //  - 非海关/非沙漠/非家关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
+    //  - 海关/沙漠/家关：跳过平铺（交给 drawSeaBackground / drawDesertBackground / drawHomeBackground 的天空渐变 + 视差层）。
+    if (!isSea && !isDesert && !isHome && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
@@ -1347,19 +1377,38 @@ export class GameScene extends Phaser.Scene {
     if (isSea) this.drawSeaBackground(pal);
     // 沙漠主题背景（暖沙晴空 + 远/中景视差 + 太阳 + 沙幕），仅 desert 创建一次（动态层每帧重绘）
     if (isDesert) this.drawDesertBackground(pal);
+    // 家主题背景（天花板+后墙 + 窗光/家具剪影 + 相框/盆栽/台灯 + 游戏层家具 + 窗帘），仅 home 创建一次（动态层每帧重绘）
+    if (isHome) this.drawHomeBackground(pal);
+
+    // 家具 tile-kind 查找表（sofa/table/cabinet 仅在此表达，碰撞由 world 的 solid/oneway 承接）。
+    // 遍历 runtime.data.tiles 暴露 kind（home-visual-spec §2.5 允许的方案，零新增 world API）。
+    const kindAt = new Map<string, string>();
+    for (const t of this.runtime.data.tiles) kindAt.set(`${t.tx},${t.ty}`, t.kind);
 
     for (let ty = 0; ty < this.runtime.data.height; ty++) {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {
+        const X = tx * ts;
+        const Y = ty * ts;
         if (this.world.isSolidTile(tx, ty)) {
-          g.fillStyle(pal.rockFace, 1);
-          g.fillRect(tx * ts, ty * ts, ts, ts);
-          g.lineStyle(1, pal.outline, 1); // 强制 1px 描边 #2A1A12（可访问性，vs 天空≈8.8:1）
-          g.strokeRect(tx * ts, ty * ts, ts, ts);
+          const kind = kindAt.get(`${tx},${ty}`);
+          if (kind === 'sofa' || kind === 'cabinet') {
+            this.drawHomeFurnitureSolid(g, X, Y, ts, kind, pal); // 家具实心：暖橙面 + 暗面 + 描边 + 家具细节
+          } else {
+            g.fillStyle(pal.rockFace, 1);
+            g.fillRect(X, Y, ts, ts);
+            g.lineStyle(1, pal.outline, 1); // 强制 1px 描边 #2A1A12（可访问性，vs 天空≈8.8:1）
+            g.strokeRect(X, Y, ts, ts);
+          }
         } else if (this.world.isOneWayTile(tx, ty)) {
-          g.fillStyle(pal.rockBody, 1);
-          g.fillRect(tx * ts, ty * ts, ts, ts / 2);
-          g.lineStyle(1, pal.outline, 1); // 单向平台同样强制 1px 描边
-          g.strokeRect(tx * ts, ty * ts, ts, ts / 2);
+          const kind = kindAt.get(`${tx},${ty}`);
+          if (kind === 'table') {
+            this.drawHomeFurnitureTable(g, X, Y, ts, pal); // 家具单向：仅顶半画桌面 + 暖黄沿 + 腿
+          } else {
+            g.fillStyle(pal.rockBody, 1);
+            g.fillRect(X, Y, ts, ts / 2);
+            g.lineStyle(1, pal.outline, 1); // 单向平台同样强制 1px 描边
+            g.strokeRect(X, Y, ts, ts / 2);
+          }
         }
       }
     }
@@ -1745,6 +1794,276 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 家主题背景层（GDD 1-5 / home-visual-spec §1，仅 home）：镜像 drawDesertBackground 五层视差结构——
+   *   wall (scrollFactor 0,   depth -10) 天花板+后墙竖直渐变（bg #6B4220 → rockBody #79491E 天花板带）
+   *   far  (scrollFactor 0.3, depth -9)  窗光(天空蓝内#5BC8F5 + 暖黄光晕 + 经济金框) + 家具剪影带(rockBody 无描边)
+   *   mid  (scrollFactor 0.6, depth -8)  相框(经济金+草绿内) + 盆栽(草绿团+暗部) + 台灯架(暖橙柱+梯形罩)
+   * 远景/中景绘制范围覆盖整关世界宽（runtime.data.width*tileSize）以支撑视差；
+   * 台灯脉冲层(homeLampGfx)与前景窗帘层(homeNearGfx)为每帧重绘，此处仅创建 Graphics。
+   * 全程序化 Graphics（零 PNG，ADR-004），颜色仅用 11 色锁色板或 tint 派生（盆栽暗部 0x3E6121 为
+   * darken(#7CC242,0.5) tint 派生，0 新增 hex）。draw call：wall 1 + far(窗×3 + 剪影 1)≈4 + mid(框×3 + 盆栽×3 + 灯架×1)≈7，均 ≤15。
+   */
+  private drawHomeBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const WALL = pal.bg ?? 0x6b4220; // 暖棕墙 #6B4220（darken(#F2933C,0.55) tint 派生）
+    const CEIL = pal.rockBody; // 天花板带 #79491E（darken(#F2933C,0.5) tint 派生）
+    const ROCK_FACE = pal.rockFace; // 暖橙 #F2933C（木面 / 灯架）
+    const ROCK_BODY = pal.rockBody; // 暗面 #79491E（家具剪影 / 天花板带）
+    const FIRE = pal.firelight; // 暖黄 #FFD23F（窗光 / 桌沿 / 灯晕）
+    const GLOW = pal.crystalGlow; // 草绿 #7CC242（盆栽 / 相框内块）
+    const GOLD = 0xf2c94c; // 经济金 #F2C94C（窗框 / 柜把手 / 相框边，锁色板 #8）
+    const SKY = 0x5bc8f5; // 天空 #5BC8F5（窗外微光，锁色板 #11）
+    const OUT = pal.outline; // 描边 #2A1A12
+
+    // ── 1) 天花板+后墙层（scrollFactor 0, depth -10）：竖直渐变 CEIL→WALL，全屏一次 fillRect ──
+    if (!this.homeWallGfx) this.homeWallGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const wall = this.homeWallGfx;
+    wall.clear();
+    wall.fillGradientStyle(CEIL, CEIL, WALL, WALL, 1);
+    wall.fillRect(0, 0, camW, camH);
+    // 天花板与墙交界加深线（纯氛围，强化顶/壁分界）
+    wall.lineStyle(2, ROCK_BODY, 1);
+    wall.lineBetween(0, camH * 0.18, camW, camH * 0.18);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：窗光 + 家具剪影带，铺满 levelW ──
+    if (!this.homeFarGfx) this.homeFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+    const far = this.homeFarGfx;
+    far.clear();
+    // 窗光 ×3（窗格内天空蓝 α≤0.5 + 暖黄光晕 α≤0.3 静态首帧 + 经济金细框；脉冲为可选项，此处保持静态守 Reduce Motion）
+    const winY = levelH * 0.3;
+    const winW = 44;
+    const winH = 56;
+    const winXs = [levelW * 0.22, levelW * 0.55, levelW * 0.84];
+    for (const wx of winXs) {
+      far.fillStyle(SKY, 0.45);
+      far.fillRect(wx - winW / 2, winY - winH / 2, winW, winH);
+      far.fillStyle(FIRE, 0.3);
+      far.fillRect(wx - winW / 2 + 4, winY - winH / 2 + 4, winW - 8, winH - 8);
+      far.lineStyle(1, GOLD, 1);
+      far.strokeRect(wx - winW / 2, winY - winH / 2, winW, winH);
+      far.lineBetween(wx, winY - winH / 2, wx, winY + winH / 2); // 窗中竖格
+    }
+    // 家具剪影带（ROCK_BODY 起伏带，无描边、低饱和，纯氛围非碰撞）
+    const sil: { x: number; y: number }[] = [];
+    const amp = 14;
+    const wl = 200;
+    for (let x = 0; x <= levelW; x += 32) {
+      sil.push({ x, y: levelH * 0.6 + Math.sin(x * ((Math.PI * 2) / wl)) * amp });
+    }
+    sil.push({ x: levelW, y: levelH });
+    sil.push({ x: 0, y: levelH });
+    far.fillStyle(ROCK_BODY, 1);
+    far.fillPoints(sil, true);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：相框 + 盆栽 + 灯架，create-once（仅 scrollFactor 驱动视差）──
+    if (!this.homeMidGfx) this.homeMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.homeMidGfx;
+    mid.clear();
+    // 相框 ×3（经济金框 + 草绿内块 + 描边）
+    const frames = [
+      { x: levelW * 0.16, y: levelH * 0.34 },
+      { x: levelW * 0.4, y: levelH * 0.3 },
+      { x: levelW * 0.72, y: levelH * 0.36 },
+    ];
+    for (const f of frames) {
+      mid.fillStyle(GOLD, 1);
+      mid.fillRoundedRect(f.x - 13, f.y - 10, 26, 20, 2);
+      mid.fillStyle(GLOW, 1);
+      mid.fillRect(f.x - 9, f.y - 6, 18, 12);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeRoundedRect(f.x - 13, f.y - 10, 26, 20, 2);
+    }
+    // 盆栽 ×3（草绿团 + 暗部侧 + 描边）
+    const plants = [
+      { x: levelW * 0.3, y: levelH * 0.5 },
+      { x: levelW * 0.62, y: levelH * 0.48 },
+      { x: levelW * 0.88, y: levelH * 0.52 },
+    ];
+    for (const p of plants) {
+      mid.fillStyle(GLOW, 1);
+      mid.fillCircle(p.x, p.y, 9);
+      mid.fillCircle(p.x - 6, p.y + 3, 6);
+      mid.fillCircle(p.x + 6, p.y + 3, 6);
+      mid.fillStyle(0x3e6121, 1); // darken(#7CC242,0.5) 盆栽暗部（tint 派生，0 新增）
+      mid.fillCircle(p.x + 4, p.y + 2, 5);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeCircle(p.x, p.y, 9);
+    }
+    // 灯架 ×1（暖橙细柱 + 底座 + 梯形灯罩；灯晕由 drawHomeLamp 每帧脉冲）
+    const lampX = levelW * 0.4;
+    const lampBaseY = levelH * 0.42;
+    mid.fillStyle(ROCK_FACE, 1);
+    mid.fillRoundedRect(lampX - 3, lampBaseY, 6, 22, 2); // 柱
+    mid.fillEllipse(lampX, lampBaseY + 22, 18, 6); // 底座
+    mid.fillPoints(
+      [
+        { x: lampX - 12, y: lampBaseY - 2 },
+        { x: lampX + 12, y: lampBaseY - 2 },
+        { x: lampX + 8, y: lampBaseY - 16 },
+        { x: lampX - 8, y: lampBaseY - 16 },
+      ],
+      true,
+    ); // 梯形灯罩
+    mid.lineStyle(1, OUT, 1);
+    mid.strokeRoundedRect(lampX - 3, lampBaseY, 6, 22, 2);
+    mid.strokePoints(
+      [
+        { x: lampX - 12, y: lampBaseY - 2 },
+        { x: lampX + 12, y: lampBaseY - 2 },
+        { x: lampX + 8, y: lampBaseY - 16 },
+        { x: lampX - 8, y: lampBaseY - 16 },
+      ],
+      true,
+    );
+
+    // ── 4) 台灯脉冲层（scrollFactor 0.6, depth -8）：每帧重绘（drawHomeLamp）──
+    if (!this.homeLampGfx) this.homeLampGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    // ── 5) 前景窗帘层（scrollFactor 1.2, depth 4）：每帧重绘（drawHomeNear）──
+    if (!this.homeNearGfx) this.homeNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /**
+   * 家具实心 tile 渲染（sofa/cabinet = solid 复用，home-visual-spec §2.3）：暖橙木面 + 暗面带 + 1px 描边 + 家具细节。
+   * 碰撞由 CollisionWorld 的 solid 承接（零新碰撞）；此处仅换皮。坐标 (X,Y) 为瓦片左上角（px）。
+   */
+  private drawHomeFurnitureSolid(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    kind: string,
+    pal: ThemePalette,
+  ): void {
+    const ROCK_FACE = pal.rockFace; // 暖橙 #F2933C（木面）
+    const ROCK_BODY = pal.rockBody; // 暗面 #79491E
+    const GOLD = 0xf2c94c; // 经济金 #F2C94C（柜把手，锁色板 #8）
+    const OUT = pal.outline; // 描边 #2A1A12
+    // 木面
+    g.fillStyle(ROCK_FACE, 1);
+    g.fillRect(X, Y, ts, ts);
+    // 顶暗带（受光少）
+    g.fillStyle(ROCK_BODY, 1);
+    g.fillRect(X, Y, ts, 6);
+    g.lineStyle(1, OUT, 1);
+    g.strokeRect(X, Y, ts, ts);
+    if (kind === 'cabinet') {
+      // 柜：门缝 + 金把手
+      g.lineStyle(1, ROCK_BODY, 1);
+      g.lineBetween(X + ts / 2, Y + 4, X + ts / 2, Y + ts - 4);
+      g.fillStyle(GOLD, 1);
+      g.fillCircle(X + ts / 2 - 3, Y + ts / 2, 1.5);
+    } else {
+      // 沙发：顶两坐垫凸
+      g.fillStyle(ROCK_FACE, 1);
+      g.fillRoundedRect(X + 3, Y + 2, ts / 2 - 5, 6, 3);
+      g.fillRoundedRect(X + ts / 2 + 2, Y + 2, ts / 2 - 5, 6, 3);
+    }
+  }
+
+  /**
+   * 家具单向 tile 渲染（table = oneway 复用，home-visual-spec §2.3）：仅顶面半画桌面（同 oneway 行为）+
+   * 暖黄桌沿高光 + 两短腿。碰撞由 CollisionWorld 的 oneWay 承接（零新碰撞）。坐标 (X,Y) 为瓦片左上角（px）。
+   */
+  private drawHomeFurnitureTable(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    pal: ThemePalette,
+  ): void {
+    const ROCK_FACE = pal.rockFace; // 暖橙 #F2933C（桌面）
+    const ROCK_BODY = pal.rockBody; // 暗面 #79491E（腿）
+    const FIRE = pal.firelight; // 暖黄 #FFD23F（桌沿高光）
+    const OUT = pal.outline; // 描边 #2A1A12
+    // 桌面（顶半）
+    g.fillStyle(ROCK_FACE, 1);
+    g.fillRect(X, Y, ts, ts / 2);
+    // 桌沿暖黄高光
+    g.lineStyle(1, FIRE, 0.8);
+    g.lineBetween(X, Y + 1, X + ts, Y + 1);
+    // 描边（顶半）
+    g.lineStyle(1, OUT, 1);
+    g.strokeRect(X, Y, ts, ts / 2);
+    // 两短腿
+    g.fillStyle(ROCK_BODY, 1);
+    g.fillRect(X + 5, Y + ts / 2, 4, ts / 2 - 2);
+    g.fillRect(X + ts - 9, Y + ts / 2, 4, ts / 2 - 2);
+  }
+
+  /**
+   * 家主题台灯脉冲层（home-visual-spec §1.4，仅 home）：scrollFactor 0.6, depth -8，
+   * 每帧 clear+重绘；核心圆 + 外扩柔光，α 呼吸（≤2Hz，防光敏）。灯架本体在 drawHomeBackground 的 mid 层静态绘制。
+   * Reduce Motion 下相位冻结（静态圆 + 固定 α=0.85，无缩放/呼吸）。
+   */
+  private drawHomeLamp(): void {
+    const g = this.homeLampGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelH = this.runtime.data.height * ts;
+    const levelW = this.runtime.data.width * ts;
+    g.clear();
+    const LAMP = 0xffd23f; // 暖黄 #FFD23F（#4）
+    if (!this.reduceMotion) this.homeLampPhase += STEP_DT * (2 * Math.PI * 1.2); // ≤2Hz
+    const pulse = this.reduceMotion ? 0 : Math.sin(this.homeLampPhase);
+    const baseR = 16;
+    const r = baseR * (1 + pulse * 0.06);
+    const coreA = this.reduceMotion ? 0.85 : 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(this.homeLampPhase));
+    const cx = levelW * 0.4;
+    const cy = levelH * 0.42 - 14; // 灯罩上方光晕中心
+    g.fillStyle(LAMP, coreA * 0.4);
+    g.fillCircle(cx, cy, r * 2.2); // 外扩柔光
+    g.fillStyle(LAMP, coreA);
+    g.fillCircle(cx, cy, r);
+  }
+
+  /**
+   * 家主题前景窗帘层（home-visual-spec §1.5，仅 home）：scrollFactor 1.2, depth 4，
+   * 每帧 clear+重绘；屏幕锚定斜飘带（相位门控约 30% 时间可见，克制遮挡 ≤10%），暖黄高光点。
+   * Reduce Motion 下相位冻结（静态斜带，不再飘移）。
+   */
+  private drawHomeNear(): void {
+    const g = this.homeNearGfx;
+    if (!g) return;
+    const cam = this.cameras.main;
+    const camW = cam.width;
+    const camH = cam.height;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    g.clear();
+    const CURTAIN = 0xf2933c; // 暖橙 #F2933C（#3）
+    const GOLD = 0xffd23f; // 暖黄 #FFD23F（#4）
+    if (!this.reduceMotion) this.homeCurtainPhase += STEP_DT * 0.5;
+    const vis = Math.sin(this.homeCurtainPhase * 0.2);
+    if (vis <= 0.6) return; // 周期性透明（克制遮挡）
+    const alpha = 0.25 + 0.15 * ((vis - 0.6) / 0.4);
+    const baseY = camH * 0.7;
+    const sway = (this.reduceMotion ? 0 : Math.sin(this.homeCurtainPhase)) * 20;
+    const pts = [
+      { x: camW * 0.1 + sway, y: baseY },
+      { x: camW * 0.4 + sway, y: baseY - 18 },
+      { x: camW * 0.7 + sway, y: baseY + 8 },
+      { x: camW * 1.0 + sway, y: baseY - 12 },
+      { x: camW * 1.0 + sway, y: baseY + 14 },
+      { x: camW * 0.1 + sway, y: baseY + 22 },
+    ];
+    g.fillStyle(CURTAIN, alpha);
+    g.beginPath();
+    g.moveTo(pts[0].x + scrollX * 1.2, pts[0].y + scrollY * 1.2);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x + scrollX * 1.2, pts[i].y + scrollY * 1.2);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(GOLD, 0.3);
+    g.fillCircle(camW * 0.5 + sway + scrollX * 1.2, baseY + scrollY * 1.2, 2);
+    g.fillCircle(camW * 0.8 + sway + scrollX * 1.2, baseY + 4 + scrollY * 1.2, 1.6);
+  }
+
   private drawSprite(): void {
     const g = this.sprite;
     g.clear();
@@ -1834,7 +2153,7 @@ export class GameScene extends Phaser.Scene {
     // S04-1：每帧重绘敌人（位置由 stepSim 更新，世界坐标随相机偏移）。
     if (this.enemyGfx) {
       this.enemyGfx.clear();
-      for (const e of this.enemies) drawEnemy(this.enemyGfx, e);
+      for (const e of this.enemies) drawEnemy(this.enemyGfx, e, this.reduceMotion);
     }
 
     // S04-2：每帧重绘弹丸（位置由 stepSim 积分，世界坐标随相机偏移）。
@@ -1856,6 +2175,11 @@ export class GameScene extends Phaser.Scene {
       this.drawDesertSun();
       this.drawDesertNear(); // 前景近景沙幕（scrollFactor 1.2）
       this.drawQuicksandOverlay(); // 流沙同心内陷漩涡（scrollFactor 1.0, depth 3）
+    }
+    // A5 家动态层（仅 home 关卡每帧重绘）：台灯脉冲 + 前景窗帘（scrollFactor 1.2）
+    if (this.runtime.data.metadata.theme === 'home') {
+      this.drawHomeLamp();
+      this.drawHomeNear(); // 前景近景窗帘（scrollFactor 1.2）
     }
     // A4 流沙视觉下沉：仅 sprite 偏移（不改碰撞盒），呈现「陷没沙底」；触底 respawn 后 qsZone=null → 归零
     if (this.qsZone && this.sprite) {

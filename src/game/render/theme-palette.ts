@@ -140,6 +140,25 @@ const DESERT: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
 };
 
+/**
+ * 家调色板（1-5 home 主题，批次 3，home-biome-spec §1.2/§8.2 权威 8 槽，锁色板内，0 新增 hex）：
+ *   暖棕墙 #6B4220（darken(#F2933C,0.55) tint 派生，bg 非 null → 由 drawHomeBackground 覆盖，不进平铺分支）
+ *   木面 #F2933C（rockFace，家具/地板主面，锁色板 #3）/ 木暗面 #79491E（rockBody，家具暗面/天花板带，tint 派生）/
+ *   描边 #2A1A12 / 暖黄 #FFD23F（firelight 与 crystalCore 同源有意复用：台灯晕/窗光/桌沿）/
+ *   草绿 #7CC242（crystalGlow，盆栽/相框内块，锁色板 #1）/ 警示红 #E8483B（danger，玩具尖角/宠物铃铛）。
+ *   经济金 #F2C94C（锁色板 #8）仅在家具柜把手 / 玩具主体直接引用（不进 palette 槽，已在锁色板 #8）。
+ */
+const HOME: ThemePalette = {
+  bg: 0x6b4220, // 暖棕墙 #6B4220（darken(#F2933C,0.55) tint 派生，0 新增）
+  rockFace: 0xf2933c, // 暖橙 #F2933C（木家具主面 / 地板，锁色板 #3）
+  rockBody: 0x79491e, // 沙岩暗面 #79491E（darken(#F2933C,0.5) tint 派生，家具暗面/天花板带，0 新增）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xffd23f, // 暖黄 #FFD23F（台灯暖晕 / 窗光 / 桌沿，锁色板 #4）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（台灯核心 / 相框内，与 firelight 同源有意复用，锁色板 #4）
+  crystalGlow: 0x7cc242, // 草绿 #7CC242（盆栽 / 相框内块，锁色板 #1）
+  danger: 0xe8483b, // 警示红 #E8483B（玩具尖角 / 宠物铃铛，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -153,6 +172,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   sea: SEA,
   // 沙漠 desert = 1-4 沙漠主题（批次 3，desert-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
   desert: DESERT,
+  // 家 home = 1-5 室内主题（批次 3，home-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
+  home: HOME,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */
