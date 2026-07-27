@@ -26,11 +26,11 @@ describe('1-6 街关加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata：theme="street"、name="《霓街穿行》"、parTimeMs=112000', () => {
+  it('metadata：theme="street"、name="《霓街穿行》"、parTimeMs=48000', () => {
     expect(data.metadata.theme).toBe('street');
     const meta = data.metadata as unknown as { name: string; parTimeMs: number };
     expect(meta.name).toBe('《霓街穿行》');
-    expect(meta.parTimeMs).toBe(112000);
+    expect(meta.parTimeMs).toBe(48000);
   });
 
   it('biome 解析：street 返回街 8 槽 palette（0 新增 hex，锁色板内权威 hex，art-spec §3 字节级一致）', () => {

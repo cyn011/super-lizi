@@ -27,11 +27,11 @@ describe('1-3 海关卡加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata：theme="sea"、name="《澜屿潮汐》"、parTimeMs=96000', () => {
+  it('metadata：theme="sea"、name="《澜屿潮汐》"、parTimeMs=40000', () => {
     expect(data.metadata.theme).toBe('sea');
     const meta = data.metadata as unknown as { name: string; parTimeMs: number };
     expect(meta.name).toBe('《澜屿潮汐》');
-    expect(meta.parTimeMs).toBe(96000);
+    expect(meta.parTimeMs).toBe(40000);
   });
 
   it('biome 解析：sea 返回海 palette（0 新增 hex，锁色板内）', () => {

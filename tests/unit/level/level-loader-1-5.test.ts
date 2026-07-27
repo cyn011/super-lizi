@@ -26,11 +26,11 @@ describe('1-5 家关加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata：theme="home"、name="《归巢》"、parTimeMs=108000', () => {
+  it('metadata：theme="home"、name="《归巢》"、parTimeMs=46000', () => {
     expect(data.metadata.theme).toBe('home');
     const meta = data.metadata as unknown as { name: string; parTimeMs: number };
     expect(meta.name).toBe('《归巢》');
-    expect(meta.parTimeMs).toBe(108000);
+    expect(meta.parTimeMs).toBe(46000);
   });
 
   it('biome 解析：home 返回家 8 槽 palette（0 新增 hex，锁色板内权威 hex）', () => {

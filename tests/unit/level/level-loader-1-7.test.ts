@@ -28,11 +28,11 @@ describe('1-7 办公关加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata：theme="office"、name="《案牍劳形》"、parTimeMs=114000', () => {
+  it('metadata：theme="office"、name="《案牍劳形》"、parTimeMs=52000', () => {
     expect(data.metadata.theme).toBe('office');
     const meta = data.metadata as unknown as { name: string; parTimeMs: number };
     expect(meta.name).toBe('《案牍劳形》');
-    expect(meta.parTimeMs).toBe(114000);
+    expect(meta.parTimeMs).toBe(52000);
   });
 
   it('biome 解析：office 返回 OFFICE 8 槽 palette（0 新增 hex，锁色板内权威 hex，office-visual-spec §3.1 字节级一致）', () => {

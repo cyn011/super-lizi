@@ -24,11 +24,11 @@ describe('1-4 沙漠卡加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata：theme="desert"、name="《灼沙绿洲》"、parTimeMs=102000', () => {
+  it('metadata：theme="desert"、name="《灼沙绿洲》"、parTimeMs=44000', () => {
     expect(data.metadata.theme).toBe('desert');
     const meta = data.metadata as unknown as { name: string; parTimeMs: number };
     expect(meta.name).toBe('《灼沙绿洲》');
-    expect(meta.parTimeMs).toBe(102000);
+    expect(meta.parTimeMs).toBe(44000);
   });
 
   it('biome 解析：desert 返回沙漠 palette（0 新增 hex，锁色板内，8 槽权威 hex）', () => {
