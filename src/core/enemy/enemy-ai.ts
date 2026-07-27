@@ -218,7 +218,9 @@ export class EnemyAI implements StompableHazard {
         ? 'patrol'
         : type === 'du_fu' || type === 'jellyfish'
           ? 'float'
-          : 'idle';
+          : type === 'scorpion'
+            ? 'patrol'
+            : 'idle';
 
     // gu_bao：地面锚点 = y；按 phaseOffset 推导初始态；盒顶随 p 上移。
     if (type === 'gu_bao') {
@@ -276,6 +278,13 @@ export class EnemyAI implements StompableHazard {
       this.y = this.silState.y; // 初始 = baseY（mirror/phaseghost 下一步浮动）
       this.state = this.silState.mode; // 'FLOAT'(mirror) / 'IDLE'(decoy)
       this.isStompable = this.silState.stompable;
+    }
+
+    // cactus：固定障碍，底中贴地（设计 JSON 的 y = 地面顶 surfaceY，bbox 底贴该 y）。
+    if (type === 'cactus') {
+      this.y = y - this.height; // 底锚定到给定 y（地面顶），顶 = y - height，站立于地面之上
+      this.state = 'idle';
+      this.isStompable = false; // 硬顶不可踩（cfg 已声明，此处明确一次）
     }
   }
 
@@ -390,6 +399,22 @@ export class EnemyAI implements StompableHazard {
     return this.silState.pairId;
   }
 
+  /** scorpion 是否 charge telegraph（render 读：尾刺上扬 + 尾尖红闪）。 */
+  get scorpionCharging(): boolean {
+    return this.scorpionChargingState;
+  }
+
+  /** scorpion charge 相位（rad，≤2Hz 红闪），render 读。 */
+  get scorpionChargePhase(): number {
+    return this.scorpionPhase;
+  }
+
+  // ── scorpion 沙漠专属敌状态机字段（GDD 1-4 §3.2，零平台纯逻辑）──
+  /** scorpion 是否处于 charge telegraph（玩家进入 detect 范围）：尾刺上扬 + 尾尖红闪。 */
+  private scorpionChargingState = false;
+  /** scorpion charge 相位（仅视觉红闪，≤2Hz），render 读。 */
+  private scorpionPhase = 0;
+
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
    * @param player 玩家碰撞盒（chong_feng detect / shi_pao aim 需要；ci_li/du_fu 可省）。
@@ -424,6 +449,8 @@ export class EnemyAI implements StompableHazard {
     }
     if (this.type === 'chong_feng') return this.updateChongFeng(dt, world, player);
     if (this.type === 'shi_pao') return this.updateShiPao(dt, player);
+    if (this.type === 'scorpion') return this.updateScorpion(dt, world, player);
+    if (this.type === 'cactus') return NO_PROJECTILES; // 静态障碍，无 AI
     return NO_PROJECTILES;
   }
 
@@ -608,6 +635,29 @@ export class EnemyAI implements StompableHazard {
       const my = pcy + dy * (this.height / 2 + 2);
       return [Projectile.acquire(mx, my, dx * speed, dy * speed)];
     }
+    return NO_PROJECTILES;
+  }
+
+  // ── scorpion 沙漠专属敌（GDD 1-4 §3.2）：地面小幅往返巡逻 + charge telegraph ──
+  // idle/patrol：沿地面小幅往返（复用 updatePatrol 的边缘/墙掉头）；
+  // 玩家进入 detect 范围 → charge（尾刺上扬 + 尾尖红闪 telegraph，≤2Hz），接触=受伤（isStompable=false 走伤害分支）。
+  // 纯状态机，零平台。
+  private updateScorpion(dt: number, world: CollisionWorld, player?: Body): Projectile[] {
+    // 地面巡逻（小幅往返）
+    this.updatePatrol(dt, world);
+    // charge telegraph：玩家进入 detect 范围（水平 + 垂直容差）才上扬尾刺
+    this.scorpionChargingState = false;
+    if (player) {
+      const dx = player.x + player.w / 2 - (this.x + this.width / 2);
+      const dy = player.y + player.h / 2 - (this.y + this.height / 2);
+      const detect = this.cfg.detect ?? 0;
+      const vRange = this.cfg.attackRange ?? 64;
+      if (Math.abs(dx) <= detect && Math.abs(dy) <= vRange) {
+        this.scorpionChargingState = true;
+      }
+    }
+    // 相位推进（≤2Hz 红闪；仅视觉，render 读取）
+    this.scorpionPhase += dt * (2 * Math.PI * 1.5); // 1.5Hz
     return NO_PROJECTILES;
   }
 
@@ -796,7 +846,9 @@ export function createEnemies(
       e.type === 'bouncy_vine' ||
       e.type === 'cyclone' ||
       e.type === 'du_fu_silhouette' ||
-      e.type === 'jellyfish'
+      e.type === 'jellyfish' ||
+      e.type === 'scorpion' ||
+      e.type === 'cactus'
     ) {
       out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, e.params));
     }

@@ -149,3 +149,46 @@ export function resolveHazardContact(params: {
 
   return res;
 }
+
+/**
+ * 环境致死（如 quicksand 触底）：强制死亡 + 扣命 + 重生/GameOver（GDD 1-4 §4）。
+ * 与 resolveHazardContact 的 SMALL→DEAD 分支等价：丢失 1 命，有命则立即重生 FULL（回检查点 + 重生无敌帧），
+ * 无命则 Game Over。调用方须确保只在「确实要致死」时调用（不在 invincible 内重复触发）。
+ * 返回新 controller（重生时）供调用方替换；gameOver=true 时 controller 为 undefined（由 ON_GAME_OVER 订阅驱动 UI）。
+ */
+export function applyFatalDeath(params: {
+  damage: DamageStateMachine;
+  body: Body;
+  bus: EventBus;
+  cfg: DamageConfig;
+  spawn: { x: number; y: number };
+  playerW: number;
+  playerH: number;
+}): { gameOver: boolean; controller?: CharacterController } {
+  const { damage, body, bus, cfg, spawn, playerW, playerH } = params;
+  damage.state = 'DEAD';
+  damage.lives -= 1;
+  if (damage.lives > 0) {
+    bus.emit(ON_DEATH, { lives: damage.lives });
+    bus.emit(ON_RESPAWN, { lives: damage.lives });
+    damage.state = 'FULL';
+    damage.form = 'BASE';
+    damage.invincibleTimer = cfg.invincibleMs;
+    const nc = new CharacterController(characterConfig, {
+      x: spawn.x,
+      y: spawn.y,
+      grounded: true,
+    });
+    body.x = spawn.x;
+    body.y = spawn.y;
+    body.w = playerW;
+    body.h = playerH;
+    body.vx = 0;
+    body.vy = 0;
+    return { gameOver: false, controller: nc };
+  }
+  damage.lives = 0;
+  bus.emit(ON_DEATH, { lives: 0 });
+  bus.emit(ON_GAME_OVER, { lives: 0 });
+  return { gameOver: true, controller: undefined };
+}

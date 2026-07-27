@@ -45,6 +45,14 @@ export function drawEnemy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
     drawJellyfish(g, e); // 水母：半透天空蓝伞 + 蓝紫触手 + 暖黄核心（sea 专属，GDD 1-3 §3.2）
     return;
   }
+  if (e.type === 'scorpion') {
+    drawScorpion(g, e); // 蝎子：暖橙身 + 暗钳/腿 + 上翘红尾刺（desert 专属，GDD 1-4 §3.2）
+    return;
+  }
+  if (e.type === 'cactus') {
+    drawCactus(g, e); // 仙人掌：草绿柱 + 红刺 + 硬顶不可踩（desert 专属固定障碍，GDD 1-4 §3.3）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -304,4 +312,114 @@ function drawJellyfish(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   // 核心（暖黄小点）
   g.fillStyle(JELLY_CORE, 0.8);
   g.fillCircle(cx, cy - capH * 0.2, 3);
+}
+
+/**
+ * 蝎子（scorpion）占位绘制（GDD 1-4 §3.2 / desert-visual-spec §2.1，锁色板内 0 新增色）：
+ *   - 主体：暖橙 #F2933C + 描边 #2A1A12（长条圆角身，bbox 40×24）。
+ *   - 钳/腿：沙岩暗面 #79491E（tint 派生，锁色板 #3 派生，0 新增）。
+ *   - 尾（后，上翘）：暖橙节 + 警示红 #E8483B 尾尖（hard 顶不可踩双编码）。
+ *   - 眼：天空 #5BC8F5（锁色板 #11）。
+ *   - charge telegraph：尾刺上扬更高 + 尾尖红闪（≤2Hz，防光敏）。
+ * 几何读 EnemyAI.getBounds()（盒顶随碰撞盒，单一真相源）。
+ * 颜色仅用 11 色锁色板或 tint 派生（#79491E 为 darken(#F2933C,0.5) 派生，0 新增 hex）。
+ */
+const SCORPION_BODY = 0xf2933c; // 暖橙 #F2933C（#3）
+const SCORPION_DARK = 0x79491e; // 沙岩暗面 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）
+const SCORPION_TIP = 0xe8483b; // 警示红 #E8483B（#7）
+const SCORPION_EYE = 0x5bc8f5; // 天空 #5BC8F5（#11）
+function drawScorpion(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const dir = e.facing;
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const t = e.scorpionChargePhase;
+  const charging = e.scorpionCharging;
+
+  // 1) 主体（长条圆角）
+  g.fillStyle(SCORPION_BODY, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, { tl: 8, tr: 8, bl: 6, br: 6 });
+  g.lineStyle(1, OUTLINE, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, { tl: 8, tr: 8, bl: 6, br: 6 });
+
+  // 2) 腿（下 4–5 条，暗面）
+  g.lineStyle(2, SCORPION_DARK, 1);
+  for (let i = 0; i < 5; i++) {
+    g.lineBetween(b.x + 5 + i * 7, b.y + b.h, b.x + 3 + i * 7, b.y + b.h + 5);
+  }
+
+  // 3) 钳（前 ×2，朝 facing 外伸）
+  const fx = dir > 0 ? b.x + b.w : b.x;
+  g.fillStyle(SCORPION_DARK, 1);
+  g.fillTriangle(fx, cy - 6, fx + dir * 10, cy - 9, fx + dir * 10, cy - 2); // 上钳
+  g.fillTriangle(fx, cy + 6, fx + dir * 10, cy + 9, fx + dir * 10, cy + 2); // 下钳
+
+  // 4) 尾（后，上翘；charge 时抬高）
+  const tailBaseX = dir > 0 ? b.x : b.x + b.w;
+  const raise = charging ? -14 : -6; // charge 上扬更高
+  g.fillStyle(SCORPION_BODY, 1);
+  g.fillCircle(tailBaseX - dir * 4, cy, 4);
+  g.fillCircle(tailBaseX - dir * 10, cy - 4, 3);
+  g.fillCircle(tailBaseX - dir * 15, cy + raise, 2.5);
+
+  // 5) 尾尖（danger，charge 时闪光 ≤2Hz）
+  const tipA = charging ? 0.7 + 0.3 * Math.sin(t * 4) : 1; // ≤2Hz
+  g.fillStyle(SCORPION_TIP, tipA);
+  g.fillTriangle(
+    tailBaseX - dir * 15 - 2,
+    cy + raise,
+    tailBaseX - dir * 15 + 2,
+    cy + raise,
+    tailBaseX - dir * 20,
+    cy + raise - 6,
+  );
+
+  // 6) 眼（天空蓝点）
+  g.fillStyle(SCORPION_EYE, 1);
+  g.fillCircle(cx + dir * 10, b.y + 8, 2);
+  g.fillCircle(cx + dir * 10, b.y + 16, 2);
+}
+
+/**
+ * 仙人掌（cactus）占位绘制（GDD 1-4 §3.3 / desert-visual-spec §2.2，锁色板内 0 新增色）：
+ *   - 主体：草绿 #7CC242 + 描边 #2A1A12（竖柱 bbox 24×48，底中贴地）。
+ *   - 暗部：草绿暗 #3E6121（darken(#7CC242,0.5) tint 派生，0 新增）。
+ *   - 侧臂：草绿 + 暗部。
+ *   - 刺：警示红 #E8483B（hard 顶不可踩双编码）。
+ * 静态障碍，无 idle/charge 区分（静态 telegraph 即可读）。
+ * 颜色仅用 11 色锁色板或 tint 派生（#3E6121 为 darken(#7CC242,0.5) 派生，0 新增 hex）。
+ */
+const CACTUS_BODY = 0x7cc242; // 草绿 #7CC242（#1）
+const CACTUS_DARK = 0x3e6121; // 草绿暗 #3E6121（darken(#7CC242,0.5) tint 派生，0 新增）
+const CACTUS_SPIKE = 0xe8483b; // 警示红 #E8483B（#7）
+function drawCactus(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const cx = b.x + b.w / 2;
+  // 1) 主体（竖柱）
+  g.fillStyle(CACTUS_BODY, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, { tl: 10, tr: 10, bl: 4, br: 4 });
+  g.lineStyle(1, OUTLINE, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, { tl: 10, tr: 10, bl: 4, br: 4 });
+  // 2) 暗部（右 1/3）
+  g.fillStyle(CACTUS_DARK, 1);
+  g.fillRoundedRect(b.x + 16, b.y, 8, b.h, { tl: 0, tr: 10, bl: 0, br: 4 });
+  // 3) 侧臂（左/右各一）
+  g.fillStyle(CACTUS_BODY, 1);
+  g.fillRoundedRect(b.x - 8, b.y + 20, 10, 16, 4); // 左臂
+  g.fillRoundedRect(b.x + 22, b.y + 14, 10, 18, 4); // 右臂
+  g.lineStyle(1, OUTLINE, 1);
+  g.strokeRoundedRect(b.x - 8, b.y + 20, 10, 16, 4);
+  g.strokeRoundedRect(b.x + 22, b.y + 14, 10, 18, 4);
+  // 4) 刺（周身红，短放射）
+  g.lineStyle(1, CACTUS_SPIKE, 1);
+  for (let i = 0; i < 6; i++) {
+    const yy = b.y + 8 + i * 7;
+    g.lineBetween(b.x, yy, b.x - 4, yy - 2);
+    g.lineBetween(b.x + b.w, yy, b.x + b.w + 4, yy - 2);
+  }
+  // 5) 顶刺（强化 hard 顶）
+  g.lineBetween(cx, b.y, cx - 3, b.y - 5);
+  g.lineBetween(cx, b.y, cx + 3, b.y - 5);
 }

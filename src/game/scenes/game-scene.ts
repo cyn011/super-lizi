@@ -30,6 +30,7 @@ import { DamageStateMachine } from '../../core/damage/damage-state-machine';
 import type { Body } from '../../core/physics/body';
 import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
+import type { QuicksandDef } from '../../core/level/level-data';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
 import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE, ON_CHESTNUT_THROWN, ON_AMMO_CHANGED, ON_AMMO_EMPTY, ON_CHESTNUT_HIT, ON_PROJECTILE_CANCEL } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
@@ -44,7 +45,7 @@ import { ResultScreen, evaluateRanks } from '../../ui/result-screen';
 // RankResult 类型归属 core（S05-3）；SaveManager 消费平台注入的 storage 落盘（core 零平台 API）。
 import { SaveManager, type RankResult } from '../../core/meta/save-data';
 import { runStepSim } from '../scene-sync';
-import { resolveHazardContact } from '../damage-resolution';
+import { resolveHazardContact, applyFatalDeath } from '../damage-resolution';
 import { FollowCamera } from '../camera/follow-camera';
 import { RunStateMachineImpl, type RunStateMachine } from '../../core/state/run-state-machine';
 import { RunLifecycle } from '../../core/state/run-lifecycle';
@@ -61,6 +62,14 @@ import { drawCoin } from '../render/coin-view';
 import { drawSeed } from '../render/seed-view';
 import { drawCheckpoint } from '../render/checkpoint-view';
 import { resolvePickups } from '../pickup-resolution';
+// GDD 1-4：流沙下陷致死机制（core 零平台纯函数，本层仅消费）。
+import {
+  quicksandZoneAt,
+  isQuicksandSinking,
+  quicksandSinkRate,
+  quicksandBottomedOut,
+  quicksandVisualOffset,
+} from '../../core/quicksand/quicksand';
 // GDD 17 扔栗子机制：控制器 + 弹丸（core 零平台）/ 弹药 HUD / 弹丸渲染（ui / game 层）。
 import { ThrowController } from '../../core/attack/throw-controller';
 import { ChestnutProjectile } from '../../core/attack/chestnut-projectile';
@@ -135,6 +144,28 @@ export class GameScene extends Phaser.Scene {
   private tidePhase = 0;
   /** 前景近景气泡相位累加器（≤3Hz，Reduce Motion 下冻结，仅海关使用）。 */
   private seaNearPhase = 0;
+  /** 沙漠主题背景-天空层（scrollFactor 0，depth -10，全屏竖直渐变，仅 desert 创建一次）。 */
+  private desertSkyGfx?: Phaser.GameObjects.Graphics;
+  /** 沙漠主题背景-远景层（scrollFactor 0.3，depth -9，沙丘剪影，仅 desert 创建一次）。 */
+  private desertFarGfx?: Phaser.GameObjects.Graphics;
+  /** 沙漠主题背景-中景层（scrollFactor 0.6，depth -8，金字塔+仙人掌，仅 desert 创建一次）。 */
+  private desertMidGfx?: Phaser.GameObjects.Graphics;
+  /** 沙漠主题背景-中景太阳脉冲层（scrollFactor 0.6，depth -8，每帧重绘，仅 desert 创建一次）。 */
+  private desertSunGfx?: Phaser.GameObjects.Graphics;
+  /** 沙漠主题背景-前景沙幕层（scrollFactor 1.2，depth 4，每帧重绘，仅 desert 创建一次）。 */
+  private desertNearGfx?: Phaser.GameObjects.Graphics;
+  /** GDD 1-4 流沙叠层（世界坐标，随相机滚动；每帧按 sink 状态重绘，仅 desert 关卡创建）。 */
+  private quicksandGfx?: Phaser.GameObjects.Graphics;
+  /** 流沙太阳脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅沙漠关使用）。 */
+  private desertSunPhase = 0;
+  /** 前景沙幕相位累加器（Reduce Motion 下冻结，仅沙漠关使用）。 */
+  private desertVeilPhase = 0;
+  /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
+  private qsZone: QuicksandDef | null = null;
+  /** 流沙下陷累计时间（ms），用于 telegraph 渐变速率。 */
+  private qsSinkMs = 0;
+  /** 流沙累计下陷深度（px），达到 (deathY-surfaceY) 触发触底死亡。 */
+  private qsSinkDepth = 0;
   /** S05-1 节拍时钟：从关卡 beat 建；enabled 时每固定步门控。 */
   private beatClock?: BeatClock;
   /** S05-1 节拍驱动系统：按 tracks 在跨拍瞬间切平台 solid/ghost；无平台/无 track 时为 undefined。 */
@@ -728,6 +759,9 @@ export class GameScene extends Phaser.Scene {
     // A3 潮汐：脚底低于水位线 → 软伤害（扣 1 级 + 击退 + 无敌帧，不致死）
     this.resolveTideHazard();
 
+    // A4 流沙：脚底在流沙区且接地 → 持续下陷；触底致死（respawn 到检查点，复用 07）
+    this.resolveQuicksandHazard();
+
     // C5 终点检测：body AABB 与凯旋之门 AABB 重叠 → ON_LEVEL_COMPLETE（无敌人也可达）
     this.resolveGoal();
 
@@ -898,6 +932,46 @@ export class GameScene extends Phaser.Scene {
     // 不论 FULL/SMALL：触水均给向上击退 + 无敌帧（软伤害，不致死）
     this.body.vy = -damageConfig.knockbackUp;
     this.damage.invincibleTimer = Math.max(this.damage.invincibleTimer, damageConfig.invincibleMs);
+  }
+
+  /**
+   * A4 流沙下陷致死机制（GDD 1-4 §4）：栗宝脚底进入流沙区 [xStart,xEnd] 且接地（grounded）即持续下陷；
+   * 触底（累计下陷深度 ≥ deathY-surfaceY）即死（respawn 到最近检查点，复用 07 death 管线 applyFatalDeath）。
+   * 空中（!grounded）不触发 → 跳跃跨越为安全解法之一；离开区/跳起复位（给逃脱窗口）。
+   * telegraph 渐变（quicksandSinkRate 在 telegraphMs 内由 0→sinkRate）+ 视觉下沉 offset 由 update 每帧应用。
+   */
+  private resolveQuicksandHazard(): void {
+    const zones = this.runtime.data.quicksand;
+    if (!zones || zones.length === 0) return;
+    const cx = this.body.x + this.body.w / 2;
+    const zone = quicksandZoneAt(zones, cx);
+    if (!zone || !isQuicksandSinking(zone, this.body, this.lastGrounded)) {
+      // 未进入区 / 跳起（空中） / 离区 → 复位（逃脱窗口）
+      this.qsZone = null;
+      this.qsSinkMs = 0;
+      this.qsSinkDepth = 0;
+      return;
+    }
+    this.qsZone = zone;
+    this.qsSinkMs += STEP_DT * 1000;
+    const rate = quicksandSinkRate(zone, this.qsSinkMs);
+    this.qsSinkDepth += rate * STEP_DT;
+    if (quicksandBottomedOut(zone, this.qsSinkDepth)) {
+      // 触底致死 → 扣 1 命 + 有命立即重生 FULL（回检查点 + 重生无敌帧）/ 无命 GameOver（applyFatalDeath 发 ON_GAME_OVER）
+      const r = applyFatalDeath({
+        damage: this.damage,
+        body: this.body,
+        bus: this.bus,
+        cfg: damageConfig,
+        spawn: this.respawnPoint,
+        playerW: PLAYER_W,
+        playerH: PLAYER_H,
+      });
+      if (r.controller) this.controller = r.controller;
+      this.qsZone = null;
+      this.qsSinkMs = 0;
+      this.qsSinkDepth = 0;
+    }
   }
 
   /**
@@ -1228,6 +1302,7 @@ export class GameScene extends Phaser.Scene {
     // biome 氛围接线点：theme → palette（草原保持默认暖色；洞穴冷暗蓝），对齐 art/cave-biome-spec.md §6。
     const pal = biomeForLevel(this.runtime.data);
     const isSea = this.runtime.data.metadata.theme === 'sea';
+    const isDesert = this.runtime.data.metadata.theme === 'desert';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1242,16 +1317,36 @@ export class GameScene extends Phaser.Scene {
       this.tideGfx?.destroy();
       this.tideGfx = undefined;
     }
+    // 非沙漠关：清理可能残留的沙漠背景层/流沙层（切换关卡安全）
+    if (!isDesert) {
+      this.desertSkyGfx?.destroy();
+      this.desertSkyGfx = undefined;
+      this.desertFarGfx?.destroy();
+      this.desertFarGfx = undefined;
+      this.desertMidGfx?.destroy();
+      this.desertMidGfx = undefined;
+      this.desertSunGfx?.destroy();
+      this.desertSunGfx = undefined;
+      this.desertNearGfx?.destroy();
+      this.desertNearGfx = undefined;
+      this.quicksandGfx?.destroy();
+      this.quicksandGfx = undefined;
+      this.qsSinkMs = 0;
+      this.qsSinkDepth = 0;
+      this.qsZone = null;
+    }
 
     // 背景层：
-    //  - 非海关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
-    //  - 海关：跳过平铺（交给 drawSeaBackground 的天空渐变 + 视差层，depth -10）。
-    if (!isSea && pal.bg !== null) {
+    //  - 非海关/非沙漠关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
+    //  - 海关/沙漠关：跳过平铺（交给 drawSeaBackground / drawDesertBackground 的天空渐变 + 视差层）。
+    if (!isSea && !isDesert && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
     // 海主题背景（天空渐变 + 远/中景视差），仅 sea 创建一次
     if (isSea) this.drawSeaBackground(pal);
+    // 沙漠主题背景（暖沙晴空 + 远/中景视差 + 太阳 + 沙幕），仅 desert 创建一次（动态层每帧重绘）
+    if (isDesert) this.drawDesertBackground(pal);
 
     for (let ty = 0; ty < this.runtime.data.height; ty++) {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {
@@ -1276,6 +1371,8 @@ export class GameScene extends Phaser.Scene {
 
     // 潮汐水体叠层（世界坐标，depth 3，位于地形之上、实体之下）；每帧按 waterSurfaceY 重绘
     if (isSea && !this.tideGfx) this.tideGfx = this.add.graphics().setDepth(3);
+    // GDD 1-4 流沙叠层（世界坐标，depth 3，同上；每帧按 sink 状态重绘）
+    if (isDesert && !this.quicksandGfx) this.quicksandGfx = this.add.graphics().setDepth(3);
   }
 
   /**
@@ -1447,6 +1544,207 @@ export class GameScene extends Phaser.Scene {
     g.strokePath();
   }
 
+  /**
+   * 沙漠主题背景层（GDD 1-4 / desert-visual-spec §1，仅 desert）：镜像 drawSeaBackground 五层视差结构——
+   *   sky (scrollFactor 0,   depth -10) 暖沙晴空竖直渐变（bg #F7BE8A → firelight #FFD23F 辉光）
+   *   far (scrollFactor 0.3, depth -9)  沙丘剪影带(rockBody 无描边)
+   *   mid (scrollFactor 0.6, depth -8)  金字塔(rockFace 受光 / rockBody 暗面) + 仙人掌(crystalCore + 暗部 + 红刺)
+   * 远景/中景绘制范围覆盖整关世界宽（runtime.data.width*tileSize）以支撑视差；
+   * 太阳脉冲层(desertSunGfx)与前景沙幕层(desertNearGfx)为每帧重绘，此处仅创建 Graphics。
+   * 全程序化 Graphics（零 PNG，ADR-004），颜色仅用 11 色锁色板或 tint 派生（CACTUS_DARK=0x3e6121 为
+   * darken(#7CC242,0.5) tint 派生，0 新增 hex）。draw call：sky 1 + far 1 + mid(金字塔×3 + 仙人掌×3)≈7，均 ≤15。
+   */
+  private drawDesertBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const SKY = pal.bg ?? 0xf7be8a; // 暖沙晴空 #F7BE8A（tint 派生）
+    const HORIZON = pal.firelight; // 暖黄 #FFD23F 近地平线辉光
+    const ROCK_BODY = pal.rockBody; // 暗沙岩 #79491E（远景沙丘 / 漩涡）
+    const ROCK_FACE = pal.rockFace; // 暖橙 #F2933C（金字塔受光 / 太阳）
+    const CACTUS = pal.crystalCore; // 草绿 #7CC242（仙人掌主体）
+    const CACTUS_DARK = 0x3e6121; // darken(#7CC242,0.5) 仙人掌暗部（tint 派生）
+    const OUT = pal.outline; // 描边 #2A1A12
+
+    // ── 1) 天空层（scrollFactor 0, depth -10）：竖直渐变 SKY→HORIZON，全屏一次 ──
+    if (!this.desertSkyGfx) this.desertSkyGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const sky = this.desertSkyGfx;
+    sky.clear();
+    sky.fillGradientStyle(SKY, SKY, HORIZON, HORIZON, 1);
+    sky.fillRect(0, 0, camW, camH);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：沙丘剪影带，铺满 levelW ──
+    if (!this.desertFarGfx) this.desertFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+    const far = this.desertFarGfx;
+    far.clear();
+    far.fillStyle(ROCK_BODY, 1);
+    const dunes: { x: number; y: number }[] = [];
+    const amp = 14;
+    const wl = 180;
+    for (let x = 0; x <= levelW; x += 32) {
+      dunes.push({ x, y: levelH * 0.64 + Math.sin(x * ((Math.PI * 2) / wl)) * amp });
+    }
+    dunes.push({ x: levelW, y: levelH });
+    dunes.push({ x: 0, y: levelH });
+    far.fillPoints(dunes, true);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：金字塔 + 仙人掌，create-once（仅 scrollFactor 驱动视差）──
+    if (!this.desertMidGfx) this.desertMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.desertMidGfx;
+    mid.clear();
+    // 金字塔 ×3（左受光 ROCK_FACE / 右暗 ROCK_BODY，轻描边）
+    const pyramids = [
+      { x: levelW * 0.18, baseY: levelH * 0.68, w: 90, h: 64 },
+      { x: levelW * 0.52, baseY: levelH * 0.7, w: 80, h: 56 },
+      { x: levelW * 0.82, baseY: levelH * 0.66, w: 96, h: 70 },
+    ];
+    for (const p of pyramids) {
+      const topX = p.x;
+      const topY = p.baseY - p.h;
+      const blX = p.x - p.w / 2;
+      const brX = p.x + p.w / 2;
+      mid.fillStyle(ROCK_FACE, 1);
+      mid.fillPoints([{ x: topX, y: topY }, { x: blX, y: p.baseY }, { x: p.x, y: p.baseY }], true);
+      mid.fillStyle(ROCK_BODY, 1);
+      mid.fillPoints([{ x: topX, y: topY }, { x: p.x, y: p.baseY }, { x: brX, y: p.baseY }], true);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokePoints([{ x: topX, y: topY }, { x: blX, y: p.baseY }, { x: brX, y: p.baseY }, { x: topX, y: topY }], true);
+    }
+    // 仙人掌 ×3（CACTUS 竖柱 + CACTUS_DARK 暗部 + 侧臂 + 红刺点缀，轻描边）
+    const cacti = [
+      { x: levelW * 0.33, baseY: levelH * 0.74, h: 46 },
+      { x: levelW * 0.66, baseY: levelH * 0.76, h: 40 },
+      { x: levelW * 0.92, baseY: levelH * 0.72, h: 52 },
+    ];
+    for (const c of cacti) {
+      const w = 22;
+      const x0 = c.x - w / 2;
+      mid.fillStyle(CACTUS, 1);
+      mid.fillRoundedRect(x0, c.baseY - c.h, w, c.h, { tl: 10, tr: 10, bl: 4, br: 4 });
+      mid.fillStyle(CACTUS_DARK, 1);
+      mid.fillRoundedRect(x0 + w * 0.66, c.baseY - c.h, w * 0.34, c.h, { tl: 0, tr: 10, bl: 0, br: 4 });
+      mid.fillStyle(CACTUS, 1);
+      mid.fillRoundedRect(x0 - 8, c.baseY - c.h * 0.6, 10, 16, 4);
+      mid.fillRoundedRect(x0 + w - 2, c.baseY - c.h * 0.5, 10, 18, 4);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeRoundedRect(x0, c.baseY - c.h, w, c.h, { tl: 10, tr: 10, bl: 4, br: 4 });
+      mid.fillStyle(pal.danger, 1);
+      mid.fillCircle(x0 + 4, c.baseY - c.h * 0.8, 1.5);
+      mid.fillCircle(x0 + w - 4, c.baseY - c.h * 0.5, 1.5);
+    }
+
+    // ── 4) 太阳脉冲层（scrollFactor 0.6, depth -8）：每帧重绘（drawDesertSun）──
+    if (!this.desertSunGfx) this.desertSunGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    // ── 5) 前景沙幕层（scrollFactor 1.2, depth 4）：每帧重绘（drawDesertNear）──
+    if (!this.desertNearGfx) this.desertNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /**
+   * 沙漠主题太阳脉冲层（desert-visual-spec §1.4，仅 desert）：scrollFactor 0.6, depth -8，
+   * 每帧 clear+重绘；核心圆 + 8 条放射光芒，整体缩放 1±0.06 + 核心 α 呼吸（≤2Hz，防光敏）。
+   * Reduce Motion 下相位冻结（静态圆 + 固定 α=0.85，无缩放/呼吸）。
+   */
+  private drawDesertSun(): void {
+    const g = this.desertSunGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelH = this.runtime.data.height * ts;
+    const levelW = this.runtime.data.width * ts;
+    g.clear();
+    const SUN = 0xffd23f; // 暖黄 #FFD23F（#4）
+    if (!this.reduceMotion) this.desertSunPhase += STEP_DT * (2 * Math.PI * 1.2); // ≤2Hz
+    const pulse = this.reduceMotion ? 0 : Math.sin(this.desertSunPhase);
+    const baseR = 20;
+    const r = baseR * (1 + pulse * 0.06);
+    const coreA = this.reduceMotion ? 0.85 : 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(this.desertSunPhase));
+    const cx = levelW * 0.74;
+    const cy = levelH * 0.16;
+    g.lineStyle(2, SUN, 0.5);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + this.desertSunPhase * 0.3;
+      g.lineBetween(cx + Math.cos(a) * r, cy + Math.sin(a) * r, cx + Math.cos(a) * (r + 10), cy + Math.sin(a) * (r + 10));
+    }
+    g.fillStyle(SUN, coreA);
+    g.fillCircle(cx, cy, r);
+  }
+
+  /**
+   * 沙漠主题前景沙幕层（desert-visual-spec §1.5，仅 desert）：scrollFactor 1.2, depth 4，
+   * 每帧 clear+重绘；屏幕锚定斜飘带（相位门控约 30% 时间可见，克制遮挡 ≤10%），暖黄高光点。
+   * Reduce Motion 下相位冻结（静态斜带，不再飘移）。
+   */
+  private drawDesertNear(): void {
+    const g = this.desertNearGfx;
+    if (!g) return;
+    const cam = this.cameras.main;
+    const camW = cam.width;
+    const camH = cam.height;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    g.clear();
+    const SAND = 0xf2933c; // 暖橙 #F2933C（#3）
+    const GOLD = 0xffd23f; // 暖黄 #FFD23F（#4）
+    if (!this.reduceMotion) this.desertVeilPhase += STEP_DT * 0.5;
+    const vis = Math.sin(this.desertVeilPhase * 0.2);
+    if (vis <= 0.6) return; // 周期性透明（克制）
+    const alpha = 0.25 + 0.15 * ((vis - 0.6) / 0.4);
+    const baseY = camH * 0.7;
+    const sway = Math.sin(this.desertVeilPhase) * 20;
+    const pts = [
+      { x: camW * 0.1 + sway, y: baseY },
+      { x: camW * 0.4 + sway, y: baseY - 18 },
+      { x: camW * 0.7 + sway, y: baseY + 8 },
+      { x: camW * 1.0 + sway, y: baseY - 12 },
+      { x: camW * 1.0 + sway, y: baseY + 14 },
+      { x: camW * 0.1 + sway, y: baseY + 22 },
+    ];
+    g.fillStyle(SAND, alpha);
+    g.beginPath();
+    g.moveTo(pts[0].x + scrollX * 1.2, pts[0].y + scrollY * 1.2);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x + scrollX * 1.2, pts[i].y + scrollY * 1.2);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(GOLD, 0.3);
+    g.fillCircle(camW * 0.5 + sway + scrollX * 1.2, baseY + scrollY * 1.2, 2);
+    g.fillCircle(camW * 0.8 + sway + scrollX * 1.2, baseY + 4 + scrollY * 1.2, 1.6);
+  }
+
+  /**
+   * GDD 1-4 流沙叠层渲染（每帧，仅 desert 关卡）：按各区 surfaceY→deathY 铺暖橙沙底，
+   * 叠同心内陷漩涡（rockBody 暗色，中心最暗），边缘轻描边区分边界（desert-visual-spec §2.3）。
+   * Reduce Motion 下 sinkPhase 冻结（静态同心圈，仍暗色可读）。draw call：每区 ~2（铺底 + 漩涡×3 单 path）≈ 2。
+   */
+  private drawQuicksandOverlay(): void {
+    const g = this.quicksandGfx;
+    if (!g) return;
+    const zones = this.runtime.data.quicksand;
+    g.clear();
+    if (!zones || zones.length === 0) return;
+    const SAND = 0xf2933c; // 暖橙 #F2933C（#3，融入沙底）
+    const SWIRL = 0x79491e; // darken(#F2933C,0.5) 漩涡暗色（tint 派生）
+    const OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+    const sinkPhase = this.reduceMotion ? 0 : (this.elapsedMs / 1000) * 1.5; // ≤3Hz 内陷
+    for (const z of zones) {
+      const zx = z.xStart;
+      const zw = z.xEnd - z.xStart;
+      const zy = z.surfaceY;
+      const zh = z.deathY - z.surfaceY;
+      g.fillStyle(SAND, 1);
+      g.fillRect(zx, zy, zw, zh);
+      for (let ring = 0; ring < 3; ring++) {
+        const rr = zh * 0.4 * (1 - ring * 0.28) * (1 - 0.04 * Math.sin(sinkPhase + ring));
+        g.fillStyle(SWIRL, 0.35 + ring * 0.12);
+        g.fillEllipse(zx + zw / 2, zy + zh / 2, rr * 2, rr);
+      }
+      g.lineStyle(1, OUT, 0.4);
+      g.strokeRect(zx, zy, zw, zh);
+    }
+  }
+
   private drawSprite(): void {
     const g = this.sprite;
     g.clear();
@@ -1552,6 +1850,17 @@ export class GameScene extends Phaser.Scene {
     if (this.runtime.data.metadata.theme === 'sea') {
       this.drawTideOverlay();
       this.drawSeaNear(); // 前景近景动态浪花/气泡（scrollFactor 1.2）
+    }
+    // A4 沙漠动态层（仅 desert 关卡每帧重绘）：太阳脉冲 + 前景沙幕 + 流沙叠层
+    if (this.runtime.data.metadata.theme === 'desert') {
+      this.drawDesertSun();
+      this.drawDesertNear(); // 前景近景沙幕（scrollFactor 1.2）
+      this.drawQuicksandOverlay(); // 流沙同心内陷漩涡（scrollFactor 1.0, depth 3）
+    }
+    // A4 流沙视觉下沉：仅 sprite 偏移（不改碰撞盒），呈现「陷没沙底」；触底 respawn 后 qsZone=null → 归零
+    if (this.qsZone && this.sprite) {
+      const sinkOffset = quicksandVisualOffset(this.qsZone, this.qsSinkDepth);
+      this.sprite.setPosition(Math.round(this.body.x), Math.round(this.body.y) + sinkOffset);
     }
   }
 }

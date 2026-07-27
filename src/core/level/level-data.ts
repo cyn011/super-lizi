@@ -31,7 +31,8 @@ export type LevelTheme =
   | 'mountain'
   | 'vine_forest'
   | 'storm_sky'
-  | 'sea';
+  | 'sea'
+  | 'desert';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -43,7 +44,9 @@ export type EnemyEntityType =
   | 'bouncy_vine'
   | 'cyclone'
   | 'du_fu_silhouette'
-  | 'jellyfish';
+  | 'jellyfish'
+  | 'scorpion'
+  | 'cactus';
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;
@@ -157,6 +160,29 @@ export interface RiptideDef {
   vxBias: number;
 }
 
+/**
+ * 流沙区（GDD 1-4 §4，批次 3 沙漠主题）：地面危险区域，进入后持续下陷，触底即死（respawn 到检查点）。
+ * 区别于 1-3 潮汐（软伤害、可飞越），流沙致死但 telegraph + 逃脱窗口守住公平。
+ * 全部单位 px / ms：玩家脚底进入 [xStart,xEnd] 且 y≥surfaceY（地面接触）即下陷；
+ * 下陷速率在 telegraphMs 内由 0 渐变到 sinkRate；y≥deathY 触发死亡（复用 07 respawn）。
+ * 空中（跳跃）不触发下陷（跳跃跨越 = 安全解法之一）。
+ */
+export interface QuicksandDef {
+  /** 区 id（如 'qs_q1'）。 */
+  id: string;
+  /** 区 x 区间（px，含端点，落于地面之上）。 */
+  xStart: number;
+  xEnd: number;
+  /** 流沙地表 worldY（= 地面顶 y，如 224）。 */
+  surfaceY: number;
+  /** 站立其中的下陷速率（px/s，telegraph 渐变后满速）。 */
+  sinkRate: number;
+  /** 下陷到此 worldY 即判定「触底死亡」（复用 07 死亡态，respawn 到检查点）。 */
+  deathY: number;
+  /** 进入后到达满速下陷前的渐变前摇（ms，漩涡+暗色渐显双编码 telegraph）。 */
+  telegraphMs: number;
+}
+
 /** 节拍相位：平台可踩/可碰撞(solid) vs 虚化/可穿过(ghost)。 */
 export type BeatPhase = 'solid' | 'ghost';
 
@@ -215,6 +241,8 @@ export interface LevelData {
   tideSegments?: TideSegmentDef[];
   /** 暗流（riptide）区域力场（GDD 1-3 §5.1）；缺省 = 无暗流。 */
   riptide?: RiptideDef[];
+  /** 流沙区（GDD 1-4 §4，批次 3 沙漠主题）：地面下陷致死机制；缺省 = 无流沙。取代 1-3 的 tideSegments。 */
+  quicksand?: QuicksandDef[];
   metadata: { name: string; theme: LevelTheme; parTimeMs?: number };
 }
 

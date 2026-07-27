@@ -8,5 +8,7 @@
   "bouncy_vine": { "bounceVelocity": -680, "springMs": 80, "recoilMs": 180, "width": 40, "height": 16, "stompable": false, "hazard": false, "baseYAnchor": "ground" },
   "cyclone":    { "liftAcc": 2600, "riseMax": 220, "dragX": 0, "width": 96, "height": 160, "phaseSpeed": 3.0, "stompable": false, "hazard": false },
   "jellyfish":  { "float": 50, "amp": 24, "stompable": true, "nonDamaging": true, "persistentStomp": true, "width": 36, "height": 40 },
+  "scorpion":   { "speed": 30, "detect": 120, "stompable": false, "width": 40, "height": 24 },
+  "cactus":     { "stompable": false, "width": 24, "height": 48 },
   "projectile": { "width": 10, "height": 10 }
 }

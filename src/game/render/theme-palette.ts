@@ -122,6 +122,24 @@ const SEA: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
 };
 
+/**
+ * 沙漠调色板（1-4 desert 主题，批次 3，desert-biome-spec §1.2/§8.2 权威 8 槽，锁色板内，0 新增 hex）：
+ *   天空 #F7BE8A（暖沙晴空 bg，tint 派生）/ 沙岩 #F2933C（rockFace）/ 沙岩暗面 #79491E（rockBody，tint 派生）/
+ *   描边 #2A1A12 / 阳光 #FFD23F（firelight）/ 仙人掌绿 #7CC242（crystalCore）/ 沙金辉光 #F2C94C（crystalGlow）/
+ *   警示红 #E8483B（danger）。
+ *   蓝紫 #6E7BF2 / 天空 #5BC8F5 等仅在专属敌（scorpion 眼点 #5BC8F5）分支直接引用（锁色板 #9/#11，不进 palette 槽）。
+ */
+const DESERT: ThemePalette = {
+  bg: 0xf7be8a, // 暖沙晴空 #F7BE8A（lighten(#F2933C,0.4) tint 派生，锁色板 #3 派生，0 新增）
+  rockFace: 0xf2933c, // 暖橙 #F2933C（沙岩主面，锁色板 #3）
+  rockBody: 0x79491e, // 沙岩暗面 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xffd23f, // 暖黄 #FFD23F（阳光核心，锁色板 #4）
+  crystalCore: 0x7cc242, // 草绿 #7CC242（仙人掌绿，锁色板 #1）
+  crystalGlow: 0xf2c94c, // 沙金辉光 #F2C94C（经济金，锁色板 #8）
+  danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -133,6 +151,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   mountain: CAVE,
   // 海 sea = 1-3 海主题（批次 2，sea-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
   sea: SEA,
+  // 沙漠 desert = 1-4 沙漠主题（批次 3，desert-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
+  desert: DESERT,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */
