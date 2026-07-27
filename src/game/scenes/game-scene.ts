@@ -918,7 +918,10 @@ export class GameScene extends Phaser.Scene {
     const H = this.runtime.data.height * ts;
     const WATER = 0x4a78c0; // 环境冷蓝 #4A78C0（淹没区水体，锁色板 #10）
     const LINE = 0x5bc8f5; // 天空 #5BC8F5（水面线，锁色板 #11）
-    if (!this.reduceMotion) this.tidePhase += STEP_DT * 1.2; // ≤2Hz 相位推进
+    const SKY = 0x5bc8f5; // 天空 #5BC8F5（泡沫弧线，锁色板 #11，与 LINE 同源）
+    const FOAM_YELLOW = 0xffd23f; // 暖黄 #FFD23F（溅点，锁色板 #4）
+    if (!this.reduceMotion) this.tidePhase += STEP_DT * 1.2; // ≤2Hz 相位推进（泡沫共相位，Reduce Motion 冻结）
+    const rip = this.runtime.data.riptide; // §4.5 暗流区（可选出口泡沫）
     for (const seg of segs) {
       const wy = tideSurfaceY(seg, this.elapsedMs);
       // 淹没区半透水体（waterSurfaceY 以下）
@@ -934,6 +937,74 @@ export class GameScene extends Phaser.Scene {
         g.lineTo(x, wy + off);
       }
       g.strokePath();
+
+      // —— §3.3 边缘拍岸泡沫（edge foam）：水体与实心地形边缘相交处 ——
+      // 纯视觉 telegraph，不改碰撞/水位；颜色仅 天空#11 / 暖黄#4（锁色板，0 新增 hex），零 PNG。
+      // Reduce Motion：全部相位依赖 this.tidePhase（已冻结）→ 泡沫静止首帧，无需额外处理。
+      const candidates: Array<{ x: number; y: number }> = [];
+      const foamStep = ts / 2; // ~16px 步进（半瓦片，贴合地形边沿）
+      for (let cx = seg.xStart; cx <= seg.xEnd; cx += foamStep) {
+        // 同相位水面线（与上方 stroke 一致，保持视觉连续）
+        const wyAtX = wy + Math.sin((cx - seg.xStart) * 0.05 + this.tidePhase) * 2;
+        const tx = Math.floor(cx / ts);
+        // 地形顶边：水线下一格实心、上一格空气 ⇒ 地形顶在水线下/岸边
+        const solidBelow = this.world.isSolidTile(tx, Math.floor((wyAtX + 2) / ts));
+        const solidAbove = this.world.isSolidTile(tx, Math.floor((wyAtX - 2) / ts));
+        if (solidBelow && !solidAbove) {
+          candidates.push({ x: cx, y: wyAtX }); // 地形顶边泡沫
+          continue;
+        }
+        // 可选增强：竖直侧壁相交（水线行相邻列实心跳变 ⇒ 侧壁入水）
+        const tyRow = Math.floor(wyAtX / ts);
+        if (this.world.isSolidTile(tx, tyRow) !== this.world.isSolidTile(tx + 1, tyRow)) {
+          candidates.push({ x: cx, y: wyAtX }); // 侧壁泡沫
+        }
+      }
+
+      // §4.5 暗流区出口泡沫（强化"水流推出"可读性）：
+      // riptide 端点落在当前段内，且当前水线穿越其 y 区间 ⇒ 在 xStart/xEnd 各补一组 foam。
+      if (rip) {
+        for (const z of rip) {
+          if (z.xStart >= seg.xStart && z.xEnd <= seg.xEnd && wy >= z.yTop && wy <= z.yBottom) {
+            candidates.push({ x: z.xStart, y: wy });
+            candidates.push({ x: z.xEnd, y: wy });
+          }
+        }
+      }
+
+      // 断续出现（≤2Hz）：tidePhase 驱动门控，泡沫随相位明灭，避免静态死板
+      // （频率 = 1.5·tidePhase 速率 ≈ 0.29Hz ≪ 2Hz，安全）
+      const appear: Array<{ x: number; y: number }> = [];
+      for (const p of candidates) {
+        if (Math.sin(this.tidePhase * 1.5 + p.x * 0.1) > 0.3) appear.push(p);
+      }
+      if (appear.length > 0) {
+        // 短弧泡沫：贴水线、微拱向上（批量单 path，1 次 strokePath）
+        const w = 5;
+        g.lineStyle(2, SKY, 0.5);
+        g.beginPath();
+        for (const p of appear) {
+          const px = p.x;
+          const py = p.y;
+          g.moveTo(px - w, py);
+          g.lineTo(px - w * 0.5, py - 2);
+          g.lineTo(px, py - 3);
+          g.lineTo(px + w * 0.5, py - 2);
+          g.lineTo(px + w, py);
+        }
+        g.strokePath();
+        // 溅点：暖黄小点（每点 1–3 个，确定性分布），位于 p 上方
+        g.fillStyle(FOAM_YELLOW, 0.85);
+        for (const p of appear) {
+          const n = 1 + (Math.abs(Math.round(p.x + p.y)) % 3); // 1–3 个
+          for (let d = 0; d < n; d++) {
+            const dx = p.x + (d - 1) * 3 + 1;
+            const dy = p.y - 3 - d;
+            const r = 1 + (d % 2); // 半径 1–2px
+            g.fillCircle(dx, dy, r);
+          }
+        }
+      }
     }
   }
 
