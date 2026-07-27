@@ -17,6 +17,7 @@ import level1_2Json from '../../config/levels/1-2.json';
 import level1_3Json from '../../config/levels/1-3.json';
 import level1_4Json from '../../config/levels/1-4.json';
 import level1_5Json from '../../config/levels/1-5.json';
+import level1_6Json from '../../config/levels/1-6.json';
 import level2_1Json from '../../config/levels/2-1.json';
 import level2_2Json from '../../config/levels/2-2.json';
 import level2_3Json from '../../config/levels/2-3.json';
@@ -62,6 +63,7 @@ export const levels: Record<string, LevelData> = {
   '1-3': level1_3Json as LevelData,
   '1-4': level1_4Json as LevelData,
   '1-5': level1_5Json as LevelData,
+  '1-6': level1_6Json as LevelData,
   '2-1': level2_1Json as LevelData,
   '2-2': level2_2Json as LevelData,
   '2-3': level2_3Json as LevelData,
@@ -74,6 +76,7 @@ export const LEVEL_ORDER: string[] = [
   '1-3',
   '1-4',
   '1-5',
+  '1-6',
   '2-1',
   '2-2',
   '2-3',

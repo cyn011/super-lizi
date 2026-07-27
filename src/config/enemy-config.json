@@ -10,6 +10,8 @@
   "jellyfish":  { "float": 50, "amp": 24, "stompable": true, "nonDamaging": true, "persistentStomp": true, "width": 36, "height": 40 },
   "scorpion":   { "speed": 30, "detect": 120, "stompable": false, "width": 40, "height": 24 },
   "cactus":     { "stompable": false, "width": 24, "height": 48 },
+  "vehicle":    { "speed": 90, "stompable": false, "width": 48, "height": 32, "fatal": true },
+  "manhole":    { "stompable": false, "width": 32, "height": 32, "fatal": false },
   "pet":        { "speed": 35, "stompable": false, "width": 36, "height": 28 },
   "toy":        { "stompable": false, "width": 20, "height": 16 },
   "projectile": { "width": 10, "height": 10 }

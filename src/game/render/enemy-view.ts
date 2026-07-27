@@ -65,6 +65,14 @@ export function drawEnemy(
     drawToy(g, e); // 玩具：经济金小方块 + 红尖角（home 专属静止小 hazard，GDD 1-5 §3.3）
     return;
   }
+  if (e.type === 'vehicle') {
+    drawVehicle(g, e, reduceMotion); // 街道汽车：危险车身 + 车窗 + 车轮 + 头灯（硬顶不可踩，GDD 1-6 §3.2）
+    return;
+  }
+  if (e.type === 'manhole') {
+    drawManhole(g, e, reduceMotion); // 街道井盖：盖 + 蒸汽柱/预警红边（GDD 1-6 §3.3）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -513,4 +521,105 @@ function drawToy(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
   g.fillTriangle(b.x + 13, b.y, b.x + 18, b.y, b.x + 15.5, b.y - 5); // 右上尖
   g.fillTriangle(b.x, b.y + 4, b.x, b.y + 12, b.x - 5, b.y + 8); // 左尖
   g.fillTriangle(b.x + 20, b.y + 4, b.x + 20, b.y + 12, b.x + 25, b.y + 8); // 右尖
+}
+
+/**
+ * 街道汽车（vehicle）占位绘制（GDD 1-6 §3.2 / street-visual-spec §2，锁色板内 0 新增色）：
+ *   - 车身：环境冷蓝 #4A78C0 + 描边 #2A1A12（圆角上 3/4 车体）。
+ *   - 下裙暗带：街影暗蓝 #254060（tint 派生，锁色板 #6）。
+ *   - 车窗：天空 #5BC8F5 半透（锁色板 #11）。
+ *   - 车轮 ×2：描边 #2A1A12 + 暗蓝轮毂 #254060。
+ *   - 头灯：警示红 #E8483B 朝 facing 楔形（硬顶不可踩双编码）；≤2Hz 闪烁，Reduce Motion 常亮。
+ * 致命 hazard（applyFatalDeath，isStompable=false），仅形状+颜色双编码危险，避用命粉 #F26D8B。
+ * 几何读 EnemyAI.getBounds()（box 顶 y = JSON y，底贴 ground 顶；横向 ping-pong 由 AI 推进）。
+ */
+const VEHICLE_BODY = 0x4a78c0; // 环境冷蓝 #4A78C0（#10，车身）
+const VEHICLE_DARK = 0x254060; // 街影暗蓝 #254060（#6，下裙/暗带）
+const VEHICLE_WIN = 0x5bc8f5; // 天空 #5BC8F5（#11，车窗）
+const VEHICLE_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+const VEHICLE_LIGHT = 0xe8483b; // 警示红 #E8483B（#7，头灯）
+function drawVehicle(g: Phaser.GameObjects.Graphics, e: EnemyAI, reduceMotion: boolean): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const dir = e.vehicleDir;
+  const bodyH = b.h * 0.78;
+  // 1) 下裙暗带（先画，被车体压住上缘）
+  g.fillStyle(VEHICLE_DARK, 1);
+  g.fillRect(b.x + 2, b.y + bodyH - 6, b.w - 4, b.h - bodyH + 6);
+  // 2) 车身（上 3/4 圆角）
+  g.fillStyle(VEHICLE_BODY, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, bodyH, { tl: 6, tr: 6, bl: 4, br: 4 });
+  g.lineStyle(1, VEHICLE_OUT, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, bodyH, { tl: 6, tr: 6, bl: 4, br: 4 });
+  // 3) 车窗（半透天空蓝）
+  g.fillStyle(VEHICLE_WIN, 0.6);
+  g.fillRoundedRect(b.x + 8, b.y + 5, b.w - 16, b.h * 0.32, 3);
+  // 4) 车轮 ×2（描边 + 暗蓝轮毂）
+  const wheelY = b.y + b.h - 2;
+  for (const wx of [b.x + 12, b.x + b.w - 12]) {
+    g.fillStyle(VEHICLE_OUT, 1);
+    g.fillCircle(wx, wheelY, 5);
+    g.fillStyle(VEHICLE_DARK, 1);
+    g.fillCircle(wx, wheelY, 2.5);
+  }
+  // 5) 头灯（朝 facing，警示红楔形；≤2Hz 闪烁，Reduce Motion 常亮）
+  const hp = e.headPhaseState + e.vehiclePhaseOffset * 0.012;
+  const on = reduceMotion ? true : Math.sin(hp) > 0;
+  const lightA = on ? 1 : 0.35;
+  const fx = dir > 0 ? b.x + b.w : b.x;
+  const cy = b.y + b.h * 0.5;
+  const tipX = dir > 0 ? fx + 6 : fx - 6;
+  g.fillStyle(VEHICLE_LIGHT, lightA);
+  g.fillTriangle(fx, cy - 4, fx, cy + 4, tipX, cy);
+}
+
+/**
+ * 街道井盖（manhole）占位绘制（GDD 1-6 §3.3 / street-visual-spec §2，锁色板内 0 新增色）：
+ *   - 井盖：环境冷蓝 #4A78C0 扁椭圆 + 描边 #2A1A12 环 + 格栅线（贴地，常态无害）。
+ *   - TELEGRAPH：预警红边 #E8483B（≤3Hz 闪，不伤）。
+ *   - STEAM：暖橙 #F2933C 蒸汽柱 blob（≤3Hz 摆动）+ 红边双编码（伤害期）。
+ * 仅 STEAM 蒸汽柱为软伤害（resolveHazardContact，FULL→SMALL −1 级 + 无敌帧），避用命粉 #F26D8B。
+ * 几何读 EnemyAI 的 manholeCenterX/anchorY/steamHeight（蒸汽柱 AABB 与 getSteamBounds 一致）。
+ */
+const MANHOLE_COVER = 0x4a78c0; // 环境冷蓝 #4A78C0（#10，井盖）
+const MANHOLE_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+const MANHOLE_STEAM = 0xf2933c; // 暖橙 #F2933C（#3，蒸汽）
+const MANHOLE_EDGE = 0xe8483b; // 警示红 #E8483B（#7，预警/伤害双编码）
+function drawManhole(g: Phaser.GameObjects.Graphics, e: EnemyAI, reduceMotion: boolean): void {
+  const cx = e.manholeCenterXState;
+  const topY = e.manholeAnchorYState; // ground 顶
+  const w = e.getBounds().w; // 盖宽（= 蒸汽柱宽）
+  const r = w / 2;
+  const state = e.manholePhaseState;
+  const sh = e.manholeSteamHeightState;
+  // 1) 井盖（扁椭圆贴地）+ 描边环 + 格栅
+  g.fillStyle(MANHOLE_COVER, 1);
+  g.fillEllipse(cx, topY - 3, w, w * 0.4);
+  g.lineStyle(1, MANHOLE_OUT, 1);
+  g.strokeEllipse(cx, topY - 3, w, w * 0.4);
+  g.lineStyle(1, MANHOLE_OUT, 0.8);
+  for (let i = -1; i <= 1; i++) {
+    g.lineBetween(cx + i * (r * 0.5), topY - 3 - w * 0.16, cx + i * (r * 0.5), topY - 3 + w * 0.16);
+  }
+  // 2) TELEGRAPH：预警红边（≤3Hz 闪，不伤）
+  if (state === 'TELEGRAPH') {
+    const sp = e.steamPhaseState;
+    const a = reduceMotion ? 0.8 : 0.5 + 0.5 * Math.sin(sp); // ≤3Hz
+    g.lineStyle(2, MANHOLE_EDGE, a);
+    g.strokeRect(cx - r - 1, topY - sh, w + 2, sh);
+  } else if (state === 'STEAM') {
+    // 3) STEAM：暖橙蒸汽柱 blob（≤3Hz 摆动）
+    const sp = e.steamPhaseState;
+    g.fillStyle(MANHOLE_STEAM, 0.55);
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4;
+      const yy = topY - t * sh;
+      const wob = reduceMotion ? 0 : Math.sin(sp + i) * 2 * (1 - t);
+      const rw = r * (0.45 + 0.55 * (1 - t)) + (reduceMotion ? 0 : Math.sin(sp * 1.3 + i) * 2);
+      g.fillCircle(cx + wob, yy, rw);
+    }
+    // 红边双编码（伤害期）
+    g.lineStyle(1, MANHOLE_EDGE, 0.6);
+    g.strokeRect(cx - r, topY - sh, w, sh);
+  }
 }

@@ -136,10 +136,11 @@ describe('1-5 家关加载（注册表 + Loader）', () => {
 });
 
 describe('进度链（1-1 → 1-2 → 1-3 → 1-4 → 1-5 → 2-1）', () => {
-  it('LEVEL_ORDER 含 1-5 且位于 1-4 之后、2-1 之前；nextLevelId("1-5") === "2-1"、("1-4") === "1-5"', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4']);
+  it('LEVEL_ORDER 含 1-6 且位于 1-5 之后、2-1 之前；nextLevelId("1-5") === "1-6"、("1-4") === "1-5"、("1-6") === "2-1"', () => {
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '2-1', '2-2', '2-3', '2-4']);
     expect(LEVEL_ORDER).toContain('1-5');
-    expect(nextLevelId(LEVEL_ORDER, '1-5')).toBe('2-1');
+    expect(nextLevelId(LEVEL_ORDER, '1-5')).toBe('1-6');
+    expect(nextLevelId(LEVEL_ORDER, '1-6')).toBe('2-1');
     expect(nextLevelId(LEVEL_ORDER, '1-4')).toBe('1-5');
   });
 });

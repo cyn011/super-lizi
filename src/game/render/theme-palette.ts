@@ -159,6 +159,26 @@ const HOME: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（玩具尖角 / 宠物铃铛，锁色板 #7）
 };
 
+/**
+ * 街道调色板（1-6 street 主题，art/street-visual-spec.md §3 权威 8 槽，锁色板内，0 新增 hex）：
+ *   夜空蓝青 #408CAC（bg，霓街天光）/ 建筑冷蓝 #304E7D（rockFace，远景楼宇主面）/
+ *   街影暗蓝 #254060（rockBody，暗面/窗台，锁色板 #6）/ 描边 #2A1A12（锁色板 #5）/
+ *   暖橙 #F2933C（firelight，街灯/蒸汽核心，锁色板 #3）/ 暖黄 #FFD23F（crystalCore，窗光/霓虹核心，锁色板 #4）/
+ *   蓝紫 #6E7BF2（crystalGlow，霓虹辉光，锁色板 #9）/ 警示红 #E8483B（danger，车辆头灯/危险双编码，锁色板 #7）。
+ *   车辆/井盖专属引用（不进 palette 槽，均在锁色板内）：车身 #4A78C0（锁色板 #10）/
+ *   车窗 #5BC8F5（锁色板 #11）/ 红灯描边 #E8483B（锁色板 #7）。**严禁 命粉 #F26D8B**。
+ */
+const STREET: ThemePalette = {
+  bg: 0x408cac, // 夜空蓝青 #408CAC（霓街天光，art-spec §3 权威槽，锁色板内 0 新增）
+  rockFace: 0x304e7d, // 建筑冷蓝 #304E7D（远景楼宇主面，锁色板内 0 新增）
+  rockBody: 0x254060, // 街影暗蓝 #254060（暗面/窗台，锁色板 #6）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 暖橙 #F2933C（街灯/蒸汽核心，锁色板 #3）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（窗光/霓虹核心，锁色板 #4）
+  crystalGlow: 0x6e7bf2, // 蓝紫 #6E7BF2（霓虹辉光，锁色板 #9）
+  danger: 0xe8483b, // 警示红 #E8483B（车辆头灯/危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -174,6 +194,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   desert: DESERT,
   // 家 home = 1-5 室内主题（批次 3，home-biome-spec §1.2/§8.2 权威 8 槽，0 新增 hex）。
   home: HOME,
+  // 街道 street = 1-6 霓街主题（批次 3，street-visual-spec §3 权威 8 槽，锁色板内 0 新增 hex）。
+  street: STREET,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

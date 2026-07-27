@@ -174,6 +174,24 @@ export class GameScene extends Phaser.Scene {
   private homeLampPhase = 0;
   /** 窗帘飘移相位累加器（≤2Hz，Reduce Motion 下冻结，仅家关使用）。 */
   private homeCurtainPhase = 0;
+  /** 街道主题背景-天花板+后墙层（scrollFactor 0, depth -10，全屏竖直渐变，仅 street 创建一次）。 */
+  private streetCeilWallGfx?: Phaser.GameObjects.Graphics;
+  /** 街道主题背景-远景层（scrollFactor 0.3, depth -9，楼宇剪影 + 窗光，仅 street 创建一次）。 */
+  private streetFarGfx?: Phaser.GameObjects.Graphics;
+  /** 街道主题背景-中景层（scrollFactor 0.6, depth -8，街灯 + 霓虹 + 树，仅 street 创建一次）。 */
+  private streetMidGfx?: Phaser.GameObjects.Graphics;
+  /** 街道主题背景-中景辉光层（scrollFactor 0.6, depth -8，每帧重绘：街灯晕 + 霓虹脉冲）。 */
+  private streetGlowGfx?: Phaser.GameObjects.Graphics;
+  /** 街道主题背景-前景护栏层（scrollFactor 1.2, depth 4，每帧重绘：护栏门控闪烁）。 */
+  private streetNearGfx?: Phaser.GameObjects.Graphics;
+  /** 街景窗光相位累加器（≤2Hz，Reduce Motion 下冻结，仅街道关使用）。 */
+  private streetWindowPhase = 0;
+  /** 街灯辉光相位累加器（≤2Hz，Reduce Motion 下冻结，仅街道关使用）。 */
+  private streetLampPhase = 0;
+  /** 霓虹脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅街道关使用）。 */
+  private streetNeonPhase = 0;
+  /** 前景护栏门控相位累加器（Reduce Motion 下冻结，仅街道关使用）。 */
+  private streetNearPhase = 0;
   /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
   private qsZone: QuicksandDef | null = null;
   /** 流沙下陷累计时间（ms），用于 telegraph 渐变速率。 */
@@ -770,6 +788,25 @@ export class GameScene extends Phaser.Scene {
     // C3 伤害接触解算（重叠 + 无敌帧外 → hit + 击退 + 事件）
     this.resolveHazards();
 
+    // 街道汽车致命接触（GDD 1-6 §3.2）：applyFatalDeath（−1 命 + respawn 到检查点）。
+    // vehicle.overlaps 恒 false（刻意绕过非致死的 resolveHazardContact），此处经 overlapsFatal 单独致命解算。
+    // 无敌帧 guard 防 respawn 同帧重复扣命；命中后 break（重生已重置位置 + 无敌帧）。
+    for (const e of this.enemies) {
+      if (e.type === 'vehicle' && !this.damage.invincibleTimer && e.overlapsFatal(this.body)) {
+        const r = applyFatalDeath({
+          damage: this.damage,
+          body: this.body,
+          bus: this.bus,
+          cfg: damageConfig,
+          spawn: this.respawnPoint,
+          playerW: PLAYER_W,
+          playerH: PLAYER_H,
+        });
+        if (r.controller) this.controller = r.controller;
+        break;
+      }
+    }
+
     // A3 潮汐：脚底低于水位线 → 软伤害（扣 1 级 + 击退 + 无敌帧，不致死）
     this.resolveTideHazard();
 
@@ -1318,6 +1355,7 @@ export class GameScene extends Phaser.Scene {
     const isSea = this.runtime.data.metadata.theme === 'sea';
     const isDesert = this.runtime.data.metadata.theme === 'desert';
     const isHome = this.runtime.data.metadata.theme === 'home';
+    const isStreet = this.runtime.data.metadata.theme === 'street';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1365,11 +1403,28 @@ export class GameScene extends Phaser.Scene {
       this.homeLampPhase = 0;
       this.homeCurtainPhase = 0;
     }
+    // 非街道关：清理可能残留的街道背景层（切换关卡安全）。镜像沙漠/家清理块。
+    if (!isStreet) {
+      this.streetCeilWallGfx?.destroy();
+      this.streetCeilWallGfx = undefined;
+      this.streetFarGfx?.destroy();
+      this.streetFarGfx = undefined;
+      this.streetMidGfx?.destroy();
+      this.streetMidGfx = undefined;
+      this.streetGlowGfx?.destroy();
+      this.streetGlowGfx = undefined;
+      this.streetNearGfx?.destroy();
+      this.streetNearGfx = undefined;
+      this.streetWindowPhase = 0;
+      this.streetLampPhase = 0;
+      this.streetNeonPhase = 0;
+      this.streetNearPhase = 0;
+    }
 
     // 背景层：
     //  - 非海关/非沙漠/非家关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
     //  - 海关/沙漠/家关：跳过平铺（交给 drawSeaBackground / drawDesertBackground / drawHomeBackground 的天空渐变 + 视差层）。
-    if (!isSea && !isDesert && !isHome && pal.bg !== null) {
+    if (!isSea && !isDesert && !isHome && !isStreet && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
@@ -1379,6 +1434,8 @@ export class GameScene extends Phaser.Scene {
     if (isDesert) this.drawDesertBackground(pal);
     // 家主题背景（天花板+后墙 + 窗光/家具剪影 + 相框/盆栽/台灯 + 游戏层家具 + 窗帘），仅 home 创建一次（动态层每帧重绘）
     if (isHome) this.drawHomeBackground(pal);
+    // 街道主题背景（霓街夜景五层视差：天花板+后墙 / 远景楼宇+窗光 / 中景街灯+霓虹+树 / 游戏 / 前景护栏），仅 street 创建一次（动态层每帧重绘）
+    if (isStreet) this.drawStreetBackground(pal);
 
     // 家具 tile-kind 查找表（sofa/table/cabinet 仅在此表达，碰撞由 world 的 solid/oneway 承接）。
     // 遍历 runtime.data.tiles 暴露 kind（home-visual-spec §2.5 允许的方案，零新增 world API）。
@@ -2064,6 +2121,220 @@ export class GameScene extends Phaser.Scene {
     g.fillCircle(camW * 0.8 + sway + scrollX * 1.2, baseY + 4 + scrollY * 1.2, 1.6);
   }
 
+  /**
+   * 街道主题背景层（GDD 1-6 / street-visual-spec §1，仅 street）：五层视差结构——
+   *   ceilWall (scrollFactor 0,   depth -10) 天花板+后墙竖直渐变（rockBody #254060 → bg #408CAC）
+   *   far      (scrollFactor 0.3, depth -9)  楼宇剪影 #2C486F + 窗光 #FFD23F（每帧重绘 drawStreetFar）
+   *   mid      (scrollFactor 0.6, depth -8)  街灯 #F2933C + 霓虹 #6E7BF2/#FFD23F + 树 #7CC242（create-once）
+   * 远景/中景绘制范围覆盖整关世界宽（runtime.data.width*tileSize）以支撑视差；
+   * 中景辉光层(streetGlowGfx)与前景护栏层(streetNearGfx)为每帧重绘，此处仅创建 Graphics。
+   * 全程序化 Graphics（零 PNG，ADR-004），颜色仅用 11 色锁色板或 tint 派生（楼宇 #2C486F 为
+   * darken(#4A78C0,0.4) tint 派生、树暗部 0x3E6121 为 darken(#7CC242,0.5) tint 派生，0 新增 hex）。
+   * draw call：ceil 1 + mid(街灯×3 + 霓虹×2 + 树×2)≈7，远景/辉光/护栏均每帧重绘（≤15 单 path）。
+   */
+  private drawStreetBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const WALL = pal.bg ?? 0x408cac; // 夜空蓝青 #408CAC（STREET bg，#）
+    const CEIL = pal.rockBody; // 街影暗蓝 #254060（#6，天花板/暗带）
+    const ROCK_FACE = pal.rockFace; // 建筑冷蓝 #304E7D（STREET rockFace）
+    const OUT = pal.outline; // 描边 #2A1A12（#5）
+
+    // ── 1) 天花板+后墙层（scrollFactor 0, depth -10）：竖直渐变 CEIL→WALL 全屏 ──
+    if (!this.streetCeilWallGfx) this.streetCeilWallGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const cw = this.streetCeilWallGfx;
+    cw.clear();
+    cw.fillGradientStyle(CEIL, CEIL, WALL, WALL, 1);
+    cw.fillRect(0, 0, camW, camH);
+    // 天花板与墙交界加深线（强化顶/壁分界）
+    cw.lineStyle(2, ROCK_FACE, 1);
+    cw.lineBetween(0, camH * 0.16, camW, camH * 0.16);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：楼宇剪影 + 窗光（每帧重绘 drawStreetFar）──
+    if (!this.streetFarGfx) this.streetFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：街灯 + 霓虹 + 树，create-once（仅 scrollFactor 驱动视差）──
+    if (!this.streetMidGfx) this.streetMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.streetMidGfx;
+    mid.clear();
+    // 街灯 ×3（暖橙柱 + 梯形罩）
+    const lamps = [
+      { x: levelW * 0.2, y: levelH * 0.52 },
+      { x: levelW * 0.5, y: levelH * 0.5 },
+      { x: levelW * 0.82, y: levelH * 0.54 },
+    ];
+    for (const l of lamps) {
+      mid.fillStyle(0xf2933c, 1); // 暖橙 #F2933C（#3）
+      mid.fillRoundedRect(l.x - 2, l.y, 4, 26, 1);
+      mid.fillPoints(
+        [
+          { x: l.x - 7, y: l.y - 2 },
+          { x: l.x + 7, y: l.y - 2 },
+          { x: l.x + 4, y: l.y - 12 },
+          { x: l.x - 4, y: l.y - 12 },
+        ],
+        true,
+      );
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeRoundedRect(l.x - 2, l.y, 4, 26, 1);
+    }
+    // 霓虹 ×2（蓝紫竖牌 + 暖黄小牌）
+    const neons = [
+      { x: levelW * 0.36, y: levelH * 0.34 },
+      { x: levelW * 0.68, y: levelH * 0.3 },
+    ];
+    for (const n of neons) {
+      mid.fillStyle(0x6e7bf2, 0.9); // 蓝紫 #6E7BF2（#9，霓虹主）
+      mid.fillRoundedRect(n.x - 4, n.y - 18, 8, 36, 3);
+      mid.fillStyle(0xffd23f, 0.85); // 暖黄 #FFD23F（#4，霓虹副）
+      mid.fillRoundedRect(n.x + 6, n.y - 10, 6, 20, 2);
+    }
+    // 树 ×2（草绿团 + 暗部，街道行道树）
+    const trees = [
+      { x: levelW * 0.1, y: levelH * 0.56 },
+      { x: levelW * 0.9, y: levelH * 0.58 },
+    ];
+    for (const t of trees) {
+      mid.fillStyle(0x7cc242, 1); // 草绿 #7CC242（#1）
+      mid.fillCircle(t.x, t.y, 12);
+      mid.fillCircle(t.x - 7, t.y + 4, 8);
+      mid.fillCircle(t.x + 7, t.y + 4, 8);
+      mid.fillStyle(0x3e6121, 1); // darken(#7CC242,0.5) 树暗部（tint 派生，0 新增）
+      mid.fillCircle(t.x + 5, t.y + 3, 6);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeCircle(t.x, t.y, 12);
+    }
+
+    // ── 4) 中景辉光层（scrollFactor 0.6, depth -8）：每帧重绘（drawStreetGlow）──
+    if (!this.streetGlowGfx) this.streetGlowGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    // ── 5) 前景护栏层（scrollFactor 1.2, depth 4）：每帧重绘（drawStreetNear）──
+    if (!this.streetNearGfx) this.streetNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /**
+   * 街道主题远景层（street-visual-spec §1.2，仅 street）：scrollFactor 0.3, depth -9，每帧 clear+重绘；
+   * 楼宇剪影（#2C486F，darken(#4A78C0,0.4) tint 派生）+ 窗光（#FFD23F 小方块，α 随 streetWindowPhase
+   * 闪烁 ≤2Hz，克制遮挡）。Reduce Motion 下相位冻结（窗光静态）。
+   */
+  private drawStreetFar(): void {
+    const g = this.streetFarGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    g.clear();
+    const BUILDING = 0x2c486f; // darken(#4A78C0,0.4) 远景楼宇剪影（tint 派生，0 新增）
+    const WINDOW = 0xffd23f; // 暖黄 #FFD23F（#4，窗光）
+    const baseY = levelH * 0.62;
+    const buildings = [
+      { x: levelW * 0.1, w: 70, h: levelH * 0.5 },
+      { x: levelW * 0.3, w: 90, h: levelH * 0.62 },
+      { x: levelW * 0.52, w: 60, h: levelH * 0.45 },
+      { x: levelW * 0.68, w: 100, h: levelH * 0.66 },
+      { x: levelW * 0.88, w: 80, h: levelH * 0.55 },
+    ];
+    // 楼宇剪影（无描边，低饱和氛围非碰撞）
+    for (const b of buildings) {
+      g.fillStyle(BUILDING, 1);
+      g.fillRect(b.x, baseY - b.h, b.w, b.h);
+    }
+    // 窗光（暖黄小方块，α 随 streetWindowPhase 闪烁；伪随机相位错峰，克制）
+    const wp = this.streetWindowPhase;
+    let seed = 1;
+    for (const b of buildings) {
+      for (let wy = baseY - b.h + 8; wy < baseY - 6; wy += 12) {
+        for (let wx = b.x + 6; wx < b.x + b.w - 6; wx += 12) {
+          seed = (seed * 9301 + 49297) % 233280;
+          const rnd = seed / 233280;
+          const a = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(wp + rnd * Math.PI * 2));
+          g.fillStyle(WINDOW, a);
+          g.fillRect(wx, wy, 5, 6);
+        }
+      }
+    }
+  }
+
+  /**
+   * 街道主题中景辉光层（street-visual-spec §1.3，仅 street）：scrollFactor 0.6, depth -8，每帧 clear+重绘；
+   * 街灯晕（#F2933C，≤2Hz 呼吸）+ 霓虹脉冲（#6E7BF2/#FFD23F，≤2Hz）。Reduce Motion 下相位冻结（静态）。
+   */
+  private drawStreetGlow(): void {
+    const g = this.streetGlowGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    g.clear();
+    // 街灯晕（暖橙，≤2Hz 呼吸）
+    const lampXs = [levelW * 0.2, levelW * 0.5, levelW * 0.82];
+    for (const lx of lampXs) {
+      const ly = levelH * 0.52 - 12;
+      const r = 16 * (1 + (this.reduceMotion ? 0 : Math.sin(this.streetLampPhase)) * 0.06);
+      const coreA = this.reduceMotion ? 0.8 : 0.6 + 0.3 * (0.5 + 0.5 * Math.sin(this.streetLampPhase));
+      g.fillStyle(0xf2933c, coreA * 0.4);
+      g.fillCircle(lx, ly, r * 1.8);
+      g.fillStyle(0xf2933c, coreA);
+      g.fillCircle(lx, ly, r * 0.7);
+    }
+    // 霓虹脉冲（蓝紫 + 暖黄，≤2Hz）
+    const neons = [
+      { x: levelW * 0.36, y: levelH * 0.34 },
+      { x: levelW * 0.68, y: levelH * 0.3 },
+    ];
+    for (const n of neons) {
+      const a = this.reduceMotion ? 0.7 : 0.5 + 0.4 * (0.5 + 0.5 * Math.sin(this.streetNeonPhase));
+      g.fillStyle(0x6e7bf2, a * 0.5);
+      g.fillRoundedRect(n.x - 6, n.y - 20, 12, 40, 4);
+      g.fillStyle(0xffd23f, a * 0.5);
+      g.fillRoundedRect(n.x + 5, n.y - 12, 8, 24, 2);
+    }
+  }
+
+  /**
+   * 街道主题前景护栏层（street-visual-spec §1.5，仅 street）：scrollFactor 1.2, depth 4，每帧 clear+重绘；
+   * 屏幕锚定横杆 + 立柱（环境冷蓝 #4A78C0）；相位门控约 30% 时间可见（sin(nearPhase*0.2)>0.6），克制遮挡。
+   * Reduce Motion 下相位冻结（静态护栏，不再门控闪烁）。
+   */
+  private drawStreetNear(): void {
+    const g = this.streetNearGfx;
+    if (!g) return;
+    const cam = this.cameras.main;
+    const camW = cam.width;
+    const camH = cam.height;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    g.clear();
+    const RAIL = 0x4a78c0; // 环境冷蓝 #4A78C0（#10，护栏）
+    if (this.reduceMotion) {
+      // Reduce Motion：静态常显护栏（不门控闪烁）
+      const baseY = camH * 0.82;
+      g.lineStyle(2, RAIL, 0.4);
+      g.lineBetween(0 + scrollX * 1.2, baseY + scrollY * 1.2, camW + scrollX * 1.2, baseY + scrollY * 1.2);
+      g.lineStyle(2, RAIL, 0.3);
+      g.lineBetween(0 + scrollX * 1.2, baseY - 10 + scrollY * 1.2, camW + scrollX * 1.2, baseY - 10 + scrollY * 1.2);
+      for (let x = 0; x <= camW; x += 40) {
+        g.lineBetween(x + scrollX * 1.2, baseY - 12 + scrollY * 1.2, x + scrollX * 1.2, baseY + 6 + scrollY * 1.2);
+      }
+      return;
+    }
+    const vis = Math.sin(this.streetNearPhase * 0.2);
+    if (vis <= 0.6) return; // 周期性透明（克制）
+    const alpha = 0.4 * ((vis - 0.6) / 0.4);
+    const baseY = camH * 0.82;
+    g.lineStyle(2, RAIL, alpha);
+    g.lineBetween(0 + scrollX * 1.2, baseY + scrollY * 1.2, camW + scrollX * 1.2, baseY + scrollY * 1.2);
+    g.lineStyle(2, RAIL, alpha * 0.7);
+    g.lineBetween(0 + scrollX * 1.2, baseY - 10 + scrollY * 1.2, camW + scrollX * 1.2, baseY - 10 + scrollY * 1.2);
+    for (let x = 0; x <= camW; x += 40) {
+      g.lineBetween(x + scrollX * 1.2, baseY - 12 + scrollY * 1.2, x + scrollX * 1.2, baseY + 6 + scrollY * 1.2);
+    }
+  }
+
   private drawSprite(): void {
     const g = this.sprite;
     g.clear();
@@ -2180,6 +2451,18 @@ export class GameScene extends Phaser.Scene {
     if (this.runtime.data.metadata.theme === 'home') {
       this.drawHomeLamp();
       this.drawHomeNear(); // 前景近景窗帘（scrollFactor 1.2）
+    }
+    // A6 街道动态层（仅 street 关卡每帧重绘）：窗光/街灯/霓虹/护栏相位累加（Reduce Motion 冻结）+ 远景窗光 + 中景辉光 + 前景护栏
+    if (this.runtime.data.metadata.theme === 'street') {
+      if (!this.reduceMotion) {
+        this.streetWindowPhase += STEP_DT * (2 * Math.PI * 1.5); // ≤2Hz 窗光
+        this.streetLampPhase += STEP_DT * (2 * Math.PI * 1.2); // ≤2Hz 街灯
+        this.streetNeonPhase += STEP_DT * (2 * Math.PI * 2); // ≤2Hz 霓虹
+        this.streetNearPhase += STEP_DT * 0.5; // 护栏门控
+      }
+      this.drawStreetFar(); // 远景窗光闪烁（scrollFactor 0.3）
+      this.drawStreetGlow(); // 中景辉光（街灯晕 + 霓虹脉冲，scrollFactor 0.6）
+      this.drawStreetNear(); // 前景护栏（scrollFactor 1.2）
     }
     // A4 流沙视觉下沉：仅 sprite 偏移（不改碰撞盒），呈现「陷没沙底」；触底 respawn 后 qsZone=null → 归零
     if (this.qsZone && this.sprite) {

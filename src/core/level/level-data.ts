@@ -24,6 +24,8 @@ export type TileKind = 'solid' | 'oneway' | 'sofa' | 'table' | 'cabinet';
  */
 export type EntityDef =
   | EnemyEntityDef
+  | VehicleEntityDef
+  | ManholeEntityDef
   | CoinEntityDef
   | SeedEntityDef
   | CheckpointEntityDef
@@ -42,7 +44,8 @@ export type LevelTheme =
   | 'storm_sky'
   | 'sea'
   | 'desert'
-  | 'home';
+  | 'home'
+  | 'street';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -58,7 +61,59 @@ export type EnemyEntityType =
   | 'scorpion'
   | 'cactus'
   | 'pet'
-  | 'toy';
+  | 'toy'
+  | 'vehicle'
+  | 'manhole';
+
+/**
+ * 街道汽车实体（GDD 1-6 §3.2，批次 3 street 主题）：横向往返致命 hazard。
+ * 碰撞 = 致命（applyFatalDeath，isStompable=false，硬顶不可踩）；接触即 respawn 到检查点、扣 1 命。
+ * 在 [baseX, baseX+range] 间 ping-pong 往返；dir 初始方向（±1）；speed 像素/秒；phaseOffset(ms) 错相位。
+ */
+export interface VehicleEntityDef {
+  type: 'vehicle';
+  /** 往返区间左端（px，碰撞盒左上角 x 锚，y 由 ground y 决定）。 */
+  x: number;
+  /** 往返区间宽度（px）；右端 = x + range。缺省 224。 */
+  range?: number;
+  /** 速度（px/s）。缺省 90。 */
+  speed?: number;
+  /** 初始方向（±1，+1=朝终点/右，-1=朝左）。缺省 1。 */
+  dir?: number;
+  /** 初始相位偏移（ms，错峰多车不同步）。缺省 0。 */
+  phaseOffset?: number;
+  /** 碰撞盒宽（px）。缺省 48。 */
+  w?: number;
+  /** 碰撞盒高（px）。缺省 32。 */
+  h?: number;
+  /** 底部贴地 y（px，碰撞盒顶；碰撞盒底 = y + h = ground 顶，车辆贴地）。缺省 192。 */
+  y: number;
+}
+
+/**
+ * 街道井盖蒸汽实体（GDD 1-6 §3.3，批次 3 street 主题）：SAFE→TELEGRAPH→STEAM→SAFE 状态机。
+ * 仅 STEAM 阶段蒸汽柱 [x-w/2, x+w/2]×[y-steamHeight, y] 为软伤害（resolveHazardContact，FULL→SMALL −1 级 + 无敌帧，不 respawn、不扣命）。
+ * period(ms) 周期；activeMs STEAM 持续；telegraphMs 预警前摇（红边 + 不伤）；steamHeight 蒸汽柱高（px）；phaseOffset(ms) 错相位。
+ */
+export interface ManholeEntityDef {
+  type: 'manhole';
+  /** 井盖中心 x（px）。蒸汽柱以 x 为对称轴、宽 w。 */
+  x: number;
+  /** 井盖顶 y（px，地面/井口所在 worldY；蒸汽柱自 y 向上延伸 steamHeight）。缺省 224。 */
+  y: number;
+  /** 周期（ms，SAFE+TELEGRAPH+STEAM 一循环）。缺省 3000。 */
+  period?: number;
+  /** STEAM 持续（ms）。缺省 900。 */
+  activeMs?: number;
+  /** 预警前摇（ms，红边闪烁，不伤）。缺省 500。 */
+  telegraphMs?: number;
+  /** 蒸汽柱高（px）。缺省 96。 */
+  steamHeight?: number;
+  /** 井盖碰撞/绘制宽（px，蒸汽柱同宽）。缺省 32。 */
+  w?: number;
+  /** 初始相位偏移（ms，错峰多井盖不同步）。缺省 0。 */
+  phaseOffset?: number;
+}
 export interface EnemyEntityDef {
   type: EnemyEntityType;
   x: number;

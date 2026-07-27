@@ -193,6 +193,44 @@ export class EnemyAI implements StompableHazard {
     0,
   );
 
+  // ── vehicle 街道汽车状态机字段（GDD 1-6 §3.2，零平台纯逻辑）──
+  /** 汽车往返区间左端（px，baseX = JSON x）。 */
+  private vehBaseX = 0;
+  /** 往返区间宽（px，右端 = baseX + range）。 */
+  private vehRange = 224;
+  /** 速度（px/s）。 */
+  private vehSpeed = 90;
+  /** 当前朝向（±1，ping-pong 折返时翻转）。 */
+  private vehDir: 1 | -1 = 1;
+  /** 相位偏移（ms，错峰多车不同步）。 */
+  private vehPhaseOffset = 0;
+  /** 位置相位累加器（秒，确定性 ping-pong；Reduce Motion 不冻结——玩法位移，同其余敌人）。 */
+  private vehAccum = 0;
+  /** 头灯闪烁相位（rad，≤2Hz，仅视觉；Reduce Motion 由渲染层冻结）。 */
+  private vehHeadPhase = 0;
+
+  // ── manhole 街道井盖蒸汽状态机字段（GDD 1-6 §3.3，零平台纯逻辑）──
+  /** 井盖中心 x（px；JSON x）。 */
+  private manholeCenterX = 0;
+  /** 井盖顶 y（px = ground 顶；蒸汽柱自此处向上 steamHeight）。 */
+  private manholeAnchorY = 0;
+  /** 周期（ms，SAFE+TELEGRAPH+STEAM 一循环）。 */
+  private manholePeriod = 3000;
+  /** STEAM 持续（ms）。 */
+  private manholeActiveMs = 900;
+  /** 预警前摇（ms，红边，不伤）。 */
+  private manholeTelegraphMs = 500;
+  /** 蒸汽柱高（px）。 */
+  private manholeSteamHeight = 96;
+  /** 相位偏移（ms，错峰多井盖不同步）。 */
+  private manholePhaseOffset = 0;
+  /** 状态机：'SAFE' | 'TELEGRAPH' | 'STEAM'。 */
+  private manholeState: 'SAFE' | 'TELEGRAPH' | 'STEAM' = 'SAFE';
+  /** 状态机相位累加器（秒，确定性；玩法时序，Reduce Motion 不冻结）。 */
+  private manholeAccum = 0;
+  /** 蒸汽视觉摆动相位（rad，≤3Hz，仅视觉；Reduce Motion 由渲染层冻结）。 */
+  private manholeSteamPhase = 0;
+
   constructor(
     type: EnemyTypeName,
     x: number,
@@ -285,6 +323,43 @@ export class EnemyAI implements StompableHazard {
       this.y = y - this.height; // 底锚定到给定 y（地面顶），顶 = y - height，站立于地面之上
       this.state = 'idle';
       this.isStompable = false; // 硬顶不可踩（cfg 已声明，此处明确一次）
+    }
+
+    // vehicle：街道汽车，横向 ping-pong 致命 hazard（applyFatalDeath，硬顶不可踩）。
+    // y = 碰撞盒顶（JSON），碰撞盒底 = y + h 贴 ground 顶；位置初始落在区间左端（phaseOffset 错峰）。
+    if (type === 'vehicle') {
+      this.vehBaseX = x;
+      this.vehRange = params?.range ?? 224;
+      this.vehSpeed = params?.speed ?? this.cfg.speed ?? 90;
+      this.vehDir = (params?.dir ?? 1) >= 0 ? 1 : -1;
+      this.vehPhaseOffset = params?.phaseOffset ?? 0;
+      this.width = params?.w ?? this.cfg.width ?? 48;
+      this.height = params?.h ?? this.cfg.height ?? 32;
+      this.x = x; // 区间左端（box 左上角 x）
+      this.y = y; // y = box 顶；box 底 = y + h 贴 ground 顶
+      this.state = 'drive';
+      this.isStompable = false; // 硬顶不可踩（cfg 已声明，此处明确一次）
+      this.vehAccum = this.vehPhaseOffset / 1000; // 初始错峰落点
+    }
+
+    // manhole：街道井盖，SAFE→TELEGRAPH→STEAM→SAFE 状态机（仅 STEAM 蒸汽柱软伤害）。
+    // y = 井盖顶 ground（JSON）；碰撞盒化为 left-top 薄盖（覆盖忽略，hazard 走蒸汽柱）。
+    if (type === 'manhole') {
+      this.manholeCenterX = x;
+      this.manholeAnchorY = y;
+      this.manholePeriod = params?.period ?? 3000;
+      this.manholeActiveMs = params?.activeMs ?? 900;
+      this.manholeTelegraphMs = params?.telegraphMs ?? 500;
+      this.manholeSteamHeight = params?.steamHeight ?? 96;
+      this.manholePhaseOffset = params?.phaseOffset ?? 0;
+      this.width = params?.w ?? this.cfg.width ?? 32;
+      this.height = 4; // 井盖薄盖（覆盖碰撞忽略，hazard 走 getSteamBounds 蒸汽柱）
+      this.x = x - this.width / 2; // 化为 left-top 盒
+      this.y = y - this.height;
+      this.state = 'SAFE';
+      this.manholeState = 'SAFE';
+      this.isStompable = false;
+      this.manholeAccum = this.manholePhaseOffset / 1000; // 初始错峰落点
     }
   }
 
@@ -414,6 +489,68 @@ export class EnemyAI implements StompableHazard {
     return this.petBobPhase;
   }
 
+  /** vehicle 当前朝向（1=右 / -1=左），render 头灯位置用。 */
+  get vehicleDir(): 1 | -1 {
+    return this.vehDir;
+  }
+
+  /** vehicle 相位偏移（ms），render 头灯闪烁错峰用。 */
+  get vehiclePhaseOffset(): number {
+    return this.vehPhaseOffset;
+  }
+
+  /** vehicle 头灯闪烁相位（rad，≤2Hz），render 读；Reduce Motion 由渲染层冻结。 */
+  get headPhaseState(): number {
+    return this.vehHeadPhase;
+  }
+
+  /** vehicle 致命接触判定（独立于 overlaps，供 stepSim 经 applyFatalDeath 解算）。 */
+  overlapsFatal(body: Body): boolean {
+    if (this.dead || this.type !== 'vehicle') return false;
+    return this.aabbHit(body);
+  }
+
+  /** manhole 当前状态（SAFE/TELEGRAPH/STEAM），render 读（蒸汽 / 红边 telegraph）。 */
+  get manholePhaseState(): 'SAFE' | 'TELEGRAPH' | 'STEAM' {
+    return this.manholeState;
+  }
+
+  /** manhole 井盖中心 x（px），render 盖 / 蒸汽轴对称用。 */
+  get manholeCenterXState(): number {
+    return this.manholeCenterX;
+  }
+
+  /** manhole 井盖顶 y（px = ground 顶），render 盖 / 蒸汽柱底用。 */
+  get manholeAnchorYState(): number {
+    return this.manholeAnchorY;
+  }
+
+  /** manhole 蒸汽柱高（px），render 蒸汽柱用。 */
+  get manholeSteamHeightState(): number {
+    return this.manholeSteamHeight;
+  }
+
+  /** manhole 相位偏移（ms），render 蒸汽摆动错峰用。 */
+  get manholePhaseOffsetState(): number {
+    return this.manholePhaseOffset;
+  }
+
+  /** manhole 蒸汽视觉摆动相位（rad，≤3Hz），render 读；Reduce Motion 由渲染层冻结。 */
+  get steamPhaseState(): number {
+    return this.manholeSteamPhase;
+  }
+
+  /** 蒸汽柱 AABB（仅 STEAM 阶段为有效 hazard）：[centerX-w/2, centerX+w/2] × [anchorY-steamHeight, anchorY]。 */
+  getSteamBounds(): { x: number; y: number; w: number; h: number } {
+    const w = this.width; // 蒸汽柱宽 = 井盖宽
+    return {
+      x: this.manholeCenterX - w / 2,
+      y: this.manholeAnchorY - this.manholeSteamHeight,
+      w,
+      h: this.manholeSteamHeight,
+    };
+  }
+
   // ── scorpion 沙漠专属敌状态机字段（GDD 1-4 §3.2，零平台纯逻辑）──
   /** scorpion 是否处于 charge telegraph（玩家进入 detect 范围）：尾刺上扬 + 尾尖红闪。 */
   private scorpionChargingState = false;
@@ -468,6 +605,8 @@ export class EnemyAI implements StompableHazard {
       return NO_PROJECTILES;
     }
     if (this.type === 'toy') return NO_PROJECTILES; // 静止贴地小障碍，无 AI
+    if (this.type === 'vehicle') return this.updateVehicle(dt);
+    if (this.type === 'manhole') return this.updateManhole(dt);
     return NO_PROJECTILES;
   }
 
@@ -678,6 +817,50 @@ export class EnemyAI implements StompableHazard {
     return NO_PROJECTILES;
   }
 
+  // ── vehicle 街道汽车：横向 ping-pong 致命 hazard（GDD 1-6 §3.2）──
+  // 在 [baseX, baseX+range] 间三角波往返；dir 折返翻转；phaseOffset 错峰。
+  // 位置相位 vehAccum 始终推进（玩法位移，同其余敌人不受 Reduce Motion 冻结）。
+  // 头灯闪烁相位（vehHeadPhase，≤2Hz）仅视觉推进（渲染冻结 Reduce Motion）。
+  // 致命接触不在此处处理（overlaps 返回 false 以跳过 resolveHazardContact）；stepSim 经 overlapsFatal + applyFatalDeath 解算。
+  private updateVehicle(dt: number): Projectile[] {
+    this.vehAccum += dt;
+    const speed = this.vehSpeed;
+    const range = this.vehRange;
+    const T = range > 0 ? (2 * range) / speed : 0; // 往返周期（秒）
+    let frac = 0;
+    if (T > 0) {
+      const tt = this.vehAccum % T;
+      frac = tt < T / 2 ? tt / (T / 2) : (T - tt) / (T / 2); // 0→1→0 三角波
+      this.vehDir = tt < T / 2 ? 1 : -1;
+    }
+    this.x = this.vehBaseX + frac * range;
+    this.vx = this.vehDir * speed;
+    this.vy = 0;
+    // 头灯闪烁相位（≤2Hz，仅视觉）
+    this.vehHeadPhase += dt * (2 * Math.PI * 2);
+    return NO_PROJECTILES;
+  }
+
+  // ── manhole 街道井盖蒸汽：SAFE→TELEGRAPH→STEAM→SAFE 状态机（GDD 1-6 §3.3）──
+  // 蒸汽柱仅在 STEAM 阶段为软伤害（getSteamBounds 命中 → resolveHazardContact 非致死）。
+  // 状态机相位 manholeAccum 始终推进（玩法时序）；视觉摆动 manholeSteamPhase 仅视觉（渲染冻结 Reduce Motion）。
+  private updateManhole(dt: number): Projectile[] {
+    this.manholeAccum += dt;
+    const period = this.manholePeriod;
+    const telegraph = this.manholeTelegraphMs;
+    const active = this.manholeActiveMs;
+    const safeEnd = Math.max(0, period - telegraph - active);
+    const teleEnd = safeEnd + telegraph;
+    const tt = ((this.manholeAccum * 1000) % period + period) % period; // 周期内 ms
+    if (tt < safeEnd) this.manholeState = 'SAFE';
+    else if (tt < teleEnd) this.manholeState = 'TELEGRAPH';
+    else this.manholeState = 'STEAM';
+    this.state = this.manholeState;
+    // 蒸汽视觉摆动相位（≤3Hz，仅视觉）
+    this.manholeSteamPhase += dt * (2 * Math.PI * 2.5);
+    return NO_PROJECTILES;
+  }
+
   private isSolidAt(world: CollisionWorld, px: number, py: number): boolean {
     const ts = world.tileSize;
     const tx = Math.floor(px / ts);
@@ -692,6 +875,14 @@ export class EnemyAI implements StompableHazard {
     // 不进伤害管线（避免误伤 / 误踩）。overlaps 恒 false 保证零危害。
     if (this.type === 'bouncy_vine' || this.type === 'cyclone') return false;
     if (this.type === 'gu_bao' && this.guBaoState === 'DORMANT') return false; // 地下无碰撞、无害
+    // vehicle：致命 hazard 经 applyFatalDeath 单独解算（overlaps 返回 false 以跳过 resolveHazardContact 非致死路径）。
+    if (this.type === 'vehicle') return false;
+    // manhole：仅 STEAM 阶段蒸汽柱为软伤害（覆盖盖 / SAFE / TELEGRAPH 均无害）。
+    if (this.type === 'manhole') {
+      if (this.manholeState !== 'STEAM') return false;
+      const sb = this.getSteamBounds();
+      return this.aabbHitRect(sb, body);
+    }
     if (this.type === 'du_fu_silhouette') {
       // 危害期（mirror FLOAT / decoy FLOAT / phaseghost SOLID）才参与碰撞；
       // decoy IDLE 与 phaseghost WRAITH 期可穿越（overlaps=false，纯视觉暗影）。
@@ -709,6 +900,16 @@ export class EnemyAI implements StompableHazard {
       body.x + body.w > this.x &&
       body.y < this.y + this.height &&
       body.y + body.h > this.y
+    );
+  }
+
+  /** 指定矩形与玩家 body 的 AABB 相交检测（蒸汽柱等自定义 hazard 盒）。 */
+  private aabbHitRect(r: { x: number; y: number; w: number; h: number }, body: Body): boolean {
+    return (
+      body.x < r.x + r.w &&
+      body.x + body.w > r.x &&
+      body.y < r.y + r.h &&
+      body.y + body.h > r.y
     );
   }
 
@@ -853,7 +1054,21 @@ export function createEnemies(
 ): EnemyAI[] {
   const out: EnemyAI[] = [];
   let id = 0;
+  // vehicle/manhole 实体自身数值字段（非通用 params）透传至 EnemyAI 构造的 params（禁止硬编码）。
+  const VEHICLE_KEYS = ['range', 'speed', 'dir', 'phaseOffset', 'w', 'h'];
+  const MANHOLE_KEYS = ['period', 'activeMs', 'telegraphMs', 'steamHeight', 'w', 'phaseOffset'];
   for (const e of entities) {
+    if (e.type === 'vehicle' || e.type === 'manhole') {
+      const ex = e as unknown as Record<string, number | string>;
+      const merged: Record<string, number> = { ...(e.params ?? {}) };
+      const keys = e.type === 'vehicle' ? VEHICLE_KEYS : MANHOLE_KEYS;
+      for (const k of keys) {
+        const v = ex[k];
+        if (typeof v === 'number') merged[k] = v;
+      }
+      out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, merged));
+      continue;
+    }
     if (
       e.type === 'ci_li' ||
       e.type === 'du_fu' ||
