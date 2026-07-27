@@ -44,12 +44,12 @@ describe('1-2 山川关加载（注册表 + Loader）', () => {
     expect(rt.goal.x + rt.goal.w).toBe(1504);
   });
 
-  it('敌种组合 = 旧 4 敌（ci_li×3 + du_fu×3 + shi_pao×2 + chong_feng×2）+ 山地专属 gu_bao×2 = 12', () => {
-    expect(rt.enemies).toHaveLength(12);
+  it('敌种组合 = 旧 4 敌（ci_li×3 + du_fu×3 + chong_feng×2）+ 山地专属 gu_bao×2 = 10', () => {
+    expect(rt.enemies).toHaveLength(10);
     const types = rt.enemies.map((e) => e.type);
     expect(types.filter((t) => t === 'ci_li')).toHaveLength(3);
     expect(types.filter((t) => t === 'du_fu')).toHaveLength(3);
-    expect(types.filter((t) => t === 'shi_pao')).toHaveLength(2);
+    expect(types.filter((t) => t === 'shi_pao')).toHaveLength(0);
     expect(types.filter((t) => t === 'chong_feng')).toHaveLength(2);
     expect(types.filter((t) => t === 'gu_bao')).toHaveLength(2);
   });

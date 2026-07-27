@@ -649,11 +649,6 @@
       "seedId": "seed_01"
     },
     {
-      "type": "shi_pao",
-      "x": 576,
-      "y": 100
-    },
-    {
       "type": "chong_feng",
       "x": 672,
       "y": 200
@@ -719,11 +714,6 @@
       "type": "chong_feng",
       "x": 1184,
       "y": 200
-    },
-    {
-      "type": "shi_pao",
-      "x": 1216,
-      "y": 100
     },
     {
       "type": "checkpoint",

@@ -82,18 +82,17 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(rt.goal.y + rt.goal.h).toBeCloseTo(7 * 32, 3); // 底贴地面
   });
 
-  it('entities 透传 + 敌人由实体生成 EnemyAI（S04-1 ci_li/du_fu + S04-2 chong_feng/shi_pao）+ S04-3 实体分桶', () => {
-    // 5 敌(ci_li×2, chong_feng×1, du_fu×1, shi_pao×1) + 7 币 + 6 种子 + 1 检查点 + 3 栗子补给(GDD 17) = 22
-    expect(rt.entities.length).toBe(22);
-    expect(rt.enemies.length).toBe(5);
+  it('entities 透传 + 敌人由实体生成 EnemyAI（S04-1 ci_li/du_fu + S04-2 chong_feng）+ S04-3 实体分桶', () => {
+    // 4 敌(ci_li×2, chong_feng×1, du_fu×1) + 7 币 + 6 种子 + 1 检查点 + 3 栗子补给(GDD 17) = 21
+    expect(rt.entities.length).toBe(21);
+    expect(rt.enemies.length).toBe(4);
     expect(rt.enemies[0].type).toBe('ci_li');
     expect(rt.enemies[1].type).toBe('ci_li');
     expect(rt.enemies[2].type).toBe('chong_feng');
     expect(rt.enemies[3].type).toBe('du_fu');
-    expect(rt.enemies[4].type).toBe('shi_pao');
-    // 可踩：ci_li / du_fu；不可踩（S04-2）：chong_feng / shi_pao
+    // 可踩：ci_li / du_fu；不可踩（S04-2）：chong_feng
     expect(rt.enemies.filter((e) => e.isStompable).map((e) => e.type)).toEqual(['ci_li', 'ci_li', 'du_fu']);
-    expect(rt.enemies.filter((e) => !e.isStompable).map((e) => e.type)).toEqual(['chong_feng', 'shi_pao']);
+    expect(rt.enemies.filter((e) => !e.isStompable).map((e) => e.type)).toEqual(['chong_feng']);
     // S04-3：coin/seed/checkpoint 由 entities 按 type 过滤分桶（不污染 enemies）
     expect(rt.coins.length).toBe(7);
     expect(rt.seeds.length).toBe(6);
