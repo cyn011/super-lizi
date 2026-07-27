@@ -166,6 +166,25 @@ export class WechatTouchProvider implements RawInputProvider {
   }
 
   /**
+   * 底部控制面板独占检测（设备 px → 逻辑空间）。
+   * 红框区域内（含按钮之间、按钮下方空白）只应走按钮逻辑；未命中按钮的触点应被吞掉，
+   * 不转给手势层，避免玩家按按钮间隙/下方时触发左右走/跳。
+   */
+  isInControlPanel(px: number, py: number): boolean {
+    const cp = inputConfig.wechat.controlPanel;
+    if (!cp) return false;
+    const ly = py * (this.logicalH / this.deviceH);
+    return ly >= cp.y0 * this.logicalH;
+  }
+
+  /** 逻辑空间控制面板检测（供已换算坐标的路由复用）。 */
+  isInControlPanelLogical(lx: number, ly: number): boolean {
+    const cp = inputConfig.wechat.controlPanel;
+    if (!cp) return false;
+    return ly >= cp.y0 * this.logicalH;
+  }
+
+  /**
    * 外部路由入口（融合模式）：把一组设备 px 触点（wx.onTouch* changedTouches）按 phase 喂入。
    * 内部命中 hitTest + down/pressed/released 逻辑与旧 handle 完全一致；autoBind=false 时由 FusionInput 调用。
    */

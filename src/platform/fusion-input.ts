@@ -71,8 +71,8 @@ export class FusionInput implements RawInputProvider, PointerSink {
     releasedEdge: new Set<SignalId>(),
   };
 
-  /** Web/测试 PointerSink 通道跟踪：pointerId → 当前按下的按钮（存在=按钮通道，否则=手势通道）。 */
-  private readonly activeByPointer = new Map<number, SignalId>();
+  /** Web/测试 PointerSink 通道跟踪：pointerId → 当前按下的按钮（SignalId）或吞掉的控制面板触点（null）。 */
+  private readonly activeByPointer = new Map<number, SignalId | null>();
 
   /** 去重状态（按环境独立）。 */
   private lastEventAt = 0;
@@ -98,13 +98,16 @@ export class FusionInput implements RawInputProvider, PointerSink {
     if (hit) {
       this.activeByPointer.set(pointerId, hit);
       this.buttons.simulateDown(hit);
+    } else if (this.buttons.isInControlPanelLogical(x, y)) {
+      // 底部控制面板内未命中按钮 → 吞掉，不触发手势，避免按钮间隙/下方误走/跳。
+      this.activeByPointer.set(pointerId, null);
     } else {
       this.gesture.pointerDown(x, y, pointerId);
     }
   }
 
   pointerMove(x: number, y: number, pointerId = 0): void {
-    // 通道在 pointerDown 时依落点决定并稳定到抬起：按钮通道忽略 move，手势通道继续转发。
+    // 通道在 pointerDown 时依落点决定并稳定到抬起：按钮/吞掉通道忽略 move，手势通道继续转发。
     if (this.activeByPointer.has(pointerId)) return;
     this.gesture.pointerMove(x, y, pointerId);
   }
@@ -113,8 +116,11 @@ export class FusionInput implements RawInputProvider, PointerSink {
     const hit = this.activeByPointer.get(pointerId);
     if (hit) {
       this.buttons.simulateUp(hit);
+    }
+    // null = 控制面板吞掉；undefined = 手势通道。两种都需要清理映射。
+    if (hit !== undefined) {
       this.activeByPointer.delete(pointerId);
-      return;
+      if (hit === null) return;
     }
     this.gesture.pointerUp(x, y, pointerId);
   }
@@ -226,6 +232,13 @@ export class FusionInput implements RawInputProvider, PointerSink {
       if (hit) {
         // 命中按钮 → 走按钮层（routeTouch 内部再做 device→logical 换算与 hitTest）
         this.buttons.routeTouch([{ identifier: id, clientX: px, clientY: py }], phase === 'end' ? 'end' : phase === 'start' ? 'start' : 'move');
+      } else if (this.buttons.isInControlPanel(px, py)) {
+        // 红框控制面板内未命中按钮 → 吞掉，不转手势，避免误操作。
+        if (phase === 'start') this.activeByPointer.set(id, null);
+        if (phase === 'end' || phase === 'move') {
+          // move 无需处理；end 时清理吞掉标记，不通知 gesture。
+          if (phase === 'end') this.activeByPointer.delete(id);
+        }
       } else {
         const lx = px * this.sx;
         const ly = py * this.sy;
@@ -241,8 +254,8 @@ export class FusionInput implements RawInputProvider, PointerSink {
     if (hit) {
       // 命中按钮 → 短按 100ms（pause 图标亦走此路径 → touch:pause）
       this.buttons.routeClick(clientX, clientY);
-    } else {
-      // 未命中 → 走手势 Tap（单点、无 move/up，计时器自动释放）
+    } else if (!this.buttons.isInControlPanel(clientX, clientY)) {
+      // 未命中按钮且不在底部控制面板 → 走手势 Tap（控制面板内点击直接吞掉，避免误操作）
       this.gesture.pointerDown(clientX * this.sx, clientY * this.sy, 0);
     }
     // click 转发后更新去重状态，使紧随其后的同源 touch 被跳过。

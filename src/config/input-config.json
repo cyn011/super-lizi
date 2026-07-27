@@ -14,6 +14,7 @@
       "jump":   { "x": 0.840, "y": 0.892, "r": 0.030 },
       "action": { "x": 0.930, "y": 0.892, "r": 0.028 }
     },
+    "controlPanel": { "y0": 0.78 },
     "pauseIcon": { "x": 0.950, "y": 0.060, "r": 0.022 },
     "gesture": {
       "horizontalDeadzoneX": 24,

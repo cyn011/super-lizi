@@ -47,6 +47,7 @@ export const inputConfig = inputJson as {
   wechat: {
     layout: string;
     buttons: Record<string, { x: number; y: number; r: number }>;
+    controlPanel?: { y0: number };
     pauseIcon?: { x: number; y: number; r: number };
     gesture?: Record<string, number>;
   };
