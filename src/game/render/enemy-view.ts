@@ -73,6 +73,14 @@ export function drawEnemy(
     drawManhole(g, e, reduceMotion); // 街道井盖：盖 + 蒸汽柱/预警红边（GDD 1-6 §3.3）
     return;
   }
+  if (e.type === 'paper_pile') {
+    drawPaperPile(g, e); // 办公文件堆：暖金纸堆 + 暖黄翻页（可踩平台，GDD 1-7 §3）
+    return;
+  }
+  if (e.type === 'coffee_spill') {
+    drawCoffeeSpill(g, e, reduceMotion); // 办公咖啡渍：暗棕渍 + 红边闪（低摩擦 zone telegraph，GDD 1-7 §3）
+    return;
+  }
   const b = e.getBounds();
   const color =
     e.type === 'ci_li'
@@ -621,5 +629,112 @@ function drawManhole(g: Phaser.GameObjects.Graphics, e: EnemyAI, reduceMotion: b
     // 红边双编码（伤害期）
     g.lineStyle(1, MANHOLE_EDGE, 0.6);
     g.strokeRect(cx - r, topY - sh, w, sh);
+  }
+}
+
+/**
+ * 办公文件堆（paper_pile）占位绘制（GDD 1-7 §3 / office-visual-spec §2.1，锁色板内 0 新增色）：
+ *   - 纸堆主体：经济金 #F2C94C + 描边 #2A1A12（暖金纸面，可踩平台）。
+ *   - 暗面：暗棕 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）。
+ *   - 歪斜纸片（顶×3）：经济金 + 描边（有机纸堆造型）。
+ *   - 高光翻页：暖黄 #FFD23F（纸感 telegraph + 可踩提示）。
+ *   - 顶缘 1px 描边：#2A1A12（可踩提示，与硬顶敌区分）。
+ * 可踩平台（soft 顶）：暖金圆润纸顶 + 暖黄翻页 = 可踩形状语言，避用命粉 #F26D8B。
+ * 几何读 EnemyAI.getBounds()（盒 = 瓦片覆盖区，单一真相源，与碰撞盒/瓦片网格一致）。
+ */
+const PAPER_PILE_PAPER = 0xf2c94c; // 经济金 #F2C94C（#8，纸面）
+const PAPER_PILE_PAGE = 0xffd23f; // 暖黄 #FFD23F（#4，翻页高光）
+const PAPER_PILE_DARK = 0x79491e; // 暗棕 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）
+const PAPER_PILE_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+function drawPaperPile(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const bodyH = b.h * 0.7; // 堆叠主体占 70% 高，顶部留纸片空间
+  // 1) 纸堆主体（堆叠圆角矩形，微歪）
+  g.fillStyle(PAPER_PILE_PAPER, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, bodyH, 3);
+  g.lineStyle(1, PAPER_PILE_OUT, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, bodyH, 3);
+  // 2) 暗面（右侧，体积感）
+  g.fillStyle(PAPER_PILE_DARK, 1);
+  g.fillRect(b.x + b.w * 0.72, b.y, b.w * 0.28, bodyH);
+  // 3) 歪斜纸片（顶上几张）
+  for (let i = 0; i < 3; i++) {
+    const px = b.x + 3 + i * 5;
+    const py = b.y - 4 - i * 4;
+    const pw = b.w - 10 - i * 6;
+    g.fillStyle(PAPER_PILE_PAPER, 1);
+    g.fillRoundedRect(px, py, pw, 5, 2);
+    g.lineStyle(1, PAPER_PILE_OUT, 0.8);
+    g.strokeRoundedRect(px, py, pw, 5, 2);
+  }
+  // 4) 高光翻页（暖黄亮页，纸感 + 可踩 telegraph）
+  g.fillStyle(PAPER_PILE_PAGE, 1);
+  g.fillRect(b.x + 4, b.y + 4, b.w * 0.4, 4);
+  // 5) 顶缘 1px 描边（可访问性，soft 顶可踩提示）
+  g.lineStyle(1, PAPER_PILE_OUT, 1);
+  g.lineBetween(b.x, b.y, b.x + b.w, b.y);
+}
+
+/**
+ * 办公咖啡渍（coffee_spill）占位绘制（GDD 1-7 §3 / office-visual-spec §2.2，锁色板内 0 新增色）：
+ *   - 渍面：暗棕 #79491E 半透不规则斑块（非碰撞 low_friction zone 视觉）。
+ *   - crema 内圈：暖橙 #F2933C 浅咖。
+ *   - 湿反光：天空 #5BC8F5 小椭圆。
+ *   - 边缘警示红边：警示红 #E8483B 闪（≤2Hz，low_friction telegraph）；Reduce Motion 冻结首帧静态红边。
+ *   - 细微波纹：天空 #5BC8F5 椭圆描边（≤2Hz，Reduce Motion 冻结）。
+ * 非碰撞：仅 zone 视觉；low_friction 触发由 physics 据 RuntimeLevel.coffeeSpillZones 暴露的 frictionScale 判定。
+ * 几何读 EnemyAI.getBounds()（zone 矩形，单一真相源）。禁用品红 #F26D8B。
+ */
+const COFFEE_STAIN = 0x79491e; // 暗棕 #79491E（darken(#F2933C,0.5) tint 派生，0 新增）
+const COFFEE_CREMA = 0xf2933c; // 暖橙 #F2933C（#3，crema）
+const COFFEE_WET = 0x5bc8f5; // 天空 #5BC8F5（#11，湿反光）
+const COFFEE_EDGE = 0xe8483b; // 警示红 #E8483B（#7，低摩擦 telegraph）
+const COFFEE_OUT = 0x2a1a12; // 描边 #2A1A12（#5）
+
+/** 确定性不规则斑点（伪随机半径微变，seed 不同则形状不同；render-only，不进碰撞）。 */
+function coffeeBlobPoints(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  seed: number,
+): Array<{ x: number; y: number }> {
+  const pts: Array<{ x: number; y: number }> = [];
+  const n = 10;
+  let s = (seed * 9301 + 49297) % 233280;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    s = (s * 9301 + 49297) % 233280;
+    const rr = 0.82 + (s / 233280) * 0.3; // 半径微变（0.82~1.12）
+    pts.push({ x: cx + Math.cos(a) * rx * rr, y: cy + Math.sin(a) * ry * rr });
+  }
+  return pts;
+}
+
+function drawCoffeeSpill(g: Phaser.GameObjects.Graphics, e: EnemyAI, reduceMotion: boolean): void {
+  const b = e.getBounds();
+  if (b.w <= 0 || b.h <= 0) return;
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h; // 贴地底
+  // 1) 暗棕半透不规则斑块（fillPoints 拟泼洒）
+  g.fillStyle(COFFEE_STAIN, 0.55);
+  g.fillPoints(coffeeBlobPoints(cx, cy, b.w * 0.5, b.h * 0.4, 1), true);
+  // 2) 内圈 crema 暖橙（浅咖）
+  g.fillStyle(COFFEE_CREMA, 0.4);
+  g.fillPoints(coffeeBlobPoints(cx, cy, b.w * 0.32, b.h * 0.26, 2), true);
+  // 3) 湿反光高光（天空蓝，α≤0.4）
+  g.fillStyle(COFFEE_WET, 0.35);
+  g.fillEllipse(cx - 4, cy - 3, b.w * 0.25, b.h * 0.15);
+  // 4) 边缘警示红闪（low_friction telegraph，≤2Hz）
+  const ph = e.coffeeRipplePhaseState;
+  const ea = reduceMotion ? 0.5 : 0.35 + 0.35 * Math.sin(ph); // ≤2Hz
+  g.lineStyle(1.5, COFFEE_EDGE, ea);
+  g.strokePoints(coffeeBlobPoints(cx, cy, b.w * 0.5, b.h * 0.4, 1), true);
+  // 5) 细微波纹（≤2Hz，Reduce Motion 冻结）
+  if (!reduceMotion) {
+    const ra = 0.3 * Math.sin(ph * 1.2);
+    g.lineStyle(1, COFFEE_WET, Math.max(0, ra));
+    g.strokeEllipse(cx, cy, b.w * 0.4, b.h * 0.3);
   }
 }

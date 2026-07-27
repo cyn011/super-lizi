@@ -26,6 +26,8 @@ export type EntityDef =
   | EnemyEntityDef
   | VehicleEntityDef
   | ManholeEntityDef
+  | PaperPileEntityDef
+  | CoffeeSpillEntityDef
   | CoinEntityDef
   | SeedEntityDef
   | CheckpointEntityDef
@@ -35,6 +37,7 @@ export type EntityDef =
  * 关卡主题联合类型（theme-system §8 / sea-biome-spec §1/§8 契约）。
  * 未知 theme 经 resolveBiome 回退 'grass'（fail-safe，不抛错、零回归）。
  * 'mountain' = cave palette 别名（1-2 复用）；'sea' = 1-3 海主题（本批次新增）。
+ * 'office' = 1-7 办公主题（批次 3，office-visual-spec §3 权威 8 槽，0 新增 hex）。
  */
 export type LevelTheme =
   | 'grass'
@@ -45,7 +48,8 @@ export type LevelTheme =
   | 'sea'
   | 'desert'
   | 'home'
-  | 'street';
+  | 'street'
+  | 'office';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -63,7 +67,9 @@ export type EnemyEntityType =
   | 'pet'
   | 'toy'
   | 'vehicle'
-  | 'manhole';
+  | 'manhole'
+  | 'paper_pile'
+  | 'coffee_spill';
 
 /**
  * 街道汽车实体（GDD 1-6 §3.2，批次 3 street 主题）：横向往返致命 hazard。
@@ -161,6 +167,45 @@ export interface ChestnutEntityDef {
   x: number;
   y: number;
   params?: { amount?: number };
+}
+
+/**
+ * 办公文件堆（GDD 1-7 §3，office 主题）：可踩平台·非伤害（solid 堆叠物，玩家可站上/借以越障）。
+ * 碰撞 = 实心（经 RuntimeLevel 将其覆盖瓦片标记进 solid 网格，类比 sofa/cabinet tile-kind，零新增碰撞机制）；
+ * 不调用 applyDamage / applyFatalDeath。solidity='solid' 为全 AABB 实心（默认），'oneway' 仅顶可踩。
+ * 坐标 (x,y) = 碰撞盒左上角（父级对齐瓦片，全 32 对齐），w/h 为盒宽高（px）。
+ */
+export interface PaperPileEntityDef {
+  type: 'paper_pile';
+  /** 碰撞盒左上角 x（px）。 */
+  x: number;
+  /** 碰撞盒左上角 y（px）。 */
+  y: number;
+  /** 盒宽（px）。缺省 32。 */
+  w?: number;
+  /** 盒高（px）。缺省 32。 */
+  h?: number;
+  /** 实心语义：'solid'=全 AABB 实心（默认），'oneway'=仅顶可踩。缺省 'solid'。 */
+  solidity?: 'solid' | 'oneway';
+}
+
+/**
+ * 办公咖啡渍（GDD 1-7 §3，office 主题）：地面局部低摩擦 zone·非碰撞·非伤害（R1 正确落点）。
+ * 玩家 body 与该矩形 AABB 重叠且 grounded 时，水平减速按 cfg.friction * frictionScale 计算（打滑、难急停）；
+ * 不造成任何伤害，不进入 damage-resolution。frictionScale ∈ (0,1)（越小越滑），缺省 0.35。
+ */
+export interface CoffeeSpillEntityDef {
+  type: 'coffee_spill';
+  /** zone 矩形左上角 x（px，贴地）。 */
+  x: number;
+  /** zone 矩形左上角 y（px）。 */
+  y: number;
+  /** zone 宽（px）。缺省 64。 */
+  w?: number;
+  /** zone 高（px）。缺省 32。 */
+  h?: number;
+  /** 低摩擦系数（0<scale<1，越小越滑）。缺省 0.35。 */
+  frictionScale?: number;
 }
 
 export interface PropDef {

@@ -18,6 +18,8 @@ import type {
   SeedEntityDef,
   CheckpointEntityDef,
   ChestnutEntityDef,
+  PaperPileEntityDef,
+  CoffeeSpillEntityDef,
   BeatPhase,
 } from './level-data';
 import type { CollisionWorld } from '../physics/collision';
@@ -56,6 +58,20 @@ export class RuntimeLevel {
   /** Phase 5：由 entities 过滤生成的栗子补给实例（碰玩家 → addAmmo + ON_AMMO_CHANGED）。 */
   readonly chestnuts: ChestnutEntityDef[];
 
+  /**
+   * 办公文件堆覆盖的瓦片键集合（`${tx},${ty}`）。paper_pile 经此把覆盖瓦片标记进 solid/oneWay 网格
+   * （类比 sofa/cabinet tile-kind，零新增碰撞机制），game-scene.drawLevel 地形循环据此跳过这些瓦片，
+   * 让 paper_pile 皮肤（enemyGfx 渲染）显示，而非被 rockFace 实心瓦片覆盖。
+   */
+  readonly paperPileTiles = new Set<string>();
+
+  /**
+   * 办公咖啡渍低摩擦 zone 列表（R1 正确落点）：每个 zone 矩形 + frictionScale。
+   * game-scene.stepSim 在 consume 前遍历此列表，玩家 body 与 zone AABB 重叠且 grounded 时取最小 frictionScale
+   * 注入 controller.currentFrictionScale（打滑、难急停）；不造成任何伤害。
+   */
+  readonly coffeeSpillZones: Array<{ x: number; y: number; w: number; h: number; frictionScale: number }> = [];
+
   private readonly solid: boolean[][];
   private readonly oneWay: boolean[][];
 
@@ -79,6 +95,39 @@ export class RuntimeLevel {
     this.solid = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
     this.oneWay = Array.from({ length: h }, () => new Array<boolean>(w).fill(false));
     for (const t of data.tiles) this.setTile(t, w, h);
+
+    // 办公障碍（GDD 1-7 §3）：paper_pile 静态实心（覆盖瓦片标记进 solid/oneWay 网格，类比 sofa/cabinet，
+    // 零新增碰撞机制）+ coffee_spill 低摩擦 zone 列表（供 game-scene 注入 frictionScale）。
+    // 坐标全部 32 对齐（1-7.json 已校验），瓦片范围 = floor(x/ts)..floor((x+w-1)/ts) × 行同理。
+    for (const e of data.entities ?? []) {
+      if (e.type === 'paper_pile') {
+        const pp = e as PaperPileEntityDef;
+        const pw = pp.w ?? 32;
+        const ph = pp.h ?? 32;
+        const oneway = (pp.solidity ?? 'solid') === 'oneway';
+        const txMin = Math.floor(pp.x / ts);
+        const txMax = Math.floor((pp.x + pw - 1) / ts);
+        const tyMin = Math.floor(pp.y / ts);
+        const tyMax = Math.floor((pp.y + ph - 1) / ts);
+        for (let ty = tyMin; ty <= tyMax; ty++) {
+          for (let tx = txMin; tx <= txMax; tx++) {
+            if (tx < 0 || tx >= w || ty < 0 || ty >= h) continue; // world 尚未构造，用局部 w/h 判界
+            if (oneway) this.oneWay[ty][tx] = true;
+            else this.solid[ty][tx] = true;
+            this.paperPileTiles.add(this.beatKey(tx, ty));
+          }
+        }
+      } else if (e.type === 'coffee_spill') {
+        const cs = e as CoffeeSpillEntityDef;
+        this.coffeeSpillZones.push({
+          x: cs.x,
+          y: cs.y,
+          w: cs.w ?? 64,
+          h: cs.h ?? 32,
+          frictionScale: cs.frictionScale ?? 0.35,
+        });
+      }
+    }
 
     // 节拍平台初始相位登记：initial ?? 'ghost' === 'solid' 的 tile 写入动态实心集
     // （边界 3/4：beat 禁用时平台锁在 initial，与「普通实心 tile」行为一致）。

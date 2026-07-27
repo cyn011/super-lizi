@@ -179,6 +179,26 @@ const STREET: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（车辆头灯/危险双编码，锁色板 #7）
 };
 
+/**
+ * 办公调色板（1-7 office 主题，office-visual-spec §3.1 权威 8 槽，锁色板内，0 新增 hex）：
+ *   天花板微光 #5BC8F5（bg，锁色板 #11，字面 VINE_FOREST.bg / SEA.bg）/ 办公桌/柜体主面 #4A78C0（rockFace，锁色板 #10）/
+ *   柜体暗面 #254060（rockBody，锁色板 #6）/ 描边 #2A1A12（outline，锁色板 #5）/ 暖橙 #F2933C（firelight，锁色板 #3）/
+ *   草绿绿植 #7CC242（crystalCore，锁色板 #1）/ 蓝紫屏光 #6E7BF2（crystalGlow，锁色板 #9）/ 警示红 #E8483B（danger，锁色板 #7）。
+ *   经济金 #F2C94C（锁色板 #8）/ 暖黄 #FFD23F（锁色板 #4）/ 暗棕 #79491E（锁色板 #3 派生 tint，字面 DESERT/HOME rockBody）/
+ *   阴影绿 #5FA82F（VINE_FOREST.rockBody）仅在 paper_pile/coffee_spill/装饰绘制分支直接引用（不进 palette 槽，均字面在锁色板/文件内）。
+ *   偏离 office-biome-spec 提案的 #74D0F7/#3B609A 新 hex（红线驱动）：改为 #5BC8F5/#4A78C0（均字面存在于既有 entry）。
+ */
+const OFFICE: ThemePalette = {
+  bg: 0x5bc8f5, // 天花板微光 #5BC8F5（天空，锁色板 #11）
+  rockFace: 0x4a78c0, // 办公桌/柜体主面 #4A78C0（环境冷蓝，锁色板 #10）
+  rockBody: 0x254060, // 柜体暗面 #254060（街影暗蓝，锁色板 #6）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 暖橙 #F2933C（文件夹/窗框/咖啡 crema，锁色板 #3）
+  crystalCore: 0x7cc242, // 草绿 #7CC242（绿植，锁色板 #1）
+  crystalGlow: 0x6e7bf2, // 蓝紫 #6E7BF2（显示器辉光，锁色板 #9）
+  danger: 0xe8483b, // 警示红 #E8483B（咖啡渍低摩擦 telegraph，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -196,6 +216,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   home: HOME,
   // 街道 street = 1-6 霓街主题（批次 3，street-visual-spec §3 权威 8 槽，锁色板内 0 新增 hex）。
   street: STREET,
+  // 办公 office = 1-7 办公主题（批次 3，office-visual-spec §3.1 权威 8 槽，锁色板内 0 新增 hex）。
+  office: OFFICE,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

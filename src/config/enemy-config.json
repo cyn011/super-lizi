@@ -14,5 +14,7 @@
   "manhole":    { "stompable": false, "width": 32, "height": 32, "fatal": false },
   "pet":        { "speed": 35, "stompable": false, "width": 36, "height": 28 },
   "toy":        { "stompable": false, "width": 20, "height": 16 },
-  "projectile": { "width": 10, "height": 10 }
+  "projectile": { "width": 10, "height": 10 },
+  "paper_pile": { "stompable": false, "width": 32, "height": 32 },
+  "coffee_spill": { "stompable": false, "width": 64, "height": 32 }
 }

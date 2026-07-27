@@ -69,6 +69,14 @@ export class CharacterController {
    */
   airJumpBonus = 0;
 
+  /**
+   * 当前摩擦缩放（R1：office 咖啡渍低摩擦 zone）。默认 1.0（正常摩擦）。
+   * 由 game-scene 在每固定步 consume 之前注入：玩家 body 与 coffee_spill zone AABB 重叠且 grounded 时，
+   * 取重叠 zone 中最小 frictionScale 注入（越滑越打滑、越难急停），否则重置 1.0。
+   * 仅缩放「无方向输入时的水平减速摩擦」，不改变加速/最大速度（设计附录 D.2 伪代码）。
+   */
+  currentFrictionScale = 1.0;
+
   constructor(
     private readonly config: CharacterConfig = characterConfig,
     initial?: Partial<CharacterState>,
@@ -120,7 +128,7 @@ export class CharacterController {
       s.vx = approach(s.vx, dir * cfg.moveSpeed, accel * dt);
       s.facing = dir > 0 ? 1 : -1;
     } else {
-      s.vx = approach(s.vx, 0, cfg.friction * dt);
+      s.vx = approach(s.vx, 0, cfg.friction * this.currentFrictionScale * dt);
     }
 
     // 4. jump buffer：本帧按下→记录缓冲；否则衰减（钳≥0）。

@@ -325,6 +325,19 @@ export class EnemyAI implements StompableHazard {
       this.isStompable = false; // 硬顶不可踩（cfg 已声明，此处明确一次）
     }
 
+    // paper_pile / coffee_spill：办公静态障碍（GDD 1-7 §3），均非伤害、非 AI、非可踩。
+    // x/y = 碰撞/zone 盒左上角（与实体一致，不重锚）；w/h 来自实体（缺省 cfg → 32/64）。
+    // paper_pile 静态实心由 RuntimeLevel 把覆盖瓦片标记进 solid 网格（类比 sofa/cabinet），碰撞走 world，不进 overlaps。
+    // coffee_spill 低摩擦 zone 由 RuntimeLevel.coffeeSpillZones 暴露、game-scene 注入 frictionScale，碰撞零参与。
+    if (type === 'paper_pile' || type === 'coffee_spill') {
+      this.width = params?.w ?? this.cfg.width ?? (type === 'coffee_spill' ? 64 : 32);
+      this.height = params?.h ?? this.cfg.height ?? 32;
+      this.x = x; // 左上角 x（不重锚）
+      this.y = y; // 左上角 y
+      this.state = 'idle';
+      this.isStompable = false; // 非可踩敌（非伤害、非交互）
+    }
+
     // vehicle：街道汽车，横向 ping-pong 致命 hazard（applyFatalDeath，硬顶不可踩）。
     // y = 碰撞盒顶（JSON），碰撞盒底 = y + h 贴 ground 顶；位置初始落在区间左端（phaseOffset 错峰）。
     if (type === 'vehicle') {
@@ -560,6 +573,14 @@ export class EnemyAI implements StompableHazard {
   /** pet 视觉微动相位（耳摆 / 矮胖 bob，≤1Hz），render 读；Reduce Motion 由渲染层冻结。 */
   private petBobPhase = 0;
 
+  /** coffee_spill 红边/波纹 telegraph 相位（≤2Hz），render 读；Reduce Motion 由渲染层冻结首帧。 */
+  private coffeeRipplePhase = 0;
+
+  /** coffee_spill 红边/波纹 telegraph 相位（rad，≤2Hz），render 读（drawCoffeeSpill 红边闪/波纹）。 */
+  get coffeeRipplePhaseState(): number {
+    return this.coffeeRipplePhase;
+  }
+
   /**
    * 每固定步推进（dt 秒）。死亡敌人不再更新。
    * @param player 玩家碰撞盒（chong_feng detect / shi_pao aim 需要；ci_li/du_fu 可省）。
@@ -605,6 +626,11 @@ export class EnemyAI implements StompableHazard {
       return NO_PROJECTILES;
     }
     if (this.type === 'toy') return NO_PROJECTILES; // 静止贴地小障碍，无 AI
+    if (this.type === 'paper_pile' || this.type === 'coffee_spill') {
+      // 办公静态障碍：无 AI 位移/弹丸；coffee_spill 仅推进红边/波纹 telegraph 相位（≤2Hz，render 冻结 Reduce Motion）。
+      if (this.type === 'coffee_spill') this.coffeeRipplePhase += dt * (2 * Math.PI * 1.5);
+      return NO_PROJECTILES;
+    }
     if (this.type === 'vehicle') return this.updateVehicle(dt);
     if (this.type === 'manhole') return this.updateManhole(dt);
     return NO_PROJECTILES;
@@ -874,6 +900,8 @@ export class EnemyAI implements StompableHazard {
     // bouncy_vine / cyclone：纯辅助力场，hazard=false；其交互（回弹 / 托起）由 stepSim 单独处理，
     // 不进伤害管线（避免误伤 / 误踩）。overlaps 恒 false 保证零危害。
     if (this.type === 'bouncy_vine' || this.type === 'cyclone') return false;
+    // paper_pile / coffee_spill：办公静态障碍，非伤害（碰撞走 tile 网格 / 零碰撞 zone），overlaps 恒 false。
+    if (this.type === 'paper_pile' || this.type === 'coffee_spill') return false;
     if (this.type === 'gu_bao' && this.guBaoState === 'DORMANT') return false; // 地下无碰撞、无害
     // vehicle：致命 hazard 经 applyFatalDeath 单独解算（overlaps 返回 false 以跳过 resolveHazardContact 非致死路径）。
     if (this.type === 'vehicle') return false;
@@ -1057,11 +1085,26 @@ export function createEnemies(
   // vehicle/manhole 实体自身数值字段（非通用 params）透传至 EnemyAI 构造的 params（禁止硬编码）。
   const VEHICLE_KEYS = ['range', 'speed', 'dir', 'phaseOffset', 'w', 'h'];
   const MANHOLE_KEYS = ['period', 'activeMs', 'telegraphMs', 'steamHeight', 'w', 'phaseOffset'];
+  const PAPER_PILE_KEYS = ['w', 'h'];
+  const COFFEE_SPILL_KEYS = ['w', 'h', 'frictionScale'];
   for (const e of entities) {
     if (e.type === 'vehicle' || e.type === 'manhole') {
       const ex = e as unknown as Record<string, number | string>;
       const merged: Record<string, number> = { ...(e.params ?? {}) };
       const keys = e.type === 'vehicle' ? VEHICLE_KEYS : MANHOLE_KEYS;
+      for (const k of keys) {
+        const v = ex[k];
+        if (typeof v === 'number') merged[k] = v;
+      }
+      out.push(new EnemyAI(e.type as EnemyTypeName, e.x, e.y, id++, enemyConfig, merged));
+      continue;
+    }
+    // paper_pile / coffee_spill：办公静态障碍，实体 w/h/(coffee_spill)frictionScale 为顶层字段（非 params），
+    // 合并进 params 透传至 EnemyAI 构造（禁止硬编码）。solidity 由 RuntimeLevel 直接读实体处理，不入 EnemyAI。
+    if (e.type === 'paper_pile' || e.type === 'coffee_spill') {
+      const ex = e as unknown as Record<string, number | string>;
+      const merged: Record<string, number> = { ...(e.params ?? {}) };
+      const keys = e.type === 'paper_pile' ? PAPER_PILE_KEYS : COFFEE_SPILL_KEYS;
       for (const k of keys) {
         const v = ex[k];
         if (typeof v === 'number') merged[k] = v;

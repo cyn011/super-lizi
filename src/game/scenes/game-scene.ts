@@ -192,6 +192,24 @@ export class GameScene extends Phaser.Scene {
   private streetNeonPhase = 0;
   /** 前景护栏门控相位累加器（Reduce Motion 下冻结，仅街道关使用）。 */
   private streetNearPhase = 0;
+  /** 办公主题背景-天花板+后墙层（scrollFactor 0, depth -10，全屏荧光渐变，仅 office 创建一次）。 */
+  private officeWallGfx?: Phaser.GameObjects.Graphics;
+  /** 办公主题背景-远景层（scrollFactor 0.3, depth -9，隔断剪影 + 窗光，仅 office 创建一次）。 */
+  private officeFarGfx?: Phaser.GameObjects.Graphics;
+  /** 办公主题背景-中景层（scrollFactor 0.6, depth -8，办公桌 + 显示器 + 绿植 + 荧光灯架本体，仅 office 创建一次）。 */
+  private officeMidGfx?: Phaser.GameObjects.Graphics;
+  /** 办公主题背景-中景辉光层（scrollFactor 0.6, depth -8，每帧重绘：荧光灯管微闪 + 屏光/窗光脉冲）。 */
+  private officeGlowGfx?: Phaser.GameObjects.Graphics;
+  /** 办公主题背景-前景悬挑/电线层（scrollFactor 1.2, depth 4，每帧重绘：隔断悬挑/电线掠过）。 */
+  private officeNearGfx?: Phaser.GameObjects.Graphics;
+  /** 办公荧光灯管相位累加器（≤2Hz，Reduce Motion 下冻结，仅办公关使用）。 */
+  private officeFluorescentPhase = 0;
+  /** 办公窗光脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅办公关使用）。 */
+  private officeWindowPhase = 0;
+  /** 办公屏光脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅办公关使用）。 */
+  private officeScreenPhase = 0;
+  /** 办公前景悬挑/电线门控相位累加器（Reduce Motion 下冻结，仅办公关使用）。 */
+  private officeNearPhase = 0;
   /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
   private qsZone: QuicksandDef | null = null;
   /** 流沙下陷累计时间（ms），用于 telegraph 渐变速率。 */
@@ -682,6 +700,26 @@ export class GameScene extends Phaser.Scene {
 
     // C1 同步协议：controller.consume 输出真实驱动 body（含水平/跳跃/二段跳/coyote/buffer/短跳）；
     // hitstun 期间 skipConsume → 仅 stepBody 积分击退。
+
+    // R1：办公咖啡渍低摩擦 zone —— 玩家 body 与 zone AABB 重叠且 grounded 时，取重叠 zone 中最小
+    // frictionScale 注入 controller.currentFrictionScale（越滑越打滑、难急停）；否则重置 1.0（正常摩擦）。
+    // 仅在 consume 之前注入（consume 用其缩放无方向输入时的水平减速摩擦，设计附录 D.2）。
+    let frictionScale = 1.0;
+    if (this.runtime.coffeeSpillZones.length > 0 && this.lastGrounded) {
+      const body = this.body;
+      for (const z of this.runtime.coffeeSpillZones) {
+        if (
+          body.x < z.x + z.w &&
+          body.x + body.w > z.x &&
+          body.y < z.y + z.h &&
+          body.y + body.h > z.y
+        ) {
+          frictionScale = Math.min(frictionScale, z.frictionScale);
+        }
+      }
+    }
+    this.controller.currentFrictionScale = frictionScale;
+
     const res = runStepSim(
       { body: this.body, controller: this.controller, world: this.world },
       effectiveInput,
@@ -1356,6 +1394,7 @@ export class GameScene extends Phaser.Scene {
     const isDesert = this.runtime.data.metadata.theme === 'desert';
     const isHome = this.runtime.data.metadata.theme === 'home';
     const isStreet = this.runtime.data.metadata.theme === 'street';
+    const isOffice = this.runtime.data.metadata.theme === 'office';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1420,11 +1459,28 @@ export class GameScene extends Phaser.Scene {
       this.streetNeonPhase = 0;
       this.streetNearPhase = 0;
     }
+    // 非办公关：清理可能残留的办公背景层（切换关卡安全）。镜像街道清理块。
+    if (!isOffice) {
+      this.officeWallGfx?.destroy();
+      this.officeWallGfx = undefined;
+      this.officeFarGfx?.destroy();
+      this.officeFarGfx = undefined;
+      this.officeMidGfx?.destroy();
+      this.officeMidGfx = undefined;
+      this.officeGlowGfx?.destroy();
+      this.officeGlowGfx = undefined;
+      this.officeNearGfx?.destroy();
+      this.officeNearGfx = undefined;
+      this.officeFluorescentPhase = 0;
+      this.officeWindowPhase = 0;
+      this.officeScreenPhase = 0;
+      this.officeNearPhase = 0;
+    }
 
     // 背景层：
     //  - 非海关/非沙漠/非家关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
     //  - 海关/沙漠/家关：跳过平铺（交给 drawSeaBackground / drawDesertBackground / drawHomeBackground 的天空渐变 + 视差层）。
-    if (!isSea && !isDesert && !isHome && !isStreet && pal.bg !== null) {
+    if (!isSea && !isDesert && !isHome && !isStreet && !isOffice && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
@@ -1436,6 +1492,8 @@ export class GameScene extends Phaser.Scene {
     if (isHome) this.drawHomeBackground(pal);
     // 街道主题背景（霓街夜景五层视差：天花板+后墙 / 远景楼宇+窗光 / 中景街灯+霓虹+树 / 游戏 / 前景护栏），仅 street 创建一次（动态层每帧重绘）
     if (isStreet) this.drawStreetBackground(pal);
+    // 办公主题背景（室内办公五层视差：天花板+后墙 / 远景隔断+窗光 / 中景办公桌+显示器+绿植+荧光灯 / 游戏 / 前景悬挑/电线），仅 office 创建一次（动态层每帧重绘）
+    if (isOffice) this.drawOfficeBackground(pal);
 
     // 家具 tile-kind 查找表（sofa/table/cabinet 仅在此表达，碰撞由 world 的 solid/oneway 承接）。
     // 遍历 runtime.data.tiles 暴露 kind（home-visual-spec §2.5 允许的方案，零新增 world API）。
@@ -1446,6 +1504,8 @@ export class GameScene extends Phaser.Scene {
       for (let tx = 0; tx < this.runtime.data.width; tx++) {
         const X = tx * ts;
         const Y = ty * ts;
+        // 办公文件堆瓦片：跳过地形绘制（paper_pile 皮肤由 enemyGfx 经 drawPaperPile 渲染，详见 §2.1）。
+        if (this.runtime.paperPileTiles.has(`${tx},${ty}`)) continue;
         if (this.world.isSolidTile(tx, ty)) {
           const kind = kindAt.get(`${tx},${ty}`);
           if (kind === 'sofa' || kind === 'cabinet') {
@@ -2335,6 +2395,210 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 办公主题背景层（GDD 1-7 / office-visual-spec §1，仅 office）：完整五层视差结构——
+   *   wall (scrollFactor 0,   depth -10) 荧光天花板+后墙竖直渐变（CEIL→WALL），全屏一次
+   *   far (scrollFactor 0.3, depth -9)  隔断剪影+窗光（每帧重绘 drawOfficeFar）
+   *   mid (scrollFactor 0.6, depth -8)  办公桌+显示器+绿植+荧光灯架本体（create-once）
+   *   glow(scrollFactor 0.6, depth -8)  荧光灯管微闪+屏光/窗光脉冲（每帧重绘 drawOfficeGlow）
+   *   near(scrollFactor 1.2, depth 4)   隔断悬挑/电线（每帧重绘 drawOfficeNear）
+   * 配色全部字面存在于 THEME_PALETTES['office'] 或锁色板/tint，0 新增 hex；禁用品红 #F26D8B。
+   */
+  private drawOfficeBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const WALL = pal.bg ?? 0x5bc8f5; // 天花板微光 #5BC8F5（OFFICE bg，#11）
+    const CEIL = pal.rockBody; // 柜体暗面 #254060（#6，天花板带）
+    const ROCK_FACE = pal.rockFace; // 办公桌/柜体主面 #4A78C0（#10）
+    const OUT = pal.outline; // 描边 #2A1A12（#5）
+
+    // ── 1) 天花板+后墙层（scrollFactor 0, depth -10）：竖直渐变 CEIL→WALL 全屏 ──
+    if (!this.officeWallGfx) this.officeWallGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const cw = this.officeWallGfx;
+    cw.clear();
+    cw.fillGradientStyle(CEIL, CEIL, WALL, WALL, 1);
+    cw.fillRect(0, 0, camW, camH);
+    // 天花板与墙交界加深线（强化顶/壁分界）
+    cw.lineStyle(2, ROCK_FACE, 1);
+    cw.lineBetween(0, camH * 0.16, camW, camH * 0.16);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：隔断剪影 + 窗光（每帧重绘 drawOfficeFar）──
+    if (!this.officeFarGfx) this.officeFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：办公桌 + 显示器 + 绿植 + 荧光灯架本体，create-once ──
+    if (!this.officeMidGfx) this.officeMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.officeMidGfx;
+    mid.clear();
+    // 办公桌 ×2（冷蓝桌面 + 暗带）
+    const desks = [
+      { x: levelW * 0.18, y: levelH * 0.52 },
+      { x: levelW * 0.74, y: levelH * 0.5 },
+    ];
+    for (const d of desks) {
+      mid.fillStyle(ROCK_FACE, 1); // 桌面 #4A78C0（#10）
+      mid.fillRoundedRect(d.x - 23, d.y, 46, 28, 3);
+      mid.fillStyle(pal.rockBody, 1); // 暗带 #254060（#6）
+      mid.fillRect(d.x - 23, d.y + 21, 46, 7);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeRoundedRect(d.x - 23, d.y, 46, 28, 3);
+    }
+    // 显示器 ×2（暖橙框 + 暗内屏）
+    const monitors = [
+      { x: levelW * 0.35, y: levelH * 0.48 },
+      { x: levelW * 0.62, y: levelH * 0.46 },
+    ];
+    for (const m of monitors) {
+      mid.fillStyle(0xf2933c, 1); // 暖橙 #F2933C（#3）框
+      mid.fillRect(m.x - 13, m.y - 9, 26, 18);
+      mid.fillStyle(OUT, 1); // 屏底 #2A1A12（#5）
+      mid.fillRect(m.x - 10, m.y - 6, 20, 12);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeRect(m.x - 13, m.y - 9, 26, 18);
+    }
+    // 绿植 ×2（草绿团 + 阴影绿暗部）
+    const plants = [
+      { x: levelW * 0.5, y: levelH * 0.56 },
+      { x: levelW * 0.9, y: levelH * 0.54 },
+    ];
+    for (const p of plants) {
+      mid.fillStyle(0x7cc242, 1); // 草绿 #7CC242（#1）
+      mid.fillCircle(p.x, p.y, 10);
+      mid.fillCircle(p.x - 6, p.y + 3, 7);
+      mid.fillCircle(p.x + 6, p.y + 3, 7);
+      mid.fillStyle(0x5fa82f, 1); // 阴影绿 #5FA82F（VINE.rockBody 字面已有，0 新增）
+      mid.fillCircle(p.x + 5, p.y + 2, 5);
+      mid.lineStyle(1, OUT, 1);
+      mid.strokeCircle(p.x, p.y, 10);
+    }
+    // 荧光灯架 ×1（冷蓝细杆 + 底座；灯管微闪见 glow 层）
+    mid.fillStyle(ROCK_FACE, 1);
+    mid.fillRect(levelW * 0.42 - 1, levelH * 0.18, 2, 18);
+    mid.lineStyle(1, OUT, 1);
+    mid.strokeRect(levelW * 0.42 - 1, levelH * 0.18, 2, 18);
+
+    // ── 4) 中景辉光层（scrollFactor 0.6, depth -8）：每帧重绘（drawOfficeGlow）──
+    if (!this.officeGlowGfx) this.officeGlowGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    // ── 5) 前景悬挑/电线层（scrollFactor 1.2, depth 4）：每帧重绘（drawOfficeNear）──
+    if (!this.officeNearGfx) this.officeNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /**
+   * 办公主题远景层（office-visual-spec §1.3，仅 office）：scrollFactor 0.3, depth -9，每帧 clear+重绘；
+   * 隔断剪影带（#254060，无描边）+ 窗光（#5BC8F5 微光 + #F2933C 细框 + #FFD23F 光晕脉冲 ≤2Hz）。
+   * Reduce Motion 下相位冻结（窗光静态）。
+   */
+  private drawOfficeFar(): void {
+    const g = this.officeFarGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    g.clear();
+    const PARTITION = 0x254060; // 隔断剪影 #254060（CAVE/SEA/STREET rockBody 字面已有，0 新增）
+    const WIN = 0x5bc8f5; // 窗内微光 #5BC8F5（#11）
+    // 隔断剪影带（无描边，低饱和氛围非碰撞）
+    const baseY = levelH * 0.62;
+    const partitions = [
+      { x: levelW * 0.08, w: 80, h: levelH * 0.45 },
+      { x: levelW * 0.3, w: 70, h: levelH * 0.55 },
+      { x: levelW * 0.55, w: 90, h: levelH * 0.5 },
+      { x: levelW * 0.78, w: 75, h: levelH * 0.58 },
+    ];
+    for (const p of partitions) {
+      g.fillStyle(PARTITION, 1);
+      g.fillRect(p.x, baseY - p.h, p.w, p.h);
+    }
+    // 窗光（暖橙细框 + 窗内微光 + 暖黄光晕脉冲）
+    const wp = this.officeWindowPhase;
+    const windows = [
+      { x: levelW * 0.22, y: levelH * 0.3 },
+      { x: levelW * 0.55, y: levelH * 0.32 },
+      { x: levelW * 0.84, y: levelH * 0.3 },
+    ];
+    for (const w of windows) {
+      const ww = 44;
+      const wh = 56;
+      g.lineStyle(1, 0xf2933c, 1); // 暖橙 #F2933C（#3）细框
+      g.strokeRect(w.x - ww / 2, w.y - wh / 2, ww, wh);
+      g.fillStyle(WIN, 0.5); // 窗内微光 #5BC8F5 α≤0.5
+      g.fillRect(w.x - ww / 2 + 2, w.y - wh / 2 + 2, ww - 4, wh - 4);
+      const glowA = this.reduceMotion ? 0.3 : 0.2 + 0.2 * (0.5 + 0.5 * Math.sin(wp)); // ≤2Hz 光晕
+      g.fillStyle(0xffd23f, glowA); // 暖黄 #FFD23F（#4）光晕
+      g.fillRect(w.x - ww / 2 + 4, w.y - wh / 2 + 4, ww - 8, 6);
+    }
+  }
+
+  /**
+   * 办公主题中景辉光层（office-visual-spec §1.4，仅 office）：scrollFactor 0.6, depth -8，每帧 clear+重绘；
+   * 荧光灯管微闪（#FFD23F，≤2Hz）+ 屏光脉冲（#6E7BF2/#FFD23F，≤2Hz）。Reduce Motion 下相位冻结（静态）。
+   */
+  private drawOfficeGlow(): void {
+    const g = this.officeGlowGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const levelH = this.runtime.data.height * ts;
+    g.clear();
+    // 荧光灯管微闪（暖黄，≤2Hz）
+    const lampX = levelW * 0.42;
+    const lampY = levelH * 0.18;
+    const la = this.reduceMotion ? 0.9 : 0.7 + 0.2 * (0.5 + 0.5 * Math.sin(this.officeFluorescentPhase)); // ≤2Hz
+    g.fillStyle(0xffd23f, la);
+    g.fillRoundedRect(lampX - 12, lampY - 3, 24, 6, 2);
+    // 屏光脉冲（蓝紫 + 暖黄，≤2Hz）
+    const sp = this.officeScreenPhase;
+    const monitors = [
+      { x: levelW * 0.35, y: levelH * 0.48 },
+      { x: levelW * 0.62, y: levelH * 0.46 },
+    ];
+    for (const m of monitors) {
+      const a = this.reduceMotion ? 0.85 : 0.6 + 0.3 * (0.5 + 0.5 * Math.sin(sp));
+      g.fillStyle(0x6e7bf2, a); // 蓝紫 #6E7BF2（#9）屏光
+      g.fillRect(m.x - 10, m.y - 6, 20, 12);
+      g.fillStyle(0xffd23f, a * 0.5); // 暖黄 #FFD23F（#4）辅光
+      g.fillRect(m.x - 8, m.y - 4, 16, 4);
+    }
+  }
+
+  /**
+   * 办公主题前景层（office-visual-spec §1.5，仅 office）：scrollFactor 1.2, depth 4，每帧 clear+重绘；
+   * 偶尔隔断悬挑/电线掠过（环境冷蓝 #4A78C0 + 蓝紫 #6E7BF2 高光点）；门控约 30% 时间可见（sin(nearPhase*0.2)>0.6），克制遮挡。
+   * Reduce Motion 下相位冻结（静态斜带，不再门控闪烁）。
+   */
+  private drawOfficeNear(): void {
+    const g = this.officeNearGfx;
+    if (!g) return;
+    const cam = this.cameras.main;
+    const camW = cam.width;
+    const camH = cam.height;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    g.clear();
+    const CABLE = 0x4a78c0; // 环境冷蓝 #4A78C0（#10，悬挑/电线）
+    if (this.reduceMotion) {
+      // Reduce Motion：静态常显斜带（不门控闪烁）
+      const baseY = camH * 0.78;
+      g.lineStyle(2, CABLE, 0.3);
+      g.lineBetween(0 + scrollX * 1.2, baseY + scrollY * 1.2, camW + scrollX * 1.2, baseY - 30 + scrollY * 1.2);
+      return;
+    }
+    const vis = Math.sin(this.officeNearPhase * 0.2);
+    if (vis <= 0.6) return; // 周期性透明（克制）
+    const alpha = 0.4 * ((vis - 0.6) / 0.4);
+    const baseY = camH * 0.78;
+    g.lineStyle(2, CABLE, alpha);
+    g.lineBetween(0 + scrollX * 1.2, baseY + scrollY * 1.2, camW + scrollX * 1.2, baseY - 30 + scrollY * 1.2);
+    // 蓝紫高光点（#6E7BF2，≤0.3 α）
+    g.fillStyle(0x6e7bf2, alpha * 0.6);
+    g.fillCircle(camW * 0.3 + scrollX * 1.2, baseY - 10 + scrollY * 1.2, 2);
+    g.fillCircle(camW * 0.7 + scrollX * 1.2, baseY - 20 + scrollY * 1.2, 2);
+  }
+
   private drawSprite(): void {
     const g = this.sprite;
     g.clear();
@@ -2463,6 +2727,18 @@ export class GameScene extends Phaser.Scene {
       this.drawStreetFar(); // 远景窗光闪烁（scrollFactor 0.3）
       this.drawStreetGlow(); // 中景辉光（街灯晕 + 霓虹脉冲，scrollFactor 0.6）
       this.drawStreetNear(); // 前景护栏（scrollFactor 1.2）
+    }
+    // A7 办公动态层（仅 office 关卡每帧重绘）：荧光灯/屏光/窗光脉冲 + 前景悬挑相位累加（Reduce Motion 冻结）+ 远景隔断/窗光 + 中景辉光 + 前景悬挑
+    if (this.runtime.data.metadata.theme === 'office') {
+      if (!this.reduceMotion) {
+        this.officeFluorescentPhase += STEP_DT * (2 * Math.PI * 1.5); // ≤2Hz 灯管微闪
+        this.officeWindowPhase += STEP_DT * (2 * Math.PI * 1.5); // ≤2Hz 窗光脉冲
+        this.officeScreenPhase += STEP_DT * (2 * Math.PI * 2); // ≤2Hz 屏光脉冲
+        this.officeNearPhase += STEP_DT * 0.5; // 悬挑门控
+      }
+      this.drawOfficeFar(); // 远景隔断剪影 + 窗光（scrollFactor 0.3）
+      this.drawOfficeGlow(); // 中景辉光（灯管微闪 + 屏光脉冲，scrollFactor 0.6）
+      this.drawOfficeNear(); // 前景悬挑/电线（scrollFactor 1.2）
     }
     // A4 流沙视觉下沉：仅 sprite 偏移（不改碰撞盒），呈现「陷没沙底」；触底 respawn 后 qsZone=null → 归零
     if (this.qsZone && this.sprite) {
