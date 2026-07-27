@@ -104,9 +104,63 @@
 - **减少动态**：Reduce Motion 下 `veilPhase` 不推进（冻结首帧），沙幕成静态斜带（见 §3）。
 - draw call：near 1 次（`fillPath` 单 path + 点）。
 
-### 1.6 性能预算
+### 1.6 沙漠热浪 (Heat Shimmer) — 近地平线蜃气层（parallax 0.4，depth -8.5，每帧重绘）
 
-每层总 draw call ≤ 15（sky 1 + far 1 + mid 静态 ~7 + near 1 + 游戏层地形按 tile 数），远低于移动端阈值。每帧仅 near 沙幕 + 太阳脉冲（独立层）轻量重绘 ≈ 0.1ms，可忽略；far/mid/sky create 时一次绘制，仅 scrollFactor 驱动视差滚动，运行时零重绘。quicksand overlay（§2.3）每帧重绘但为局部区域，draw call ≈ 2–4。
+- **视觉意图**：沙漠近地平线 / 远沙丘上方升腾的稀薄热霾，强化「灼沙」氛围；克制（遮挡 ≤10%、alpha 极低），不干扰玩法可读性。热浪层贴附沙丘地平线（介于 far -9 与 mid -8 之间），不进入游戏层、不参与碰撞。
+- **热浪层 `drawDesertHeat`**（parallax 0.4，depth -8.5，介于 far(-9) 与 mid(-8) 之间，使热浪贴附沙丘地平线）：
+  - **颜色**：用 `pal.bg`(SKY #F7BE8A) 与 `pal.firelight`(HORIZON #FFD23F) 的**极低 alpha 版本**（α≤0.12），**可加 tint 派生**（如 `darken`/`alpha`，0 新增 hex），沿近地平线带叠 2–3 条水平「蜃气」条纹（高 2–4px，跨整关世界宽 `levelW`，对齐 far 沙丘剪影上缘约 `levelH*0.63`）。ROCK_BODY #79491E 暖调 smear 亦可作为备选低 α 源（见 §1.6.b）。
+  - **动效**：每条条纹做**垂直低频正弦摆动**（相位 `desertHeatPhase`，freq ≤2Hz，幅度 ≤2px）+ 轻微水平相位差（条纹间 `desertHeatPhase + i*0.6`），制造上升热浪的扭曲感；可选对 far 沙丘剪影上缘做 ≤2px 垂直偏移伪折射（纯视觉，不影响碰撞）。
+  - **Reduce Motion**：`if (!this.reduceMotion) this.desertHeatPhase += STEP_DT * (2*Math.PI*1.5);` 否则冻结（静态条纹、固定 α）；明确标注 ≤3Hz 光敏安全（建议 ≤2Hz）。
+  - **性能**：≤1 个额外 graphics 对象，每帧 clear+重绘，overdraw ≤10%。
+- **绘制伪代码（MVP Graphics，供 eng 对齐 `drawDesertSun`/`drawDesertNear` 写法）**：
+
+```text
+// 每帧：drawDesertHeat(g, pal, levelW, levelH, reduceMotion)
+const SKY = pal.bg ?? 0xf7be8a;      // 暖沙晴空 #F7BE8A（tint 派生，0 新增）
+const HORIZON = pal.firelight;       // 暖黄 #FFD23F（锁色板 #4）
+if (!reduceMotion) this.desertHeatPhase += STEP_DT * (2 * Math.PI * 1.5);  // ≤1.5Hz 上升热浪
+g.clear();
+const baseY = levelH * 0.63;         // 近地平线带（对齐 far 沙丘上缘 levelH*0.64）
+for (let i = 0; i < 3; i++) {
+  const ph = this.desertHeatPhase + i * 0.6;              // 条纹间相位差
+  const yoff = Math.sin(ph) * 2.2;                        // 垂直低频摆动 ≤2Hz（≤2px）
+  const a = reduceMotion ? 0.1 : 0.08 + 0.04 * (0.5 + 0.5 * Math.sin(ph)); // α≤0.12
+  const col = i % 2 === 0 ? SKY : HORIZON;                // 仅用 SKY / HORIZON
+  g.fillStyle(col, a);
+  g.fillRect(0, baseY + i * 6 + yoff, levelW, 3);          // 水平薄带，跨整关世界宽
+}
+```
+
+- **接入点提示（供 engineering，详见 §1.6.a）**：字段 `private desertHeatGfx?: Graphics` + `private desertHeatPhase = 0`；create 时 `if (isDesert && !this.desertHeatGfx) this.desertHeatGfx = this.add.graphics().setScrollFactor(0.4).setDepth(-8.5);`；update 调度点紧接 `drawDesertNear()` 之后加 `this.drawDesertHeat();`；清理块追加 `this.desertHeatGfx?.destroy(); this.desertHeatGfx = undefined;`。
+- draw call：heat 1 次（`fillRect`×2–3 单 path）。
+
+#### §1.6.a 接入点提示（供 engineering 落地的精确契约）
+
+> 仿 §1.5 前景沙幕的写法，热浪为**独立每帧重绘层**，不污染既有 5 层结构。以下为建议接入位置（本规格不写 `src/`）：
+
+| 接入点 | 位置（参照 game-scene.ts） | 代码片段（建议） |
+|---|---|---|
+| 字段声明 | 沙漠字段区（约 L153-162 `desertSunGfx`/`desertVeilPhase` 附近） | `private desertHeatGfx?: Phaser.GameObjects.Graphics;` + `private desertHeatPhase = 0;` |
+| create 创建 | `drawDesertBackground` 末尾（约 L1807-1809 `desertSunGfx`/`desertNearGfx` 创建之后） | `if (isDesert && !this.desertHeatGfx) this.desertHeatGfx = this.add.graphics().setScrollFactor(0.4).setDepth(-8.5);` |
+| update 调度 | 沙漠动态块（约 L2709-2713，紧接 `this.drawDesertNear();` 之后） | `this.drawDesertHeat();` |
+| 清理销毁 | 沙漠清理块（约 L1413-1429，紧接 `desertNearGfx` 销毁之后） | `this.desertHeatGfx?.destroy(); this.desertHeatGfx = undefined;` |
+
+> 契约要点：`desertHeatGfx` 仅 desert 关创建，非沙漠关清理块须同步 `destroy`（切换关卡安全，镜像 `desertNearGfx`）。相位 `desertHeatPhase` 在 `reduceMotion` 为真时不推进（冻结首帧）。
+
+#### §1.6.b 0 新增 hex 证明
+
+| 热浪用色 | Hex | 来源 | 是否新色 | 用途 |
+|---|---|---|---|---|
+| SKY | `#F7BE8A` | `pal.bg` = `lighten(#F2933C,0.4)` tint 派生（锁色板 #3 派生） | **0 新增** | 蜃气条纹主体（极低 α≤0.12） |
+| HORIZON | `#FFD23F` | `pal.firelight` = 暖黄 #4（锁色板 #4 原色） | **0 新增** | 蜃气条纹高光（极低 α≤0.12） |
+| ROCK_BODY（可选备选） | `#79491E` | `pal.rockBody` = `darken(#F2933C,0.5)` tint 派生（锁色板 #3 派生） | **0 新增** | 暖调 smear 备选（极低 α，仅作色调变化，非必用） |
+| tint 派生（如 `darken`/`alpha`） | — | 由 SKY/HORIZON/ROCK_BODY 运行时派生 | **0 新增** | 条纹明暗微调（不引入新 hex） |
+
+> 证明结论：热浪层全部颜色取自沙漠 8 槽调色板既有 hex（`bg`/`firelight`/`rockBody`）或其运行时 tint 派生，**0 新增 hex**，守 ADR-004 零位图 + 11 色锁色板红线。无任何 PNG/JPG/SVG 源文件。
+
+### 1.7 性能预算
+
+每层总 draw call ≤ 15（sky 1 + far 1 + mid 静态 ~7 + sun 1 + near 1 + heat 1 + 游戏层地形按 tile 数），远低于移动端阈值。每帧仅 near 沙幕 + 太阳脉冲 + 热浪（独立层，§1.6）轻量重绘 ≈ 0.15ms，可忽略；far/mid/sky create 时一次绘制，仅 scrollFactor 驱动视差滚动，运行时零重绘。quicksand overlay（§2.3）每帧重绘但为局部区域，draw call ≈ 2–4。热浪层（§1.6）仅 1 个 graphics、overdraw ≤10%，额外开销可忽略。
 
 ---
 
@@ -245,10 +299,10 @@ for z in zones:
 |---|---|---|---|
 | 太阳脉冲（中景） | 缩放 `1±0.06` + α 呼吸 ≤2Hz | 冻结首帧（静态圆 + 固定 α=0.85，无缩放/呼吸） | ≤2Hz 正常亦合规 |
 | 沙幕（前景 near） | `veilPhase` 推进，斜带飘移 | `veilPhase` 不推进，静态斜带（门控可见时保持首帧形态） | — |
-| 热浪（可选，底部 30px） | 横向微偏移正弦扭曲 ≤3Hz | 冻结首帧（零偏移静态） | ≤3Hz 正常亦合规 |
+| 热浪（近地平线蜃气层，§1.6） | 垂直低频正弦摆动 ≤2Hz + 轻微水平相位差 | 冻结首帧（静态条纹、固定 α） | ≤2Hz（建议），正常 ≤3Hz 光敏安全亦合规 |
 | quicksand 内陷 | `sinkPhase` 同心圈收缩 ≤3Hz | `sinkPhase` 冻结（静态同心圈，仍暗色可读） | ≤3Hz 正常亦合规 |
 
-- **统一机制**：所有沙漠相位累加器（`sunPhase` / `veilPhase` / `heatPhase` / `sinkPhase`）在 `reduceMotion === true` 时不推进，渲染用首帧常量（对齐 sea 的 `tidePhase`/`seaNearPhase` 冻结写法）。
+- **统一机制**：所有沙漠相位累加器（`desertSunPhase` / `desertVeilPhase` / `desertHeatPhase` / `sinkPhase`）在 `reduceMotion === true` 时不推进，渲染用首帧常量（对齐 sea 的 `tidePhase`/`seaNearPhase` 冻结写法）。
 - **保留**：静态轮廓/暗色/红刺等全部保留 → 危险可读性与色盲安全不降级。
 - **热浪待 eng 确认**：desert-biome-spec §5 将热浪标为"可选 weather"，沙漠 MVP 是否实装热浪由工程/主理人拍板；若实装须遵守本表 Reduce Motion 冻结。
 
@@ -331,7 +385,7 @@ for z in zones:
 ## 待 eng / 主理人确认的开放点（汇总）
 
 1. **中景太阳脉冲拆层**：太阳脉冲需每帧重绘，但 `drawSeaBackground` 的 mid 是 create-once。建议拆独立 `desertSunGfx`（scrollFactor 0.6, depth -8）每帧重绘脉冲光晕，金字塔/仙人掌仍 create-once。**待 eng 确认拆层方案。**
-2. **热浪（heat shimmer）是否实装**：desert-biome-spec §5 标为"可选 weather"。沙漠 MVP 是否实装底部 30px 热浪扭曲由主理人/工程拍板；若实装须遵守 §3 Reduce Motion 冻结。
+2. **热浪（heat shimmer）实装规格已定（§1.6）**：1-4 采用 `drawDesertHeat` 层（scrollFactor 0.4, depth -8.5，每帧重绘；SKY/HORIZON 极低 α≤0.12；垂直低频正弦摆动 ≤2Hz；Reduce Motion 冻结；0 新增 hex）。**剩余唯一开放点**：是否启用可选 far 沙丘上缘 ≤2px 伪折射（纯视觉，不影响碰撞），v1 可省略，由工程拍板。
 3. **quicksand overlay 层**：需新增每帧 overlay（类比 `tideGfx`，depth 3），其触发/触底死亡判定由 GDD 02/03/07 负责，本规格只定义视觉。待 eng 落地 `drawQuicksandOverlay()` 接入 `drawLevel` + `update`。
 4. **天空辉光（蓝紫 #6E7BF2）**：默认关，仅作"冷中藏暖"可选点缀。是否启用待主理人拍板。
 5. **暖同色系对比（§5 #1）**：天空 `#F7BE8A` 与沙岩 `#F2933C` 对比 ≈1.3:1，依赖强制 1px 描边达标。若主理人认为需更强区分，可调整 `bg` tint 明度（仍须 0 新增 hex，仅调 `lighten` 系数）——**待主理人拍板是否调参**。

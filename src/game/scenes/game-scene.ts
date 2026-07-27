@@ -160,6 +160,10 @@ export class GameScene extends Phaser.Scene {
   private desertSunPhase = 0;
   /** 前景沙幕相位累加器（Reduce Motion 下冻结，仅沙漠关使用）。 */
   private desertVeilPhase = 0;
+  /** 沙漠主题背景-热浪蜃气层（scrollFactor 0.4，depth -8.5，每帧重绘，仅 desert 创建一次）。 */
+  private desertHeatGfx?: Phaser.GameObjects.Graphics;
+  /** 热浪相位累加器（≤1.5Hz，Reduce Motion 下冻结，仅沙漠关使用）。 */
+  private desertHeatPhase = 0;
   /** 家主题背景-天花板+后墙层（scrollFactor 0，depth -10，全屏竖直渐变，仅 home 创建一次）。 */
   private homeWallGfx?: Phaser.GameObjects.Graphics;
   /** 家主题背景-远景层（scrollFactor 0.3，depth -9，窗光 + 家具剪影带，仅 home 创建一次）。 */
@@ -1421,6 +1425,8 @@ export class GameScene extends Phaser.Scene {
       this.desertSunGfx = undefined;
       this.desertNearGfx?.destroy();
       this.desertNearGfx = undefined;
+      this.desertHeatGfx?.destroy();
+      this.desertHeatGfx = undefined;
       this.quicksandGfx?.destroy();
       this.quicksandGfx = undefined;
       this.qsSinkMs = 0;
@@ -1807,6 +1813,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.desertSunGfx) this.desertSunGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
     // ── 5) 前景沙幕层（scrollFactor 1.2, depth 4）：每帧重绘（drawDesertNear）──
     if (!this.desertNearGfx) this.desertNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+    // ── 6) 热浪蜃气层（scrollFactor 0.4, depth -8.5）：每帧重绘（drawDesertHeat）──
+    if (!this.desertHeatGfx) this.desertHeatGfx = this.add.graphics().setScrollFactor(0.4).setDepth(-8.5);
   }
 
   /**
@@ -1877,6 +1885,34 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(GOLD, 0.3);
     g.fillCircle(camW * 0.5 + sway + scrollX * 1.2, baseY + scrollY * 1.2, 2);
     g.fillCircle(camW * 0.8 + sway + scrollX * 1.2, baseY + 4 + scrollY * 1.2, 1.6);
+  }
+
+  /**
+   * 沙漠主题-热浪蜃气层（desert-visual-spec §1.6，仅 desert）：scrollFactor 0.4, depth -8.5，
+   * 每帧 clear+重绘；近地平线 2–3 条极低 α 水平「蜃气」条纹（SKY #F7BE8A / HORIZON #FFD23F，α≤0.12），
+   * 垂直低频正弦摆动（≤1.5Hz，幅度 ≤2px）+ 条纹间水平相位差（desertHeatPhase + i*0.6），制造上升热浪扭曲感。
+   * Reduce Motion 下相位冻结（静态条纹、固定 α，光敏安全 ≤3Hz）。draw call：fillRect×3（0 新增 hex）。
+   */
+  private drawDesertHeat(): void {
+    const g = this.desertHeatGfx;
+    if (!g) return;
+    const ts = this.world.tileSize;
+    const levelH = this.runtime.data.height * ts;
+    const levelW = this.runtime.data.width * ts;
+    g.clear();
+    const SKY = 0xf7be8a; // 暖沙晴空 #F7BE8A（pal.bg，tint 派生）
+    const HORIZON = 0xffd23f; // 暖黄 #FFD23F（pal.firelight，锁色板 #4）
+    if (!this.reduceMotion) this.desertHeatPhase += STEP_DT * (2 * Math.PI * 1.5); // ≤1.5Hz 上升热浪
+    const baseY = levelH * 0.63; // 对齐 far 沙丘剪影上缘（§1.6）
+    const STRIPES = 3;
+    for (let i = 0; i < STRIPES; i++) {
+      const ph = this.desertHeatPhase + i * 0.6; // 条纹间相位差
+      const sway = Math.sin(ph) * 2; // 垂直低频摆动 ≤2px
+      const y = baseY + i * 3 + sway; // 高 2–4px 条纹，微错开
+      const alpha = Math.max(0.04, 0.1 - i * 0.02); // α≤0.12，近地平线逐条更淡
+      g.fillStyle(i % 2 === 0 ? SKY : HORIZON, alpha); // SKY/HORIZON 交替，极低 α（0 新增 hex）
+      g.fillRect(0, y, levelW, 2 + (i % 2)); // 高 2–3px，跨整关世界宽
+    }
   }
 
   /**
@@ -2709,6 +2745,7 @@ export class GameScene extends Phaser.Scene {
     if (this.runtime.data.metadata.theme === 'desert') {
       this.drawDesertSun();
       this.drawDesertNear(); // 前景近景沙幕（scrollFactor 1.2）
+      this.drawDesertHeat(); // 近地平线热浪蜃气（scrollFactor 0.4, depth -8.5）
       this.drawQuicksandOverlay(); // 流沙同心内陷漩涡（scrollFactor 1.0, depth 3）
     }
     // A5 家动态层（仅 home 关卡每帧重绘）：台灯脉冲 + 前景窗帘（scrollFactor 1.2）
