@@ -68,7 +68,7 @@ describe('SaveManager.recordClear（S05-3）', () => {
   describe('解锁下一关（levelOrder 注入）', () => {
     it('注入静态关卡顺序时，通关解锁下一关（去重，不越级）', () => {
       const s = new MockStorage();
-      const m = new SaveManager(s, 'super-mali-save', ['1-1', '1-2', '1-3']);
+      const m = new SaveManager(s, 'libao-da-maoxian-save', ['1-1', '1-2', '1-3']);
       m.recordClear('1-1', makeResult());
 
       const d = m.load();
@@ -83,7 +83,7 @@ describe('SaveManager.recordClear（S05-3）', () => {
 
     it('通关末关不解锁（无下一关，已解锁状态保持）', () => {
       const s = new MockStorage();
-      const m = new SaveManager(s, 'super-mali-save', ['1-1', '1-2']);
+      const m = new SaveManager(s, 'libao-da-maoxian-save', ['1-1', '1-2']);
       m.recordClear('1-1', makeResult()); // 先清 1-1 → 解锁 1-2
       m.recordClear('1-2', makeResult()); // 清末关 1-2 → 无下一关可解锁
       const d = m.load();
@@ -102,7 +102,7 @@ describe('SaveManager.recordClear（S05-3）', () => {
 
   describe('S06 进度链契约（与注册表 LEVEL_ORDER 对齐）', () => {
     it('注入 ["1-1","1-2"]，通关 1-1 后 unlockedLevels 含 1-2（去重）', () => {
-      const m = new SaveManager(new MockStorage(), 'super-mali-save', ['1-1', '1-2']);
+      const m = new SaveManager(new MockStorage(), 'libao-da-maoxian-save', ['1-1', '1-2']);
       m.recordClear('1-1', makeResult({ ranks: 2, elapsedMs: 41000, collectedCoins: 7 }));
       m.recordClear('1-1', makeResult({ ranks: 3 })); // 重复清 1-1 不应重复加入 1-2
       const d = m.load();

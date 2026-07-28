@@ -1,9 +1,9 @@
 {
-  "name": "super-mali",
+  "name": "libao-da-maoxian",
   "version": "0.10.0",
   "private": true,
   "type": "module",
-  "description": "super-mali — 原创马里奥式横版跳跃微信小游戏（Sprint 1 底座）",
+  "description": "libao-da-maoxian — 原创像素风横版跳跃微信小游戏",
   "scripts": {
     "dev": "vite --mode web",
     "dev:web": "vite --mode web",

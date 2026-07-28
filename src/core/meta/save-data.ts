@@ -73,7 +73,7 @@ const SAVE_VERSION = 1;
 export class SaveManager {
   constructor(
     private readonly storage: StoragePort,
-    private readonly key = 'super-mali-save',
+    private readonly key = 'libao-da-maoxian-save',
     /**
      * 静态关卡顺序（可选）：通关后据其推导并解锁 nextLevel。
      * 留空（默认）则仅记录成绩，不解锁下一关——真实关卡注册表由后续进度 Story 注入。

@@ -3,7 +3,7 @@
  */
 import type { StoragePort } from '../platform';
 
-const KEY_PREFIX = 'super-mali:';
+const KEY_PREFIX = 'libao-da-maoxian:';
 
 export class WechatStorage implements StoragePort {
   get(key: string): string | null {

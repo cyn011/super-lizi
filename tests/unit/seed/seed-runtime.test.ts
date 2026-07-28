@@ -146,7 +146,7 @@ describe('SaveManager.saveSeedResult（GDD 12 §3.6 合并 + 兼容）', () => {
   it('老档（无 seedMeta）load 后补默认 seedMeta，不崩', () => {
     const s = new MockStorage();
     s.seedRaw(
-      'super-mali-save',
+      'libao-da-maoxian-save',
       JSON.stringify({ version: 1, unlockedLevels: ['1-1'], ranks: {}, bestTimes: {}, bestCoins: {} }),
     );
     const m = new SaveManager(s);

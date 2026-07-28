@@ -22,7 +22,7 @@ class MockStorage implements StoragePort {
   }
 }
 
-const KEY = 'super-mali-save';
+const KEY = 'libao-da-maoxian-save';
 
 describe('SaveData 模型（S05-3）', () => {
   it('defaultSaveData：version=1、首关 1-1 默认解锁、其余记录为空', () => {

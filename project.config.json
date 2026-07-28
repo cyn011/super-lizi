@@ -1,5 +1,5 @@
 {
-  "description": "super-mali · 原创像素风横版跳跃微信小游戏",
+  "description": "libao-da-maoxian · 原创像素风横版跳跃微信小游戏",
   "packOptions": {
     "ignore": [
       {
@@ -31,7 +31,7 @@
   "compileType": "game",
   "libVersion": "3.17.0",
   "appid": "touristappid",
-  "projectname": "super-mali",
+  "projectname": "libao-da-maoxian",
   "condition": {},
   "editorSetting": {
     "tabIndent": "insertSpaces",
