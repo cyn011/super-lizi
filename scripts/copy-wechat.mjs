@@ -67,10 +67,11 @@ if (existsSync(indexPath)) {
   }
   // 2b-3. InputManager.onTouchMove：微信环境无 document.elementFromPoint，
   //       直接认为触摸点在 canvas 上，避免滑动时红错。
-  const touchMoveOriginal = 'var C=document.elementFromPoint(g.clientX,g.clientY),E=C===this.canvas;!this.isOver&&E?this.setCanvasOver(u):this.isOver&&!E&&this.setCanvasOut(u)';
-  const touchMovePatched = 'var C=this.canvas,E=!0;!this.isOver&&E?this.setCanvasOver(u):this.isOver&&!E&&this.setCanvasOut(u)';
-  if (src.includes(touchMoveOriginal)) {
-    src = src.replace(touchMoveOriginal, touchMovePatched);
+  //       用正则匹配以兼容 minifier 变量重命名（如 g.clientX / m.clientX）。
+  const touchMoveRegex = /document\.elementFromPoint\(([a-zA-Z_$][\w$]*)\.clientX,\1\.clientY\)/g;
+  const patchedSrc = src.replace(touchMoveRegex, 'this.canvas');
+  if (patchedSrc !== src) {
+    src = patchedSrc;
     console.log('[copy-wechat] onTouchMove elementFromPoint patch applied');
   }
 
