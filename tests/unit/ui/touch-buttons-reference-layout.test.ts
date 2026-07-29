@@ -23,13 +23,13 @@ describe('touch-buttons · 参照图尺寸与布局', () => {
     expect(right.geom.w).toBeCloseTo(53.76, 2);
   });
 
-  it('攻击键约 36px、跳跃键约 57px，层级与参照图一致', () => {
+  it('攻击键补偿 PNG 透明留白、跳跃键缩小 20%，两者视觉重量接近', () => {
     const action = buildCircleGeom('action');
     const jump = buildCircleGeom('jump');
 
-    expect(action.geom.r * 2).toBeCloseTo(35.84, 2);
-    expect(jump.geom.r * 2).toBeCloseTo(57.344, 2);
-    expect(jump.geom.r).toBeGreaterThan(action.geom.r);
+    expect(action.geom.r * 2).toBeCloseTo(53.76, 2);
+    expect(jump.geom.r * 2).toBeCloseTo(45.8752, 2);
+    expect(action.geom.r).toBeGreaterThan(jump.geom.r);
   });
 
   it('四钮分组间距充足，且完整位于逻辑画布内', () => {
