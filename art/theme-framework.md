@@ -585,7 +585,7 @@ LevelData.metadata.theme → 查找 ThemePalette[id] → 应用色板 + 背景�
 
 ## 附录 C：权威规格交叉引用（Authoritative Cross-Reference）
 
-> 以下为 8 主题（草原/山川/海/沙漠/雨天/家/街/办公）对应的**权威 biome-spec**（11 色锁色板 + 运行时 tint，0 新增 hex）。实现须引用对应文件的「8 槽权威映射 + tint 规则」，不得抄本文档自由 hex。
+> 以下为 9 主题（草原/山川/海/沙漠/雨天/家/街/办公/剪影）对应的**权威 biome-spec**（11 色锁色板 + 运行时 tint，0 新增 hex）。实现须引用对应文件的「8 槽权威映射 + tint 规则」，不得抄本文档自由 hex。
 
 | 口语主题 | 规范 theme key | 调色板来源 | 权威 biome-spec 文件 | 落地状态 |
 |---|---|---|---|---|
@@ -598,6 +598,7 @@ LevelData.metadata.theme → 查找 ThemePalette[id] → 应用色板 + 背景�
 | 街 | `street` | 需 NEW（冷灰城市 tint） | `art/street-biome-spec.md` | 🗺️ 已产出 biome-spec |
 | 办公 | `office` | 需 NEW（冷调办公 tint） | `art/office-biome-spec.md` | 🗺️ 已产出 biome-spec |
 | （bonus）藤林 | `vine_forest` | 现有 `vine_forest` palette | `art/vine-forest-biome-spec.md` | ✅ live (2-2) |
+| 剪影 | `silhouette` | 需 NEW（逆光辉廊：亮天空 + 暗蓝剪影 + 暖黄廊灯） | `art/silhouette-biome-spec.md` | 🗺️ 已产出 biome-spec (2-4) |
 
 > **复用关系（省 ADR-004 预算）**：山川→复用 `cave`（`cave-biome-spec.md`）；雨天→复用 `storm_sky`（`storm-sky-biome-spec.md`）。两者均走同 8 槽接口、换 deco，不新增 palette。
 > **映射依据**：`design/gdd/theme-system.md` §4.3（口语主题↔规范 key）。草原基准见 `art/art-bible.md` §3；其余 7 份 biome-spec 均守 11 色锁色板 + tint（0 新增）。

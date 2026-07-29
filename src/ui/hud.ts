@@ -92,6 +92,8 @@ export class Hud {
   private scoreText!: Phaser.GameObjects.Text; // 分数「分数 N」（右对齐）
   private coinText!: Phaser.GameObjects.Text; // 金币「×N」（右对齐，位金币图标右侧）
   private comboText!: Phaser.GameObjects.Text; // 连击「xN」（仅 comboMult>1 显示，右对齐，分数下方）
+  /** 当前关卡徽标（例如 1-2），位于形态图标右侧。 */
+  private levelText!: Phaser.GameObjects.Text;
   /** 顶部半透明信息栏底板（固定相机层 depth 999，位于 gfx 之下，统一 HUD 容器感）。 */
   private barGfx?: Phaser.GameObjects.Graphics;
 
@@ -156,6 +158,17 @@ export class Hud {
       .setScrollFactor(0)
       .setDepth(1000)
       .setVisible(false); // comboMult===1 默认隐藏
+    this.levelText = this.scene.add
+      .text(130, 17, '', {
+        fontFamily: TEXT_FONT,
+        fontSize: '14px',
+        color: COLOR_TEXT,
+        stroke: COLOR_TEXT_STROKE,
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1000);
 
     // 重同步 + 瞬态：每个事件回调都先读最新 damage（getter），再叠加瞬态（§4）。
     this.offs.push(this.bus.on(ON_HURT, () => this.redraw())); // form 切 SMALL
@@ -187,6 +200,7 @@ export class Hud {
       this.drawHeart(g, x, HEART_Y0, i < slots.filled);
     }
     this.drawForm(g, damage.state);
+    this.drawLevelBadge(g);
     // S04-5：经济字段（分数/金币/连击）绘制在 gfx(金币图标) + Text(数字)，事件触发式重绘。
     this.drawEconomy();
   }
@@ -209,6 +223,12 @@ export class Hud {
   /** S04-5：写入当前连击倍率并触发 redraw 绘制（comboMult>1 才显示 xN）。 */
   setCombo(mult: number): void {
     this.comboMult = mult;
+    this.redraw();
+  }
+
+  /** 设置当前关卡徽标；loadLevel 每次切关时调用。 */
+  setLevel(levelId: string): void {
+    this.levelText.setText(levelId);
     this.redraw();
   }
 
@@ -265,6 +285,7 @@ export class Hud {
     this.scoreText?.destroy();
     this.coinText?.destroy();
     this.comboText?.destroy();
+    this.levelText?.destroy();
   }
 
   /** 顶部信息栏：半透明木质/像素风条带，横跨顶部，承载心形+形态+经济字段（hud-spec §2 容器感）。 */
@@ -280,6 +301,14 @@ export class Hud {
   }
 
   // ---- 内部绘制 ----
+
+  /** 深蓝圆角关卡徽标：对应目标图左上角的「1-2」信息层级。 */
+  private drawLevelBadge(g: Phaser.GameObjects.Graphics): void {
+    g.fillStyle(0x0b1d38, 0.86);
+    g.fillRoundedRect(104, 7, 52, 20, 9);
+    g.lineStyle(1, 0x4a78c0, 0.78);
+    g.strokeRoundedRect(104, 7, 52, 20, 9);
+  }
 
   /** 心形：两个圆（lobe）+ 三角（point）近似（hud-spec §2）。实心填粉红，空心仅描边。 */
   private drawHeart(g: Phaser.GameObjects.Graphics, x: number, y: number, filled: boolean): void {

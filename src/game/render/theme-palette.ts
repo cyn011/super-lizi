@@ -16,6 +16,8 @@
  *    暖橙 #F2933C / 暖黄 #FFD23F / 描边 #2A1A12 / 蓝紫 #6E7BF2 / 天空 #5BC8F5 / 警示红 #E8483B；0 新增色。
  *  - 'storm_sky'（2-3）：阴沉风暴天空，全锁色板内（附录 A）——蓝紫 #6E7BF2 / 环境冷蓝 #4A78C0 /
  *    天空 #5BC8F5 / 暖橙 #F2933C / 暖黄 #FFD23F / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
+ *  - 'silhouette'（2-4）：逆光辉廊，全锁色板内——天空 #5BC8F5（逆光基底）/ 暗蓝岩面 #254060（剪影廊柱/地形）/
+ *    更深暗面 #1C2E49 / 暖黄 #FFD23F（廊灯辉光）/ 冷蓝辉光 #6E7BF2 / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
  *
  * 未知 / 缺省 theme 回退 'grass'（fail-safe，保证旧关 / 回归稳定，art §6.1）。
  */
@@ -199,6 +201,25 @@ const OFFICE: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（咖啡渍低摩擦 telegraph，锁色板 #7）
 };
 
+/**
+ * 剪影调色板（2-4「剪影回廊」专属，锁色板内，0 新增 hex）：
+ *   逆光辉廊——明亮天空背景（托暗色剪影高对比，art-bible §3.3 / GDD16 §7.4）+ 暗蓝廊柱/地形剪影 +
+ *   暖黄廊灯微光。设计红线：背景必须亮，使 du_fu_silhouette（暗色+暖黄发光边）在明/暗背景均高对比可辨。
+ *   天空 #5BC8F5（锁色板 #11）/ 岩面 #254060（darken(#4A78C0,0.5) 派生，0 新增）/
+ *   岩暗面 #1C2E49（darken(#4A78C0,0.38) 派生，0 新增）/ 描边 #2A1A12（锁色板 #5）/
+ *   暖黄 #FFD23F（廊灯/凯旋之门核心，锁色板 #4）/ 冷蓝辉光 #6E7BF2（锁色板 #9）/ 警示红 #E8483B（锁色板 #7）。
+ */
+const SILHOUETTE: ThemePalette = {
+  bg: 0x5bc8f5, // 天空 #5BC8F5（逆光基底，锁色板 #11）
+  rockFace: 0x254060, // 暗蓝岩面 #254060（剪影廊柱/地形主面，darken(#4A78C0,0.5) 派生，0 新增）
+  rockBody: 0x1c2e49, // 更深剪影暗面 #1C2E49（darken(#4A78C0,0.38) 派生，0 新增）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xffd23f, // 暖黄 #FFD23F（廊灯逆光辉光，锁色板 #4）
+  crystalCore: 0xffd23f, // 暖黄 #FFD23F（凯旋之门核心，锁色板 #4）
+  crystalGlow: 0x6e7bf2, // 冷蓝辉光 #6E7BF2（锁色板 #9）
+  danger: 0xe8483b, // 警示红 #E8483B（锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -218,6 +239,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   street: STREET,
   // 办公 office = 1-7 办公主题（批次 3，office-visual-spec §3.1 权威 8 槽，锁色板内 0 新增 hex）。
   office: OFFICE,
+  // 剪影 silhouette = 2-4「剪影回廊」专属主题（逆光辉廊 + 暗蓝剪影，锁色板内 0 新增 hex）。
+  silhouette: SILHOUETTE,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

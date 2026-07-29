@@ -38,6 +38,7 @@ export type EntityDef =
  * 未知 theme 经 resolveBiome 回退 'grass'（fail-safe，不抛错、零回归）。
  * 'mountain' = cave palette 别名（1-2 复用）；'sea' = 1-3 海主题（本批次新增）。
  * 'office' = 1-7 办公主题（批次 3，office-visual-spec §3 权威 8 槽，0 新增 hex）。
+ * 'silhouette' = 2-4「剪影回廊」专属主题（逆光辉廊 + 暗蓝剪影，锁色板内 0 新增 hex）。
  */
 export type LevelTheme =
   | 'grass'
@@ -49,7 +50,8 @@ export type LevelTheme =
   | 'desert'
   | 'home'
   | 'street'
-  | 'office';
+  | 'office'
+  | 'silhouette';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =

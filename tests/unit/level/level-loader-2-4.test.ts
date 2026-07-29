@@ -1,7 +1,7 @@
 /**
  * tests/unit/level/level-loader-2-4.test.ts — 2-4 剪影回廊关（D1 嘟浮剪影落地）加载验证（core 纯逻辑）。
  *
- * 覆盖：注册表含 2-4、validateLevelData 通过、metadata.theme='vine_forest'、goal x+w<width*ts、
+ * 覆盖：注册表含 2-4、validateLevelData 通过、metadata.theme='silhouette'、goal x+w<width*ts、
  * 敌种组合（du_fu_silhouette×3 + du_fu×3 + ci_li×2 + shi_pao×2 = 10）、剪影 params(mirrorOffset/pairId) 保留、
  * 实体分桶（coin×8 / seed×6 / checkpoint×2）、tile 去重、出生点、beat 禁用、LEVEL_ORDER 续接、biome 接线。
  * 零 Phaser / 零平台 API。
@@ -23,8 +23,8 @@ describe('2-4 剪影回廊关加载（注册表 + Loader）', () => {
     expect(validateLevelData(data)).toBe(true);
   });
 
-  it('metadata.theme = "vine_forest"（biome 复用，无新增 biome）、name="剪影回廊"', () => {
-    expect(data.metadata.theme).toBe('vine_forest');
+  it('metadata.theme = "silhouette"（新增剪影主题，逆光辉廊）、name="剪影回廊"', () => {
+    expect(data.metadata.theme).toBe('silhouette');
     expect(data.metadata.name).toBe('剪影回廊');
   });
 
@@ -99,15 +99,17 @@ describe('nextLevelId 进度链（2-4 为末关 → null）', () => {
   });
 });
 
-describe('biome 解析器（theme → theme-palette，2-4 藤林调色板，全锁色板 0 新增色）', () => {
-  it('vine_forest → 草绿岩壁 rockFace #7CC242、天空 bg #5BC8F5', () => {
-    const pal = resolveBiome('vine_forest');
-    expect(pal.rockFace).toBe(0x7cc242);
+describe('biome 解析器（theme → theme-palette，2-4 剪影调色板，全锁色板 0 新增色）', () => {
+  it('silhouette → 暗蓝岩面 rockFace #254060、天空 bg #5BC8F5、暖黄 firelight #FFD23F', () => {
+    const pal = resolveBiome('silhouette');
+    expect(pal.rockFace).toBe(0x254060);
+    expect(pal.rockBody).toBe(0x1c2e49);
     expect(pal.bg).toBe(0x5bc8f5);
     expect(pal.outline).toBe(0x2a1a12);
+    expect(pal.firelight).toBe(0xffd23f);
     expect(pal.crystalCore).toBe(0xffd23f);
   });
-  it('biomeForLevel(2-4) = vine_forest palette（rockFace 草绿）', () => {
-    expect(biomeForLevel(levels['2-4']).rockFace).toBe(0x7cc242);
+  it('biomeForLevel(2-4) = silhouette palette（rockFace 暗蓝 #254060）', () => {
+    expect(biomeForLevel(levels['2-4']).rockFace).toBe(0x254060);
   });
 });

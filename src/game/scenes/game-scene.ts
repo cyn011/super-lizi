@@ -197,6 +197,16 @@ export class GameScene extends Phaser.Scene {
   private pendingStartLevel?: string;
   /** 关卡地形 Graphics（loadLevel 重建时先销毁旧实例，避免泄漏）。 */
   private levelGfx?: Phaser.GameObjects.Graphics;
+  /** 1-2 黛峦月夜远景（固定相机，1024×576 以 0.5 倍显示）。 */
+  private mountainMoonBackdrop?: Phaser.GameObjects.Image;
+  /** 1-2 青黑石砖前景（固定于地面碰撞线 y=224）。 */
+  private mountainStoneForeground?: Phaser.GameObjects.Image;
+  /** 1-2 石灯、暖光与山道装饰（世界坐标，不参与碰撞）。 */
+  private mountainDecorGfx?: Phaser.GameObjects.Graphics;
+  /** 1-3 澜屿海岛远景（固定相机，1024×576 以 0.5 倍显示）。 */
+  private seaIslandBackdrop?: Phaser.GameObjects.Image;
+  /** 1-3 礁石岛地形分段位图；按实际地面连续区间生成，水坑处留空。 */
+  private seaReefSegments: Phaser.GameObjects.Image[] = [];
   /** 海主题背景-天空/水面层（scrollFactor 0，depth -10，全屏竖直渐变，仅 sea 创建一次）。 */
   private seaSkyGfx?: Phaser.GameObjects.Graphics;
   /** 海主题背景-远景层（scrollFactor 0.3，depth -9，远礁剪影 + 海底剪影带，仅 sea 创建一次）。 */
@@ -291,6 +301,20 @@ export class GameScene extends Phaser.Scene {
   private grassMidGfx?: Phaser.GameObjects.Graphics;
   /** 草原主题背景-前景层（scrollFactor 1.2，depth 4，草丛+花瓣，仅 grass 创建一次，静态）。 */
   private grassNearGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影主题背景-逆光天空层（scrollFactor 0，depth -10，全屏竖直渐变，仅 silhouette 创建一次）。 */
+  private silhouetteSkyGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影主题背景-远景暗剪影丘层（scrollFactor 0.3，depth -9，仅 silhouette 创建一次，静态）。 */
+  private silhouetteFarGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影主题背景-中景廊柱层（scrollFactor 0.6，depth -8，暗蓝廊柱+暖黄灯座，仅 silhouette 创建一次，静态）。 */
+  private silhouetteMidGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影主题背景-廊灯辉光层（scrollFactor 0.6，depth -7，暖黄脉冲光晕，每帧重绘）。 */
+  private silhouetteLampGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影主题背景-前景草影层（scrollFactor 1.2，depth 4，暗蓝草/枝剪影，仅 silhouette 创建一次，静态）。 */
+  private silhouetteNearGfx?: Phaser.GameObjects.Graphics;
+  /** 剪影廊灯世界坐标（创建时算出，供每帧脉冲重绘）。 */
+  private silhouetteLampPositions: Array<{ x: number; y: number }> = [];
+  /** 剪影廊灯相位累加器（≤2Hz，Reduce Motion 下冻结，仅 silhouette 使用）。 */
+  private silhouetteLampPhase = 0;
   /** 办公前景悬挑/电线门控相位累加器（Reduce Motion 下冻结，仅办公关使用）。 */
   private officeNearPhase = 0;
   /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
@@ -461,6 +485,10 @@ export class GameScene extends Phaser.Scene {
       { key: 'ui-jump-btn', path: 'ui/jump-btn.png' },
       { key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.png' },
       { key: 'grass-soil-foreground-v1', path: 'art/grass/grass-soil-foreground-v1.png' },
+      { key: 'mountain-moon-backdrop-v1', path: 'art/mountain/mountain-moon-backdrop-v1.png' },
+      { key: 'mountain-stone-foreground-v1', path: 'art/mountain/mountain-stone-foreground-v1.png' },
+      { key: 'sea-island-backdrop-v1', path: 'art/sea/sea-island-backdrop-v1.png' },
+      { key: 'sea-reef-foreground-v1', path: 'art/sea/sea-reef-foreground-v1.png' },
     ] as const;
     for (const { key, path } of images) {
       if (this.textures.exists(key)) continue; // 场景重启时跳过重复加载
@@ -720,6 +748,9 @@ export class GameScene extends Phaser.Scene {
     this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);
     this.hitstunTimer = 0;
     this.lastGrounded = true;
+    // damage 已就绪后再触发 HUD 重绘，避免 setLevel 读取未初始化的状态机。
+    this.hud.setLevel(id);
+    this.ammoHud?.setTheme(this.runtime.data.metadata.theme);
 
     // S04-1：由关卡实体生成真实可踩敌人（替代 C3 占位刺栗），经同一 damage-resolution 管线解算。
     this.enemies = createEnemies(this.runtime.entities);
@@ -1350,8 +1381,36 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     for (const cp of this.runtime.checkpoints) {
       const active = this.respawnPoint.x === cp.x && this.respawnPoint.y === cp.y;
-      drawCheckpoint(g, cp, active);
+      if (this.runtime.data.metadata.theme === 'sea') this.drawSeaCheckpoint(g, cp.x, cp.y, active);
+      else drawCheckpoint(g, cp, active);
     }
+  }
+
+  /** 海关检查点：救生圈浮标 + 贝壳旗，碰撞盒与原检查点保持一致。 */
+  private drawSeaCheckpoint(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    active: boolean,
+  ): void {
+    const outline = 0x3b291f;
+    const orange = active ? 0xffd23f : 0xf07845;
+    g.fillStyle(0x8a5b35, 1);
+    g.fillRect(x + 6, y, 4, 28);
+    g.lineStyle(1, outline, 1);
+    g.strokeRect(x + 6, y, 4, 28);
+    g.fillStyle(0x4a78c0, 1);
+    g.fillRect(x + 10, y + 3, 13, 9);
+    g.lineStyle(1, 0xf4efe6, 1);
+    g.strokeRect(x + 10, y + 3, 13, 9);
+    g.fillStyle(0xf4efe6, 1);
+    g.fillTriangle(x + 14, y + 10, x + 17, y + 5, x + 20, y + 10);
+    g.fillStyle(orange, 1);
+    g.fillCircle(x + 8, y + 27, 9);
+    g.fillStyle(0xf4efe6, 1);
+    g.fillCircle(x + 8, y + 27, 4);
+    g.lineStyle(1, outline, 1);
+    g.strokeCircle(x + 8, y + 27, 9);
   }
 
   /**
@@ -1529,7 +1588,11 @@ export class GameScene extends Phaser.Scene {
     const isStreet = this.runtime.data.metadata.theme === 'street';
     const isOffice = this.runtime.data.metadata.theme === 'office';
     const isGrass = this.runtime.data.metadata.theme === 'grass';
+    const isMountain = this.runtime.data.metadata.theme === 'mountain';
+    const isSilhouette = this.runtime.data.metadata.theme === 'silhouette';
     const usesGrassGardenBackdrop = isGrass && this.runtime.data.id === '1-1';
+    const usesMountainArt = isMountain && this.runtime.data.id === '1-2';
+    const usesSeaIslandArt = isSea && this.runtime.data.id === '1-3';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1543,6 +1606,12 @@ export class GameScene extends Phaser.Scene {
       this.seaNearGfx = undefined;
       this.tideGfx?.destroy();
       this.tideGfx = undefined;
+    }
+    if (!usesSeaIslandArt) {
+      this.seaIslandBackdrop?.destroy();
+      this.seaIslandBackdrop = undefined;
+      for (const image of this.seaReefSegments) image.destroy();
+      this.seaReefSegments = [];
     }
     // 非沙漠关：清理可能残留的沙漠背景层/流沙层（切换关卡安全）
     if (!isDesert) {
@@ -1613,6 +1682,21 @@ export class GameScene extends Phaser.Scene {
       this.officeScreenPhase = 0;
       this.officeNearPhase = 0;
     }
+    // 非剪影关：清理可能残留的剪影背景层（切换关卡安全）。镜像办公清理块。
+    if (!isSilhouette) {
+      this.silhouetteSkyGfx?.destroy();
+      this.silhouetteSkyGfx = undefined;
+      this.silhouetteFarGfx?.destroy();
+      this.silhouetteFarGfx = undefined;
+      this.silhouetteMidGfx?.destroy();
+      this.silhouetteMidGfx = undefined;
+      this.silhouetteLampGfx?.destroy();
+      this.silhouetteLampGfx = undefined;
+      this.silhouetteNearGfx?.destroy();
+      this.silhouetteNearGfx = undefined;
+      this.silhouetteLampPositions = [];
+      this.silhouetteLampPhase = 0;
+    }
     // 非草原关：清理可能残留的草原背景层（切换关卡安全）。镜像其他清理块。
     if (!isGrass) {
       this.grassSkyGfx?.destroy();
@@ -1630,16 +1714,27 @@ export class GameScene extends Phaser.Scene {
       this.grassSoilForeground?.destroy();
       this.grassSoilForeground = undefined;
     }
+    if (!usesMountainArt) {
+      this.mountainMoonBackdrop?.destroy();
+      this.mountainMoonBackdrop = undefined;
+      this.mountainStoneForeground?.destroy();
+      this.mountainStoneForeground = undefined;
+      this.mountainDecorGfx?.destroy();
+      this.mountainDecorGfx = undefined;
+    }
 
     // 背景层：
     //  - 非海关/非沙漠/非家关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
     //  - 海关/沙漠/家关：跳过平铺（交给 drawSeaBackground / drawDesertBackground / drawHomeBackground 的天空渐变 + 视差层）。
-    if (!isSea && !isDesert && !isHome && !isStreet && !isOffice && pal.bg !== null) {
+    if (!isSea && !isDesert && !isHome && !isStreet && !isOffice && !usesMountainArt && !isSilhouette && pal.bg !== null) {
       g.fillStyle(pal.bg, 1);
       g.fillRect(0, 0, this.runtime.data.width * ts, this.runtime.data.height * ts);
     }
-    // 海主题背景（天空渐变 + 远/中景视差），仅 sea 创建一次
-    if (isSea) this.drawSeaBackground(pal);
+    // 黛峦·续章：月夜远山位图 + 青黑石砖前景 + 世界坐标石灯，仅 1-2 使用。
+    if (usesMountainArt) this.drawMountainBackground(pal);
+    // 澜屿潮汐：1-3 使用专属海岛远景；其他海关仍回退程序化视差。
+    if (usesSeaIslandArt) this.drawSeaIslandBackground();
+    else if (isSea) this.drawSeaBackground(pal);
     // 沙漠主题背景（暖沙晴空 + 远/中景视差 + 太阳 + 沙幕），仅 desert 创建一次（动态层每帧重绘）
     if (isDesert) this.drawDesertBackground(pal);
     // 家主题背景（天花板+后墙 + 窗光/家具剪影 + 相框/盆栽/台灯 + 游戏层家具 + 窗帘），仅 home 创建一次（动态层每帧重绘）
@@ -1648,6 +1743,8 @@ export class GameScene extends Phaser.Scene {
     if (isStreet) this.drawStreetBackground(pal);
     // 办公主题背景（室内办公五层视差：天花板+后墙 / 远景隔断+窗光 / 中景办公桌+显示器+绿植+荧光灯 / 游戏 / 前景悬挑/电线），仅 office 创建一次（动态层每帧重绘）
     if (isOffice) this.drawOfficeBackground(pal);
+    // 剪影主题背景（逆光辉廊五层视差：逆光渐变天空 / 远景暗剪影丘 / 中景廊柱+暖黄廊灯 / 游戏 / 前景草影），仅 silhouette 创建一次（动态层每帧重绘）
+    if (isSilhouette) this.drawSilhouetteBackground(pal);
     // 草原主题背景（天空渐变 + 远/中/近景视差：云/远山/温室 + 树/风车/花丛 + 草丛/花瓣），仅 grass 创建一次
     if (isGrass) this.drawGrassBackground(pal);
 
@@ -1670,6 +1767,12 @@ export class GameScene extends Phaser.Scene {
             // 草原：地表草皮顶 + 泥土体；仅顶面有草皮与描边，埋入地下的瓦片不描边（避免 test 网格感）。
             const surface = ty - 1 >= 0 && !this.world.isSolidTile(tx, ty - 1);
             this.drawGrassSolid(g, X, Y, ts, surface, tx);
+          } else if (isMountain) {
+            const surface = ty - 1 >= 0 && !this.world.isSolidTile(tx, ty - 1);
+            this.drawMountainSolid(g, X, Y, ts, surface, tx, ty);
+          } else if (isSea) {
+            const surface = ty - 1 >= 0 && !this.world.isSolidTile(tx, ty - 1);
+            this.drawSeaSolid(g, X, Y, ts, surface, tx, ty);
           } else {
             g.fillStyle(pal.rockFace, 1);
             g.fillRect(X, Y, ts, ts);
@@ -1683,6 +1786,10 @@ export class GameScene extends Phaser.Scene {
           } else if (isGrass) {
             // 草原单向平台：深棕土块 + 三色草沿，与地面统一。
             this.drawGrassOneway(g, X, Y, ts, tx);
+          } else if (isMountain) {
+            this.drawMountainOneway(g, X, Y, ts, tx);
+          } else if (isSea) {
+            this.drawSeaOneway(g, X, Y, ts, tx);
           } else {
             g.fillStyle(pal.rockBody, 1);
             g.fillRect(X, Y, ts, ts / 2);
@@ -1692,16 +1799,275 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    // 凯旋之门
-    g.fillStyle(pal.crystalCore, 1);
-    g.fillRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
-    g.lineStyle(2, pal.outline, 1);
-    g.strokeRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
+    // 凯旋之门：海关使用木制指路牌，其余主题保留晶体门。
+    if (isSea) this.drawSeaGoal(g, pal);
+    else {
+      g.fillStyle(pal.crystalCore, 1);
+      g.fillRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
+      g.lineStyle(2, pal.outline, 1);
+      g.strokeRect(this.goal.x, this.goal.y, this.goal.w, this.goal.h);
+    }
 
     // 潮汐水体叠层（世界坐标，depth 3，位于地形之上、实体之下）；每帧按 waterSurfaceY 重绘
     if (isSea && !this.tideGfx) this.tideGfx = this.add.graphics().setDepth(3);
     // GDD 1-4 流沙叠层（世界坐标，depth 3，同上；每帧按 sink 状态重绘）
     if (isDesert && !this.quicksandGfx) this.quicksandGfx = this.add.graphics().setDepth(3);
+  }
+
+  /**
+   * 1-3「澜屿潮汐」美术层：固定海岛远景 + 按碰撞地面连续区间铺设的礁石断面。
+   * 水坑仍由 tideSegments 驱动，位图只表现材质，不参与碰撞。
+   */
+  private drawSeaIslandBackground(): void {
+    const ts = this.world.tileSize;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+    if (!this.seaIslandBackdrop && this.textures.exists('sea-island-backdrop-v1')) {
+      this.seaIslandBackdrop = this.add
+        .image(camW / 2, camH / 2, 'sea-island-backdrop-v1')
+        .setDisplaySize(camW, camH)
+        .setScrollFactor(0)
+        .setDepth(-10);
+    }
+
+    for (const image of this.seaReefSegments) image.destroy();
+    this.seaReefSegments = [];
+    if (this.textures.exists('sea-reef-foreground-v1')) {
+      const groundRow = 7;
+      const groundTop = groundRow * ts;
+      let runStart = -1;
+      for (let tx = 0; tx <= this.runtime.data.width; tx++) {
+        const solid = tx < this.runtime.data.width && this.world.isSolidTile(tx, groundRow);
+        if (solid && runStart < 0) runStart = tx;
+        if (!solid && runStart >= 0) {
+          const width = (tx - runStart) * ts;
+          const image = this.add
+            .image(runStart * ts + width / 2, groundTop + ts, 'sea-reef-foreground-v1')
+            .setDisplaySize(width, ts * 2)
+            .setDepth(1);
+          this.seaReefSegments.push(image);
+          runStart = -1;
+        }
+      }
+    }
+
+    // 保留原有动态近景气泡/浪线和真实潮汐层。
+    if (!this.seaNearGfx) this.seaNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+  }
+
+  /** 海岛实心地形：砂岩顶沿、礁石暗面、藤蔓与藤壶细节。 */
+  private drawSeaSolid(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    surface: boolean,
+    tx: number,
+    ty: number,
+  ): void {
+    const REEF = 0x294b67;
+    const REEF_DARK = 0x132e47;
+    const REEF_LIGHT = 0x527c91;
+    const SAND = 0xe9d6a6;
+    const SAND_LIGHT = 0xffedbd;
+    const MOSS = 0x47794f;
+    const seed = tx * 23 + ty * 31;
+
+    g.fillStyle(REEF, 1);
+    g.fillRect(X, Y, ts, ts);
+    g.lineStyle(1, REEF_DARK, 0.9);
+    g.strokeRect(X, Y, ts, ts);
+    g.lineBetween(X + 6 + (seed % 9), Y + 5, X + 10 + (seed % 13), Y + 18);
+    g.fillStyle(REEF_LIGHT, 0.65);
+    g.fillRect(X + 4 + (seed % 17), Y + 7 + (seed % 13), 4, 2);
+
+    if (surface) {
+      g.fillStyle(SAND, 1);
+      g.fillRect(X, Y, ts, 7);
+      g.fillStyle(SAND_LIGHT, 1);
+      g.fillRect(X + 1, Y, ts - 2, 2);
+      g.fillStyle(REEF_DARK, 0.7);
+      g.fillRect(X, Y + 7, ts, 3);
+      if (seed % 3 === 0) {
+        g.fillStyle(MOSS, 1);
+        g.fillRect(X + 20, Y + 7, 4, 5);
+        g.fillRect(X + 23, Y + 9, 3, 7);
+      }
+    } else if (seed % 5 === 0) {
+      g.lineStyle(1, 0xd9c9a1, 0.75);
+      g.strokeCircle(X + 22, Y + 12, 2);
+      g.strokeCircle(X + 26, Y + 16, 2);
+    }
+  }
+
+  /** 海岛空中平台：日晒木栈桥 + 绳结，替代纯蓝矩形。 */
+  private drawSeaOneway(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    tx: number,
+  ): void {
+    const WOOD = 0x81502f;
+    const WOOD_LIGHT = 0xc28a52;
+    const WOOD_DARK = 0x3b291f;
+    const ROPE = 0xd7b36d;
+    const h = ts / 2;
+    g.fillStyle(WOOD, 1);
+    g.fillRect(X, Y, ts, h);
+    g.fillStyle(WOOD_LIGHT, 1);
+    g.fillRect(X, Y, ts, 4);
+    g.lineStyle(1, WOOD_DARK, 1);
+    g.strokeRect(X, Y, ts, h);
+    g.lineBetween(X + 10 + (tx % 2) * 8, Y + 4, X + 10 + (tx % 2) * 8, Y + h);
+    if (tx % 3 === 0) {
+      g.fillStyle(ROPE, 1);
+      g.fillRect(X + 25, Y, 4, h);
+      g.fillStyle(WOOD_DARK, 0.8);
+      g.fillRect(X + 26, Y, 1, h);
+    }
+  }
+
+  /** 海关终点：木牌与白色方向箭头，命中范围仍使用 goal AABB。 */
+  private drawSeaGoal(g: Phaser.GameObjects.Graphics, pal: ThemePalette): void {
+    const x = this.goal.x;
+    const y = this.goal.y;
+    const w = this.goal.w;
+    const h = this.goal.h;
+    g.fillStyle(0x6f452a, 1);
+    g.fillRect(x + w / 2 - 3, y + 18, 6, h - 18);
+    g.fillStyle(0x9f6538, 1);
+    g.fillRoundedRect(x - 8, y + 4, w + 16, 22, 3);
+    g.lineStyle(2, pal.outline, 1);
+    g.strokeRoundedRect(x - 8, y + 4, w + 16, 22, 3);
+    g.fillStyle(0xf4efe6, 1);
+    g.fillRect(x + 5, y + 13, 20, 4);
+    g.fillTriangle(x + 23, y + 8, x + 23, y + 22, x + 31, y + 15);
+  }
+
+  /**
+   * 1-2「黛峦·续章」美术层：背景/地面纹理固定相机，石灯随世界滚动。
+   * 位图只负责非交互表现，碰撞仍完全来自 RuntimeLevel 的 32px tile 网格。
+   */
+  private drawMountainBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+    if (!this.mountainMoonBackdrop && this.textures.exists('mountain-moon-backdrop-v1')) {
+      this.mountainMoonBackdrop = this.add
+        .image(camW / 2, camH / 2, 'mountain-moon-backdrop-v1')
+        .setDisplaySize(camW, camH)
+        .setScrollFactor(0)
+        .setDepth(-10);
+    }
+    if (!this.mountainStoneForeground && this.textures.exists('mountain-stone-foreground-v1')) {
+      const groundTop = 7 * ts;
+      const groundHeight = camH - groundTop;
+      this.mountainStoneForeground = this.add
+        .image(camW / 2, groundTop + groundHeight / 2, 'mountain-stone-foreground-v1')
+        .setDisplaySize(camW, groundHeight)
+        .setScrollFactor(0)
+        .setDepth(1);
+    }
+
+    if (!this.mountainDecorGfx) this.mountainDecorGfx = this.add.graphics().setDepth(5);
+    const decor = this.mountainDecorGfx;
+    decor.clear();
+    for (const x of [46, 520, 1008, 1390]) {
+      this.drawMountainLantern(decor, x, 224, pal);
+    }
+  }
+
+  /** 世界坐标石灯：冷石轮廓 + 暖橙灯芯，作为月夜场景的少量暖色焦点。 */
+  private drawMountainLantern(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    groundY: number,
+    pal: ThemePalette,
+  ): void {
+    const stone = 0x263f63;
+    const stoneLight = 0x527eaa;
+    const glow = pal.crystalCore;
+    g.fillStyle(glow, 0.08);
+    g.fillCircle(x, groundY - 32, 22);
+    g.fillStyle(glow, 0.13);
+    g.fillCircle(x, groundY - 32, 14);
+    g.fillStyle(stone, 1);
+    g.fillRect(x - 8, groundY - 12, 16, 12);
+    g.fillRect(x - 5, groundY - 28, 10, 16);
+    g.fillRect(x - 9, groundY - 31, 18, 4);
+    g.fillTriangle(x - 11, groundY - 31, x + 11, groundY - 31, x, groundY - 38);
+    g.fillStyle(0x1a2130, 1);
+    g.fillRect(x - 5, groundY - 29, 10, 12);
+    g.fillStyle(glow, 1);
+    g.fillRect(x - 3, groundY - 27, 6, 8);
+    g.fillStyle(pal.firelight, 1);
+    g.fillRect(x - 1, groundY - 26, 2, 6);
+    g.lineStyle(1, stoneLight, 0.9);
+    g.strokeRect(x - 8, groundY - 12, 16, 12);
+    g.strokeRect(x - 5, groundY - 29, 10, 12);
+  }
+
+  /** 黛峦实心瓦片：月光顶沿 + 青黑岩砖 + 裂纹/苔痕，替代纯蓝测试方格。 */
+  private drawMountainSolid(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    surface: boolean,
+    tx: number,
+    ty: number,
+  ): void {
+    const STONE = 0x182b47;
+    const STONE_LIGHT = 0x294a70;
+    const STONE_DARK = 0x0b1829;
+    const MOON_EDGE = 0x78b5df;
+    const MOSS = 0x31563f;
+    const seed = tx * 19 + ty * 29;
+
+    g.fillStyle(STONE, 1);
+    g.fillRect(X, Y, ts, ts);
+    g.lineStyle(1, STONE_DARK, 0.82);
+    g.strokeRect(X, Y, ts, ts);
+    const seamY = Y + 12 + (seed % 9);
+    g.lineBetween(X + 2, seamY, X + ts - 2, seamY);
+    g.lineBetween(X + 8 + (seed % 12), Y + 3, X + 11 + (seed % 12), seamY);
+    g.fillStyle(STONE_LIGHT, 0.65);
+    g.fillRect(X + 4 + (seed % 17), Y + 6 + (seed % 15), 4, 2);
+
+    if (surface) {
+      g.fillStyle(STONE_LIGHT, 1);
+      g.fillRect(X, Y, ts, 7);
+      g.fillStyle(MOON_EDGE, 1);
+      g.fillRect(X + 1, Y, ts - 2, 2);
+      g.fillStyle(STONE_DARK, 0.85);
+      g.fillRect(X, Y + 7, ts, 3);
+      if (seed % 3 === 0) {
+        g.fillStyle(MOSS, 1);
+        g.fillRect(X + 19, Y + 7, 4, 5);
+        g.fillRect(X + 22, Y + 9, 3, 7);
+      }
+    }
+  }
+
+  /** 黛峦单向平台：薄型月光石板，保持踩踏边界与原关卡一致。 */
+  private drawMountainOneway(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    tx: number,
+  ): void {
+    const h = ts / 2;
+    g.fillStyle(0x14263e, 1);
+    g.fillRect(X, Y, ts, h);
+    g.fillStyle(0x294a70, 1);
+    g.fillRect(X, Y, ts, 6);
+    g.fillStyle(0x78b5df, 1);
+    g.fillRect(X + 1, Y, ts - 2, 2);
+    g.lineStyle(1, 0x0b1829, 0.9);
+    g.strokeRect(X, Y, ts, h);
+    g.lineBetween(X + 12 + (tx % 2) * 6, Y + 6, X + 12 + (tx % 2) * 6, Y + h);
   }
 
   /**
@@ -2801,6 +3167,107 @@ export class GameScene extends Phaser.Scene {
    * 颜色全部来自 11 色锁色板或由其 tint 派生（SKY_LIGHT/CLOUD 为 lighten(#5BC8F5) 派生，0 新增 hex）。
    * 全部 create-once（静态，不进每帧 update，最低回归风险）。
    */
+  /**
+   * 剪影主题背景层（2-4「剪影回廊」，逆光辉廊，五层视差）：
+   *   sky  (scrollFactor 0,   depth -10) 逆光竖直渐变（天空 #5BC8F5 → 暖黄 #FFD23F），全屏一次
+   *   far  (scrollFactor 0.3, depth -9)  远景暗剪影丘（#254060），铺满 levelW
+   *   mid  (scrollFactor 0.6, depth -8)  中景廊柱剪影（#1C2E49）+ 暖黄灯座（每柱记录 lamp 位置）
+   *   lamp (scrollFactor 0.6, depth -7)  暖黄脉冲光晕（每帧重绘，≤2Hz，Reduce Motion 冻结）
+   *   near (scrollFactor 1.2, depth 4)   前景暗蓝草/枝剪影（静态）
+   * 颜色全部来自 11 色锁色板或由其 tint 派生（#254060/#1C2E49 为 darken(#4A78C0) 派生，0 新增 hex）。
+   * 关键：背景保持明亮（逆光），使 du_fu_silhouette（暗色+暖黄发光边）在明/暗背景均高对比可辨（art-bible §3.3 / GDD16 §7.4）。
+   */
+  private drawSilhouetteBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 0) 逆光天空层（scrollFactor 0，depth -10）：上冷蓝天空 → 下暖黄逆光（托暗剪影）
+    if (!this.silhouetteSkyGfx) {
+      this.silhouetteSkyGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+      const sky = this.silhouetteSkyGfx;
+      sky.fillGradientStyle(0x5bc8f5, 0x5bc8f5, 0xffd23f, 0xffd23f, 1);
+      sky.fillRect(0, 0, camW, camH);
+    }
+
+    // 1) 远景暗剪影丘（scrollFactor 0.3，depth -9）
+    if (!this.silhouetteFarGfx) {
+      this.silhouetteFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+      const far = this.silhouetteFarGfx;
+      const baseY = camH * 0.62;
+      const hill = 0x254060; // 略浅暗蓝，远景层次
+      far.fillStyle(hill, 1);
+      far.fillRect(0, baseY, levelW, camH - baseY);
+      for (let x = -40; x < levelW + 40; x += 96) {
+        far.fillCircle(x, baseY, 56);
+        far.fillCircle(x + 48, baseY, 40);
+      }
+    }
+
+    // 2) 中景廊柱 + 暖黄灯座（scrollFactor 0.6，depth -8）
+    if (!this.silhouetteMidGfx) {
+      this.silhouetteMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+      const mid = this.silhouetteMidGfx;
+      const pillarTop = camH * 0.32;
+      const pillarColor = 0x1c2e49; // 最深剪影
+      const lampBaseY = pillarTop - 6;
+      const lamps: Array<{ x: number; y: number }> = [];
+      for (let x = 40; x < levelW; x += 220) {
+        mid.fillStyle(pillarColor, 1);
+        mid.fillRect(x - 14, pillarTop, 28, camH - pillarTop);
+        mid.fillTriangle(x - 18, pillarTop, x + 18, pillarTop, x, pillarTop - 26); // 柱顶三角冠
+        mid.fillStyle(pal.firelight, 0.9);
+        mid.fillCircle(x, lampBaseY, 7); // 暖黄灯座（静态底，脉冲由 lamp 层叠加）
+        lamps.push({ x, y: lampBaseY });
+      }
+      this.silhouetteLampPositions = lamps;
+    }
+
+    // 3) 廊灯辉光层（scrollFactor 0.6，depth -7）：每帧脉冲重绘（首帧立即绘制一次）
+    if (!this.silhouetteLampGfx) {
+      this.silhouetteLampGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-7);
+    }
+    this.drawSilhouetteLamps();
+
+    // 4) 前景草影层（scrollFactor 1.2，depth 4）：暗蓝草/枝剪影
+    if (!this.silhouetteNearGfx) {
+      this.silhouetteNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+      const near = this.silhouetteNearGfx;
+      const blade = 0x1c2e49;
+      near.fillStyle(blade, 1);
+      for (let x = 6; x < camW; x += 22) {
+        near.fillTriangle(x, camH, x + 4, camH - 14, x + 9, camH);
+        near.fillTriangle(x + 11, camH, x + 15, camH - 10, x + 20, camH);
+      }
+    }
+  }
+
+  /** 剪影廊灯脉冲辉光（每帧重绘；相位由 update 推进，Reduce Motion 下冻结为稳态）。 */
+  private drawSilhouetteLamps(): void {
+    if (!this.silhouetteLampGfx) return;
+    const g = this.silhouetteLampGfx;
+    g.clear();
+    if (this.reduceMotion) {
+      for (const p of this.silhouetteLampPositions) {
+        g.fillStyle(0xffd23f, 0.18);
+        g.fillCircle(p.x, p.y, 20);
+        g.fillStyle(0xffd23f, 0.85);
+        g.fillCircle(p.x, p.y, 7);
+      }
+      return;
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(this.silhouetteLampPhase);
+    const coreA = 0.7 + 0.3 * pulse;
+    const haloA = 0.12 + 0.12 * pulse;
+    for (const p of this.silhouetteLampPositions) {
+      g.fillStyle(0xffd23f, haloA);
+      g.fillCircle(p.x, p.y, 22 + 4 * pulse);
+      g.fillStyle(0xffd23f, coreA);
+      g.fillCircle(p.x, p.y, 7);
+    }
+  }
+
   private drawGrassBackground(pal: ThemePalette): void {
     const ts = this.world.tileSize;
     const levelW = this.runtime.data.width * ts;
@@ -3206,6 +3673,13 @@ export class GameScene extends Phaser.Scene {
       this.drawOfficeFar(); // 远景隔断剪影 + 窗光（scrollFactor 0.3）
       this.drawOfficeGlow(); // 中景辉光（灯管微闪 + 屏光脉冲，scrollFactor 0.6）
       this.drawOfficeNear(); // 前景悬挑/电线（scrollFactor 1.2）
+    }
+    // A8 剪影动态层（仅 silhouette 关卡每帧重绘）：廊灯脉冲相位累加（Reduce Motion 冻结）+ 暖黄光晕重绘
+    if (this.runtime.data.metadata.theme === 'silhouette') {
+      if (!this.reduceMotion) {
+        this.silhouetteLampPhase += STEP_DT * (2 * Math.PI * 1.2); // ≤2Hz 廊灯脉冲
+      }
+      this.drawSilhouetteLamps();
     }
     // A4 流沙视觉下沉：仅 sprite 偏移（不改碰撞盒），呈现「陷没沙底」；触底 respawn 后 qsZone=null → 归零
     if (this.qsZone && this.sprite) {
