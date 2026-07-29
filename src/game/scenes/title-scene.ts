@@ -44,8 +44,8 @@ const START_BTN_CY = 200;
 const START_BTN_W = 150;
 const START_BTN_H = 50;
 
-// 继续行位置（按钮下方）
-const CONTINUE_CY = 254;
+// 继续行位置（按钮下方，与按钮阴影保持间距避免重叠）
+const CONTINUE_CY = 268;
 
 /** 关卡 id 排序键（"c-l" → 数值，跨章可比）。 */
 function levelSortKey(id: string): number {

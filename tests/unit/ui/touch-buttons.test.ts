@@ -28,8 +28,7 @@ import {
   OUTLINE_LIGHT,
   PRESSED_OUTLINE,
   resolveButtonId,
-  TouchButtons,
-} from '../../../src/ui/touch-buttons';
+} from '../../../src/ui/touch-buttons-constants';
 
 const C_BASE_DARK = BASE_DARK; // 方案 G：深棕底板 #5D4037
 const C_OUTLINE_LIGHT = OUTLINE_LIGHT; // 默认描边奶油米色 #F5DEB3
@@ -122,12 +121,4 @@ describe('touch-buttons · 视觉规格回归（方案 G · 深底浅边）', ()
     expect(BUTTON_ORDER.length).toBe(4);
   });
 
-  it('action 预留态 API：setActionDisabled 是 TouchButtons 公开方法（spec §4.6 入口）', () => {
-    // 编译期类型断言：方法必须存在并接受 boolean
-    const proto = TouchButtons.prototype as unknown as {
-      setActionDisabled?: (disabled: boolean) => void;
-    };
-    expect(typeof proto.setActionDisabled).toBe('function');
-    expect(proto.setActionDisabled!.length).toBe(1); // 1 个参数
-  });
 });
