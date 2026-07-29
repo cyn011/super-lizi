@@ -119,8 +119,9 @@ const SUB_BTN_GAP = 12;
 // 评级星
 const RANK_ROW_Y = -64;
 const RANK_GAP = 58;
-const RANK_OUTER_R = 27;
-const RANK_INNER_R = 12;
+const RANK_STAR_SCALE = 0.8;
+const RANK_OUTER_R = 27 * RANK_STAR_SCALE;
+const RANK_INNER_R = 12 * RANK_STAR_SCALE;
 
 // 栗宝头像
 const AVATAR_X = -PANEL_W / 2 + 36;
@@ -873,7 +874,7 @@ export class ResultScreen {
     mainBtnHit.on('pointerdown', this.nextAction);
     mainBtnHit.setName('mainBtnHit');
     const nextBtnText = this.scene.add
-      .text(0, MAIN_BTN_Y - 1, '下一关  →', {
+      .text(0, MAIN_BTN_Y, '下一关  →', {
         fontFamily: TEXT_FONT,
         fontSize: '18px',
         fontStyle: 'bold',
@@ -902,7 +903,7 @@ export class ResultScreen {
       .setInteractive({ useHandCursor: true });
     replayHit.on('pointerdown', this.restartAction);
     const replayText = this.scene.add
-      .text(leftCenterX + 9, SUB_BTN_Y - 1, '再玩一次', {
+      .text(leftCenterX, SUB_BTN_Y, '再玩一次', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
@@ -917,7 +918,7 @@ export class ResultScreen {
       .setInteractive({ useHandCursor: true });
     titleHit.on('pointerdown', this.returnTitleAction);
     const titleBtnText = this.scene.add
-      .text(rightCenterX + 9, SUB_BTN_Y - 1, '关卡选择', {
+      .text(rightCenterX, SUB_BTN_Y, '关卡选择', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
