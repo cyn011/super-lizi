@@ -161,7 +161,8 @@ class WechatImageFile extends Phaser.Loader.File {
           return;
         }
         (cv.getContext() as CanvasRenderingContext2D).drawImage(im as CanvasImageSource, 0, 0);
-        cv.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        // 触控按钮等高分辨率 PNG 会被缩小显示，线性采样可保留原图细节。
+        cv.setFilter(Phaser.Textures.FilterMode.LINEAR);
         cv.refresh();
         (this.onLoad as (xhr?: unknown, event?: unknown) => void)();
       } catch (_) {

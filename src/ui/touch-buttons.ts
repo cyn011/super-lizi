@@ -103,9 +103,10 @@ class ImageButton implements ButtonControl {
 
     this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
     this.image = scene.add.image(0, 0, textureKey).setScrollFactor(0);
-    // 像素风按钮：关闭平滑过滤，保持锐利（Web + 微信两端）
+    // 原始按钮是 128×128 PNG，运行时会缩小到约 28–36px。
+    // 缩小时使用线性采样，保留原图的圆边、高光与描边细节（Web + 微信两端）。
     this.image.setTexture(textureKey);
-    this.image.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.image.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     this.image.setDisplaySize(displayW, displayH);
     this.image.setFlipX(flipX);
     this.container.add(this.image);
