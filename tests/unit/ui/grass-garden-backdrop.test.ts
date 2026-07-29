@@ -21,6 +21,9 @@ describe('game-scene · 1-1 花园美术背景', () => {
       "{ key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.png' }",
     );
     expect(gameSceneSource).toContain("this.textures.exists('grass-garden-backdrop-v1')");
+    expect(gameSceneSource).toContain(
+      "{ key: 'grass-soil-foreground-v1', path: 'art/grass/grass-soil-foreground-v1.png' }",
+    );
   });
 
   it('仅在 1-1 使用固定背景，不改变碰撞与地形渲染', () => {
@@ -37,5 +40,14 @@ describe('game-scene · 1-1 花园美术背景', () => {
     expect(gameSceneSource).toContain('if (!this.grassSkyGfx)');
     expect(gameSceneSource).toContain('if (!this.grassFarGfx)');
     expect(gameSceneSource).toContain('if (!this.grassMidGfx)');
+  });
+
+  it('用花园土壤覆盖 1-1 地面，并让平台回退样式保持深棕土与三色草沿', () => {
+    expect(gameSceneSource).toContain("this.textures.exists('grass-soil-foreground-v1')");
+    expect(gameSceneSource).toContain('const groundTop = 7 * ts');
+    expect(gameSceneSource).toContain('.setDepth(1)');
+    expect(gameSceneSource).toContain('const SOIL = 0x55331f');
+    expect(gameSceneSource).toContain('const GRASS_LIGHT = 0xa9db45');
+    expect(gameSceneSource).not.toContain('const BRICK_FACE = 0xb54a3d');
   });
 });

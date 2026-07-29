@@ -76,7 +76,7 @@ export function startGame(parent?: string | HTMLElement): Phaser.Game {
   return game;
 }
 
-// Web 端由 index.html 调用；此处自动启动以便 Vite 入口直接生效。
+// Web 端挂到 #game-root，避免 FIT 画布被追加到全屏容器之后而落到首屏之外。
 // 微信端不再传 parent：上屏画布已通过 globalThis.__screenCanvas 传入，
-// 且 Scale 设为 NONE/NO_CENTER，避免 DOM 查询与 CSS 缩放。
-startGame();
+// 且 config 会忽略 parent，Scale 设为 NONE/NO_CENTER。
+startGame('game-root');

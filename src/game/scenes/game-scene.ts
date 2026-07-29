@@ -283,6 +283,8 @@ export class GameScene extends Phaser.Scene {
   private grassSkyGfx?: Phaser.GameObjects.Graphics;
   /** 1-1 花园美术背景（固定于相机，1024×576 原图以 2:1 整数比例缩放到设计画布）。 */
   private grassGardenBackdrop?: Phaser.GameObjects.Image;
+  /** 1-1 花园土壤前景（固定于地面碰撞线 y=224，覆盖基础土块 Graphics）。 */
+  private grassSoilForeground?: Phaser.GameObjects.Image;
   /** 草原主题背景-远景层（scrollFactor 0.3，depth -9，远山+云+温室剪影，仅 grass 创建一次）。 */
   private grassFarGfx?: Phaser.GameObjects.Graphics;
   /** 草原主题背景-中景层（scrollFactor 0.6，depth -8，树+风车+花丛，仅 grass 创建一次）。 */
@@ -458,6 +460,7 @@ export class GameScene extends Phaser.Scene {
       { key: 'ui-action-btn', path: 'ui/action-btn.png' },
       { key: 'ui-jump-btn', path: 'ui/jump-btn.png' },
       { key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.png' },
+      { key: 'grass-soil-foreground-v1', path: 'art/grass/grass-soil-foreground-v1.png' },
     ] as const;
     for (const { key, path } of images) {
       if (this.textures.exists(key)) continue; // 场景重启时跳过重复加载
@@ -1624,6 +1627,8 @@ export class GameScene extends Phaser.Scene {
     if (!usesGrassGardenBackdrop) {
       this.grassGardenBackdrop?.destroy();
       this.grassGardenBackdrop = undefined;
+      this.grassSoilForeground?.destroy();
+      this.grassSoilForeground = undefined;
     }
 
     // 背景层：
@@ -1664,7 +1669,7 @@ export class GameScene extends Phaser.Scene {
           } else if (isGrass) {
             // 草原：地表草皮顶 + 泥土体；仅顶面有草皮与描边，埋入地下的瓦片不描边（避免 test 网格感）。
             const surface = ty - 1 >= 0 && !this.world.isSolidTile(tx, ty - 1);
-            this.drawGrassSolid(g, X, Y, ts, pal, surface, tx);
+            this.drawGrassSolid(g, X, Y, ts, surface, tx);
           } else {
             g.fillStyle(pal.rockFace, 1);
             g.fillRect(X, Y, ts, ts);
@@ -1676,8 +1681,8 @@ export class GameScene extends Phaser.Scene {
           if (kind === 'table') {
             this.drawHomeFurnitureTable(g, X, Y, ts, pal); // 家具单向：仅顶半画桌面 + 暖黄沿 + 腿
           } else if (isGrass) {
-            // 草原单向平台：红砖平台 + 顶面草皮（蘑菇/木板风，统一世界观）。
-            this.drawGrassOneway(g, X, Y, ts, pal, tx);
+            // 草原单向平台：深棕土块 + 三色草沿，与地面统一。
+            this.drawGrassOneway(g, X, Y, ts, tx);
           } else {
             g.fillStyle(pal.rockBody, 1);
             g.fillRect(X, Y, ts, ts / 2);
@@ -2821,11 +2826,22 @@ export class GameScene extends Phaser.Scene {
           .setScrollFactor(0)
           .setDepth(-10);
       }
+      if (!this.grassSoilForeground && this.textures.exists('grass-soil-foreground-v1')) {
+        const groundTop = 7 * ts;
+        const groundHeight = camH - groundTop;
+        this.grassSoilForeground = this.add
+          .image(camW / 2, groundTop + groundHeight / 2, 'grass-soil-foreground-v1')
+          .setDisplaySize(camW, groundHeight)
+          .setScrollFactor(0)
+          .setDepth(1);
+      }
       return;
     }
 
     this.grassGardenBackdrop?.destroy();
     this.grassGardenBackdrop = undefined;
+    this.grassSoilForeground?.destroy();
+    this.grassSoilForeground = undefined;
 
     // 锁色板 / tint 派生（0 新增 hex）
     const SKY = 0x5bc8f5; // 天空 #5BC8F5（#11）
@@ -2965,81 +2981,88 @@ export class GameScene extends Phaser.Scene {
     for (const p of petals) near.fillCircle(p.x, p.y, 2.5);
   }
 
-  /** 草原实心瓦片：地表草皮顶盖 + 红砖体；埋入地下者不描边（去 test 网格感）。 */
+  /** 草原实心瓦片：花园草皮顶盖 + 深棕土层；埋入地下者用弱缝隙避免测试网格感。 */
   private drawGrassSolid(
     g: Phaser.GameObjects.Graphics,
     X: number,
     Y: number,
     ts: number,
-    pal: ThemePalette,
     surface: boolean,
     tx: number,
   ): void {
-    const BRICK_FACE = 0xb54a3d; // darken(#E8483B, ~0.25) 砖红色，锁色板派生
-    const BRICK_MORTAR = pal.outline;
+    const SOIL = 0x55331f;
+    const SOIL_LIGHT = 0x754726;
+    const SOIL_DARK = 0x2f2119;
+    const STONE = 0x8a7964;
+    const GRASS = 0x83c83e;
+    const GRASS_LIGHT = 0xa9db45;
+    const GRASS_DARK = 0x2f7d32;
+
+    // 深棕土块主体：不再使用高饱和红砖；弱化外轮廓，保留参考图的自然土块分区。
+    g.fillStyle(SOIL, 1);
+    g.fillRect(X, Y + (surface ? 10 : 0), ts, ts - (surface ? 10 : 0));
+    g.lineStyle(1, SOIL_DARK, 0.42);
+    g.lineBetween(X, Y + 20, X + ts, Y + 20);
+    const seamX = X + 10 + ((tx * 7 + Math.floor(Y / ts) * 5) % 13);
+    g.lineBetween(seamX, Y + (surface ? 10 : 0), seamX, Y + 20);
+
+    // 每块少量高光、砂砾与石子，使用确定性坐标，避免运行时随机闪烁。
+    const seed = tx * 17 + Math.floor(Y / ts) * 23;
+    const speckX = X + 5 + (seed % 20);
+    const speckY = Y + 14 + (seed % 12);
+    g.fillStyle(SOIL_LIGHT, 0.8);
+    g.fillRect(speckX, speckY, 3, 2);
+    if (seed % 4 === 0) {
+      g.fillStyle(STONE, 0.72);
+      g.fillCircle(X + 23, Y + 22, 2);
+    }
+
     if (surface) {
-      // 红砖体
-      g.fillStyle(BRICK_FACE, 1);
-      g.fillRect(X, Y + 8, ts, ts - 8);
-      // 砖缝（横向 + 错开竖向）
-      g.lineStyle(1, BRICK_MORTAR, 0.55);
-      for (let by = Y + 8; by <= Y + ts; by += 8) {
-        g.lineBetween(X, by, X + ts, by);
+      // 三色草皮：亮顶沿 + 主体 + 深色下垂草根，轮廓比旧矩形草条更自然。
+      g.fillStyle(GRASS_DARK, 1);
+      g.fillRect(X, Y + 7, ts, 5);
+      g.fillTriangle(X + 4, Y + 10, X + 8, Y + 16, X + 11, Y + 10);
+      g.fillTriangle(X + 21, Y + 10, X + 25, Y + 14, X + 28, Y + 10);
+      g.fillStyle(GRASS, 1);
+      g.fillRect(X, Y + 2, ts, 8);
+      g.fillStyle(GRASS_LIGHT, 1);
+      g.fillRect(X, Y, ts, 3);
+      for (let i = 1; i < ts; i += 7) {
+        g.fillTriangle(X + i, Y + 2, X + i + 3, Y - 3, X + i + 6, Y + 2);
       }
-      const xOffset = (tx % 2 === 0) ? 0 : 8;
-      for (let bx = X + xOffset; bx <= X + ts; bx += 16) {
-        g.lineBetween(bx, Y + 8, bx, Y + ts);
-      }
-      // 草皮顶盖
-      g.fillStyle(0x7cc242, 1);
-      g.fillRect(X, Y, ts, 9);
-      // 草皮暗边 + 描边（仅顶面，避免整列网格）
-      g.lineStyle(1, pal.outline, 1);
-      g.strokeRect(X, Y, ts, 9);
-      // 草叶小三角点缀
-      g.fillStyle(0x5fa82f, 1);
-      for (let i = 2; i < ts; i += 8) {
-        g.fillTriangle(X + i, Y, X + i + 3, Y - 4, X + i + 6, Y);
-      }
-    } else {
-      // 埋入地下：仅填红砖，不描边
-      g.fillStyle(BRICK_FACE, 1);
-      g.fillRect(X, Y, ts, ts);
     }
   }
 
-  /** 草原单向平台：红砖平台 + 顶面草皮（蘑菇/木板风，统一世界观）。 */
+  /** 草原单向平台：与地面一致的深棕土块 + 三色草沿。 */
   private drawGrassOneway(
     g: Phaser.GameObjects.Graphics,
     X: number,
     Y: number,
     ts: number,
-    pal: ThemePalette,
     tx: number,
   ): void {
     const h = ts / 2;
-    const BRICK_FACE = 0xb54a3d;
-    const BRICK_MORTAR = pal.outline;
-    // 红砖体
-    g.fillStyle(BRICK_FACE, 1);
-    g.fillRect(X, Y + 8, ts, h - 8);
-    // 砖缝
-    g.lineStyle(1, BRICK_MORTAR, 0.55);
-    for (let by = Y + 8; by <= Y + h; by += 8) {
-      g.lineBetween(X, by, X + ts, by);
+    const SOIL = 0x55331f;
+    const SOIL_LIGHT = 0x754726;
+    const SOIL_DARK = 0x2f2119;
+    g.fillStyle(SOIL, 1);
+    g.fillRect(X, Y + 9, ts, h - 9);
+    g.lineStyle(1, SOIL_DARK, 0.55);
+    g.lineBetween(X, Y + h - 1, X + ts, Y + h - 1);
+    g.lineBetween(X + 12 + (tx % 2) * 5, Y + 9, X + 12 + (tx % 2) * 5, Y + h);
+    g.fillStyle(SOIL_LIGHT, 0.85);
+    g.fillRect(X + 23, Y + 12, 3, 2);
+
+    g.fillStyle(0x2f7d32, 1);
+    g.fillRect(X, Y + 6, ts, 5);
+    g.fillTriangle(X + 7, Y + 9, X + 11, Y + 14, X + 14, Y + 9);
+    g.fillStyle(0x83c83e, 1);
+    g.fillRect(X, Y + 2, ts, 7);
+    g.fillStyle(0xa9db45, 1);
+    g.fillRect(X, Y, ts, 3);
+    for (let i = 1; i < ts; i += 7) {
+      g.fillTriangle(X + i, Y + 2, X + i + 3, Y - 3, X + i + 6, Y + 2);
     }
-    const xOffset = (tx % 2 === 0) ? 0 : 8;
-    for (let bx = X + xOffset; bx <= X + ts; bx += 16) {
-      g.lineBetween(bx, Y + 8, bx, Y + h);
-    }
-    // 顶面草皮
-    g.fillStyle(0x7cc242, 1);
-    g.fillRect(X, Y, ts, 9);
-    g.lineStyle(1, pal.outline, 1);
-    g.strokeRect(X, Y, ts, h);
-    // 小蘑菇点（GOLD 帽 + OUTLINE 点）装饰
-    g.fillStyle(0xf2c94c, 1);
-    g.fillCircle(X + ts / 2, Y + 4, 2.5);
   }
 
   private drawSprite(): void {
