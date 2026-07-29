@@ -12,7 +12,9 @@ import { describe, it, expect } from 'vitest';
 import {
   computeRanks,
   evaluateRanks,
+  formatBestTime,
   RANK_COIN_COLLECT_RATE,
+  RESULT_LAYOUT,
 } from '../../../src/ui/result-screen';
 
 const PAR = 60000; // 目标 60s
@@ -75,5 +77,50 @@ describe('结算评级计算（S05-2，纯函数零 Phaser）', () => {
     expect(r.coinMet).toBe(true);
     expect(r.coinRate).toBeCloseTo(0.8, 5);
     expect(r.ranks).toBe(3);
+  });
+});
+
+describe('通关结算布局合同', () => {
+  it('面板占据至少 80% 逻辑画布宽度，保持横向主视觉而非窄竖卡', () => {
+    expect(RESULT_LAYOUT.panelWidth / RESULT_LAYOUT.logicalWidth).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('主按钮与底部双按钮互不重叠，且全部收在面板内', () => {
+    const panelBottom = RESULT_LAYOUT.panelHeight / 2;
+    const mainBottom =
+      RESULT_LAYOUT.mainButton.y + RESULT_LAYOUT.mainButton.height / 2;
+    const subTop =
+      RESULT_LAYOUT.subButton.y - RESULT_LAYOUT.subButton.height / 2;
+    const subBottom =
+      RESULT_LAYOUT.subButton.y + RESULT_LAYOUT.subButton.height / 2;
+
+    expect(mainBottom).toBeLessThan(subTop);
+    expect(subBottom).toBeLessThanOrEqual(panelBottom);
+  });
+
+  it('两个次按钮加间距不超过主按钮宽度', () => {
+    const subRowWidth =
+      RESULT_LAYOUT.subButton.width * 2 + RESULT_LAYOUT.subButton.gap;
+    expect(subRowWidth).toBeLessThanOrEqual(RESULT_LAYOUT.mainButton.width);
+  });
+});
+
+describe('最佳纪录展示', () => {
+  it('首次通关显示本次成绩并标记 NEW，而不是显示 --', () => {
+    expect(formatBestTime(35_200)).toEqual({
+      text: '35.2',
+      isNewBest: true,
+    });
+  });
+
+  it('刷新纪录显示本次新纪录，未刷新时保留历史最佳', () => {
+    expect(formatBestTime(35_200, 40_000)).toEqual({
+      text: '35.2',
+      isNewBest: true,
+    });
+    expect(formatBestTime(42_000, 35_200)).toEqual({
+      text: '35.2',
+      isNewBest: false,
+    });
   });
 });

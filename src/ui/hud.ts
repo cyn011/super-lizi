@@ -53,7 +53,7 @@ const ECON_MARGIN = 8; // 距右边距（与心形左 margin 对称）
 const ECON_Y = 8; // 与心形同行
 const ECON_GAP = 8; // 分数 ↔ 金币组 间距
 const SCORE_FONT_SIZE = '14px'; // 中文 ≥14px 等效（accessibility §9.2）
-const COIN_ICON_SIZE = 12; // 金币图标 ~12×12（参考 coin-view 16×16 缩版）
+const COIN_ICON_SIZE = 14; // 金币图标 ~14×14（放大，提升存在感）
 const COIN_TEXT_GAP = 3; // 金币图标 ↔ 数字 间距
 const ECON_LINE_H = 18; // 连击行相对分数行下移（font 14 + 间距）
 
@@ -92,6 +92,8 @@ export class Hud {
   private scoreText!: Phaser.GameObjects.Text; // 分数「分数 N」（右对齐）
   private coinText!: Phaser.GameObjects.Text; // 金币「×N」（右对齐，位金币图标右侧）
   private comboText!: Phaser.GameObjects.Text; // 连击「xN」（仅 comboMult>1 显示，右对齐，分数下方）
+  /** 顶部半透明信息栏底板（固定相机层 depth 999，位于 gfx 之下，统一 HUD 容器感）。 */
+  private barGfx?: Phaser.GameObjects.Graphics;
 
   /** bus.on 返回的 off 函数集合，destroy 时统一解绑（hud-spec §8.1）。 */
   private readonly offs: Array<() => void> = [];
@@ -116,6 +118,9 @@ export class Hud {
    */
   create(): void {
     if (this.gfx) return; // 幂等保护
+    // 顶部信息栏底板（depth 999，位于心形/经济之下），统一 HUD 容器感。
+    this.barGfx = this.scene.add.graphics().setScrollFactor(0).setDepth(999);
+    this.drawTopBar();
     this.gfx = this.scene.add.graphics().setScrollFactor(0).setDepth(1000);
 
     // 经济文本（系统字体，固定相机层 depth 1000，与 gfx 对齐）：分数 / 金币 / 连击。
@@ -133,7 +138,7 @@ export class Hud {
     this.coinText = this.scene.add
       .text(0, 0, '', {
         fontFamily: TEXT_FONT,
-        fontSize: SCORE_FONT_SIZE,
+        fontSize: '16px', // 金币数字放大（存在感 > 分数）
         color: COLOR_TEXT,
         stroke: COLOR_TEXT_STROKE,
         strokeThickness: 2,
@@ -255,9 +260,23 @@ export class Hud {
     for (const off of this.offs) off();
     this.offs.length = 0;
     this.hideOverlay();
+    this.barGfx?.destroy();
+    this.barGfx = undefined;
     this.scoreText?.destroy();
     this.coinText?.destroy();
     this.comboText?.destroy();
+  }
+
+  /** 顶部信息栏：半透明木质/像素风条带，横跨顶部，承载心形+形态+经济字段（hud-spec §2 容器感）。 */
+  private drawTopBar(): void {
+    const g = this.barGfx;
+    if (!g) return;
+    g.clear();
+    g.fillStyle(0x2a1a12, 0.32); // 描边棕半透明（锁色板 #5 tint）
+    g.fillRoundedRect(0, 0, LOGICAL_W, 30, 0);
+    // 底部 1px 高光线，营造信息带边缘
+    g.lineStyle(1, 0xf2c94c, 0.18); // 经济金极淡描边（锁色板 #8）
+    g.lineBetween(0, 30, LOGICAL_W, 30);
   }
 
   // ---- 内部绘制 ----

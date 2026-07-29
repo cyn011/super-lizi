@@ -1,6 +1,6 @@
 // 微信构建后处理：将 game.js / game.json / weapp-adapter 复制到 dist-wechat/，
 // 并用 Babel 把 index.js 降到 ES5（避免微信开发者工具做 Babel 转换时缺少 runtime helpers）。
-import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync, cpSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { transformSync } from '@babel/core';
@@ -36,7 +36,17 @@ if (existsSync(adapterSrc)) {
     'please provide weapp-adapter.js in dist-wechat/ before importing into WeChat DevTools.');
 }
 
-// 2. Babel 后处理：把 index.js 整体降到 ES5（bundled helpers，不依赖 @babel/runtime）
+// 2. 复制 public/ 目录到 dist-wechat/ 根目录：微信构建没有 Vite public 机制，
+//    所有静态资源（title-bg.png / ui/jump-btn.png 等）都需要显式复制到包内。
+const publicDir = resolve(root, 'public');
+if (existsSync(publicDir)) {
+  cpSync(publicDir, out, { recursive: true, force: true, dereference: true });
+  console.log('[copy-wechat] public/ copied to dist-wechat/');
+} else {
+  console.warn('[copy-wechat] public/ not found; static assets may be missing.');
+}
+
+// 3. Babel 后处理：把 index.js 整体降到 ES5（bundled helpers，不依赖 @babel/runtime）
 const indexPath = resolve(out, 'index.js');
 if (existsSync(indexPath)) {
   let src = readFileSync(indexPath, 'utf8');

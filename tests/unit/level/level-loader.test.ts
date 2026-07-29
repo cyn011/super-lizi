@@ -67,6 +67,13 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
     expect(b.y).toBeCloseTo(4 * 32 - 34, 3);
   });
 
+  it('红框下方 oneway 踏脚石：仅单向可站、不挡水平路', () => {
+    expect(rt.world.isOneWayTile(22, 5)).toBe(true);
+    expect(rt.world.isOneWayTile(23, 5)).toBe(true);
+    expect(rt.world.isSolidTile(22, 5)).toBe(false);
+    expect(rt.world.isSolidTile(23, 5)).toBe(false);
+  });
+
   it('出生点 spawn 坐标正确（脚底贴地面 row7 顶 y=224 → body.y=190）', () => {
     expect(rt.spawn.x).toBe(64);
     expect(rt.spawn.y).toBe(190);
@@ -83,19 +90,19 @@ describe('C5 LevelLoader 升级（core 纯逻辑）', () => {
   });
 
   it('entities 透传 + 敌人由实体生成 EnemyAI（S04-1 ci_li/du_fu + S04-2 chong_feng）+ S04-3 实体分桶', () => {
-    // 4 敌(ci_li×2, chong_feng×1, du_fu×1) + 7 币 + 6 种子 + 1 检查点 + 3 栗子补给(GDD 17) = 21
-    expect(rt.entities.length).toBe(21);
-    expect(rt.enemies.length).toBe(4);
+    // 教学关布局：3 敌(ci_li×1 温和可踩, chong_feng×1 冲锋不可踩, du_fu×1 浮空可踩)
+    // + 8 币 + 3 种子 + 1 检查点 + 4 栗子补给(GDD 17) = 19
+    expect(rt.entities.length).toBe(19);
+    expect(rt.enemies.length).toBe(3);
     expect(rt.enemies[0].type).toBe('ci_li');
-    expect(rt.enemies[1].type).toBe('ci_li');
+    expect(rt.enemies[1].type).toBe('du_fu');
     expect(rt.enemies[2].type).toBe('chong_feng');
-    expect(rt.enemies[3].type).toBe('du_fu');
     // 可踩：ci_li / du_fu；不可踩（S04-2）：chong_feng
-    expect(rt.enemies.filter((e) => e.isStompable).map((e) => e.type)).toEqual(['ci_li', 'ci_li', 'du_fu']);
+    expect(rt.enemies.filter((e) => e.isStompable).map((e) => e.type)).toEqual(['ci_li', 'du_fu']);
     expect(rt.enemies.filter((e) => !e.isStompable).map((e) => e.type)).toEqual(['chong_feng']);
     // S04-3：coin/seed/checkpoint 由 entities 按 type 过滤分桶（不污染 enemies）
-    expect(rt.coins.length).toBe(7);
-    expect(rt.seeds.length).toBe(6);
+    expect(rt.coins.length).toBe(8);
+    expect(rt.seeds.length).toBe(3);
     expect(rt.seeds[0].seedId).toBe('seed_01');
     expect(rt.seeds[1].seedId).toBe('seed_02');
     expect(rt.checkpoints.length).toBe(1);

@@ -10,16 +10,35 @@
 // 否则 R2-twenty-b 的 createElement('canvas') 或 weapp-adapter 加载期可能抢先
 // 创建 canvas 吃掉第一个，导致这里拿到离屏画布 → 黑屏。
 // 见下方原 R2-nineteen 位置已改为 no-op。
+
+// ── console 静音（生产环境只保留 error，避免加载期屏幕/调试面板刷"代码"）──
+// 微信端 game.js 含大量防御性 console.error（polyfill 兜底），且 Phaser 启动期
+// 也会输出日志；这些在开发者工具 Console / 真机 vConsole 会刷成"代码"。
+// 生产环境静音 log/warn/info/debug，仅保留 error 便于真机排查致命问题。
+(function () {
+  try {
+    var __DEBUG__ = false; // 需要排查时改 true，恢复全部 console 输出
+    if (__DEBUG__) return;
+    var noop = function () {};
+    if (typeof console !== 'undefined' && console) {
+      console.log = noop;
+      console.warn = noop;
+      console.info = noop;
+      console.debug = noop;
+    }
+  } catch (_) {}
+})();
+
 (function () {
   try {
     if (typeof wx !== 'undefined' && typeof wx.createCanvas === 'function') {
       var screenCanvas = wx.createCanvas();
-      // 显式把上屏画布尺寸设为屏幕窗口大小，避免 Phaser 用 300×150 默认
-      try {
-        var sysInfo = wx.getSystemInfoSync();
-        screenCanvas.width = sysInfo.windowWidth;
-        screenCanvas.height = sysInfo.windowHeight;
-      } catch (_) {}
+      // 上屏画布固定为游戏逻辑分辨率 512×288，让 Phaser 输入坐标与逻辑坐标 1:1。
+      // 微信会自动把 canvas 拉伸到全屏；像素风游戏放大后反而更协调。
+      // 若设成屏幕窗口大小（如 1170×540），Scale.NONE 模式下 Phaser 不会把触屏
+      // 像素坐标换算回 512×288，导致标题页按钮等 Phaser 交互对象点不中。
+      screenCanvas.width = 512;
+      screenCanvas.height = 288;
       globalThis.__screenCanvas = screenCanvas;
       if (typeof window !== 'undefined') window.__screenCanvas = screenCanvas;
     } else {
@@ -27,6 +46,31 @@
   } catch (e) {
     console.error('[R2] capture screenCanvas failed:', e && e.message ? e.message : e);
   }
+})();
+
+// ── 启动 Loading 页（覆盖 bundle 解析期黑屏）────────────────────────────
+// 微信端 Phaser 用 CANVAS 渲染器（2d context），与下方 loading 共用同一个上屏画布，
+// 互不冲突；Phaser 初始化后接管 canvas 自然覆盖本内容。
+// 关键：在 require('./index')（1.79MB Phaser 包同步解析 1-3s）之前先画出，
+// 避免这段时间内 screenCanvas 全空 → 黑屏。
+(function () {
+  try {
+    var c = globalThis.__screenCanvas;
+    if (!c || typeof c.getContext !== 'function') return;
+    var ctx = c.getContext('2d');
+    if (!ctx) return;
+    var W = c.width || 512, H = c.height || 288;
+    // 品牌底色（与游戏备用背景一致，避免突兀的黑/白闪烁）
+    ctx.fillStyle = '#3a7ca5';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#F4EFE6';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText('栗宝大冒险', W / 2, H / 2 - 16);
+    ctx.font = '15px sans-serif';
+    ctx.fillText('加载中...', W / 2, H / 2 + 20);
+  } catch (_) {}
 })();
 
 // ── R2-twenty：navigator polyfill shim（必须最前）───────────────────────────────
@@ -120,7 +164,7 @@
         getElementById: function () { return null; },
         querySelector: function () { return null; },
         querySelectorAll: function () { return []; },
-        elementFromPoint: function () { return null; },
+        elementFromPoint: function () { return globalThis.__screenCanvas || null; },
         addEventListener: function () {},
         removeEventListener: function () {},
       };
@@ -859,7 +903,30 @@ if (typeof Image === 'undefined') {
   } catch (_) {}
 })();
 
-require('./index');
+try {
+  require('./index');
+} catch (e) {
+  // Phaser 启动失败：把错误信息画到 loading 页上，方便真机/模拟器排查。
+  try {
+    var c2 = globalThis.__screenCanvas;
+    if (c2 && c2.getContext) {
+      var ctx2 = c2.getContext('2d');
+      if (ctx2) {
+        ctx2.fillStyle = '#3a7ca5';
+        ctx2.fillRect(0, 0, c2.width || 512, c2.height || 288);
+        ctx2.fillStyle = '#ffcccc';
+        ctx2.font = '14px sans-serif';
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'middle';
+        var msg = (e && e.message ? e.message : String(e)) || 'unknown error';
+        ctx2.fillText('Phaser 启动失败', c2.width / 2, c2.height / 2 - 30);
+        ctx2.fillText(msg.substring(0, 60), c2.width / 2, c2.height / 2);
+      }
+    }
+  } catch (_) {}
+  // 仍把错误抛到控制台，便于 vConsole 查看。
+  console.error('[game.js] require index failed:', e);
+}
 
 // ── R2-dec-touch：把微信原生触摸派发成标准 TouchEvent，驱动 Phaser 指针输入 ───
 // 关键：Phaser 3 的 TouchManager 监听的是 'touchstart/touchmove/touchend/touchcancel'

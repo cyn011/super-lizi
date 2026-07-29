@@ -32,7 +32,7 @@ import type { CollisionWorld } from '../../core/physics/collision';
 import { LevelLoader } from '../../core/level/level-loader';
 import type { QuicksandDef } from '../../core/level/level-data';
 import type { RuntimeLevel } from '../../core/level/level-runtime';
-import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE, ON_CHESTNUT_THROWN, ON_AMMO_CHANGED, ON_AMMO_EMPTY, ON_CHESTNUT_HIT, ON_PROJECTILE_CANCEL } from '../../core/events/event-bus';
+import { EventBus, ON_LAND, ON_LEVEL_COMPLETE, ON_PAUSE, ON_RESUME, ON_HURT, ON_DEATH, ON_RESPAWN, ON_GAME_OVER, ON_RESTART, ON_COIN, ON_STOMP, ON_SCORE_CHANGED, ON_JUMP, ON_PROJECTILE_SPAWN, ON_BEAT, ON_NEXT_LEVEL, ON_RETURN_TITLE, ON_SEED_COLLECTED, ON_SEED_GROWTH, ON_SEED_METAMORPHOSIS, ON_BOUNCE, ON_CHESTNUT_THROWN, ON_AMMO_CHANGED, ON_AMMO_EMPTY, ON_CHESTNUT_HIT, ON_PROJECTILE_CANCEL } from '../../core/events/event-bus';
 import { FixedStep } from '../fixed-step';
 import { BeatClock } from '../../core/beat/beat-clock';
 import { BeatDrivenSystem } from '../../core/beat/beat-driven-system';
@@ -116,6 +116,72 @@ const NEUTRAL_INPUT: InputState = {
   throwHeld: false,
   throwReleased: false,
 };
+
+/**
+ * 微信端自定义图片加载文件：把 wx.createImage 接入 Phaser Loader 队列，
+ * 使 preload() 真正等待图片解码完成再进入 create()（否则 TouchButtons 看到纹理未就绪会降级为代码绘制）。
+ * 解码后的图片画到 canvas 纹理后再 refresh，与微信端绕开 XHR 的方案一致。
+ */
+class WechatImageFile extends Phaser.Loader.File {
+  constructor(loader: Phaser.Loader.LoaderPlugin, key: string, url: string) {
+    super(loader, {
+      type: 'wechatImage',
+      key,
+      url,
+      extension: 'png',
+    });
+  }
+
+  load(): void {
+    const wx = (globalThis as unknown as {
+      wx?: {
+        createImage?: () => HTMLImageElement & { onload: unknown; onerror: unknown; src: string };
+      };
+    }).wx;
+    const src = this.url as string;
+
+    const onError = () => (this.onError as (xhr?: unknown, event?: unknown) => void)();
+
+    const finished = (im: HTMLImageElement | HTMLCanvasElement) => {
+      try {
+        const w = (im as HTMLImageElement).naturalWidth || (im as HTMLImageElement).width;
+        const h = (im as HTMLImageElement).naturalHeight || (im as HTMLImageElement).height;
+        if (!w || !h) {
+          onError();
+          return;
+        }
+        const textures = (this.loader as unknown as { scene: Phaser.Scene }).scene.sys.textures;
+        if (textures.exists(this.key)) {
+          (this.onLoad as (xhr?: unknown, event?: unknown) => void)();
+          return;
+        }
+        const cv = textures.createCanvas(this.key, w, h);
+        if (!cv) {
+          onError();
+          return;
+        }
+        (cv.getContext() as CanvasRenderingContext2D).drawImage(im as CanvasImageSource, 0, 0);
+        cv.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        cv.refresh();
+        (this.onLoad as (xhr?: unknown, event?: unknown) => void)();
+      } catch (_) {
+        onError();
+      }
+    };
+
+    if (wx && typeof wx.createImage === 'function') {
+      const im = wx.createImage();
+      im.onload = () => finished(im);
+      im.onerror = onError;
+      im.src = src;
+    } else {
+      const im = new Image();
+      im.onload = () => finished(im);
+      im.onerror = onError;
+      im.src = src;
+    }
+  }
+}
 
 export class GameScene extends Phaser.Scene {
   private platform!: Platform;
@@ -212,6 +278,14 @@ export class GameScene extends Phaser.Scene {
   private officeWindowPhase = 0;
   /** 办公屏光脉冲相位累加器（≤2Hz，Reduce Motion 下冻结，仅办公关使用）。 */
   private officeScreenPhase = 0;
+  /** 草原主题背景-天空层（scrollFactor 0，depth -10，全屏竖直渐变，仅 grass 创建一次）。 */
+  private grassSkyGfx?: Phaser.GameObjects.Graphics;
+  /** 草原主题背景-远景层（scrollFactor 0.3，depth -9，远山+云+温室剪影，仅 grass 创建一次）。 */
+  private grassFarGfx?: Phaser.GameObjects.Graphics;
+  /** 草原主题背景-中景层（scrollFactor 0.6，depth -8，树+风车+花丛，仅 grass 创建一次）。 */
+  private grassMidGfx?: Phaser.GameObjects.Graphics;
+  /** 草原主题背景-前景层（scrollFactor 1.2，depth 4，草丛+花瓣，仅 grass 创建一次，静态）。 */
+  private grassNearGfx?: Phaser.GameObjects.Graphics;
   /** 办公前景悬挑/电线门控相位累加器（Reduce Motion 下冻结，仅办公关使用）。 */
   private officeNearPhase = 0;
   /** 当前下陷区（sinking 时记录，供 sprite 下沉视觉 offset；非 sinking 时 null）。 */
@@ -351,6 +425,46 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
+  /**
+   * 预加载关卡内位图资源。
+   * - Web 端：用 Phaser 自带 Loader（this.load.image），Loader 会等待加载完成再进 create()。
+   * - 微信端：用自定义 Loader 文件 WechatImageFile（wx.createImage 绕开 XHR 并画到 canvas 纹理），
+   *   同样纳入 Phaser 加载队列，确保 create() 时纹理已就绪（否则 TouchButtons 会降级为代码绘制）。
+   * 四个触屏按钮（左/右/动作/跳跃）均使用用户提供的 PNG；加载失败则降级为代码绘制。
+   */
+  preload(): void {
+    const platform = this.registry.get('platform') as Platform | undefined;
+    const isWechat = platform?.env === 'wechat';
+
+    // 注册微信端自定义图片加载器（仅一次）。
+    const loader = this.load as unknown as {
+      wechatImage?: (key: string, url: string) => void;
+    };
+    if (isWechat && typeof loader.wechatImage !== 'function') {
+      (this.load as unknown as Record<string, unknown>).wechatImage = function (
+        this: Phaser.Loader.LoaderPlugin,
+        key: string,
+        url: string,
+      ) {
+        this.addFile(new WechatImageFile(this, key, url));
+      };
+    }
+
+    const uiButtons = [
+      { key: 'ui-arrow-btn', path: 'ui/arrow-btn.png' },
+      { key: 'ui-action-btn', path: 'ui/action-btn.png' },
+      { key: 'ui-jump-btn', path: 'ui/jump-btn.png' },
+    ] as const;
+    for (const { key, path } of uiButtons) {
+      if (this.textures.exists(key)) continue; // 场景重启时跳过重复加载
+      if (isWechat) {
+        (this.load as unknown as { wechatImage: (k: string, u: string) => void }).wechatImage(key, path);
+      } else {
+        this.load.image(key, path);
+      }
+    }
+  }
+
   /** 分享深链：Boot 经 scene.start('Game', { startLevel }) 带 data 进入时调用。 */
   init(data: { startLevel?: string }): void {
     this.pendingStartLevel = data?.startLevel;
@@ -452,6 +566,12 @@ export class GameScene extends Phaser.Scene {
         // S05-4-BGM：下一关重启 stage BGM。
         this.platform.audio.playMusic('music:stage');
       } else this.scene.start('Title');
+    });
+    // 结算页「关卡选择」按钮 → 返回标题。
+    this.bus.on(ON_RETURN_TITLE, () => {
+      this.resultScreen?.hide();
+      this.platform.setMenuActive?.(false);
+      this.scene.start('Title');
     });
 
     // 受伤 juice 计时（game-scene 自管，与 Hud 并存）：受击闪红 / 重生淡入。
@@ -1328,7 +1448,9 @@ export class GameScene extends Phaser.Scene {
     });
     // S06：是否还有下一关 → 决定结算页是否显示「下一关」按钮。
     const hasNext = nextLevelId(LEVEL_ORDER, this.currentLevelId) !== null;
-    this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins, hasNext);
+    // 读取本局之前的最优用时，用于结算页「NEW!」标签（recordClear 落盘后再读就是已刷新后的值）。
+    const previousBestTimeMs = this.saveManager.load().bestTimes[this.runtime.data.id];
+    this.resultScreen?.show(result, this.elapsedMs, this.collectedCoins.size, totalCoins, hasNext, previousBestTimeMs);
     // S05-3：通关落盘最优成绩（ranks/bestTimes/bestCoins 取历史最优；V4 结算流程统一在此存档）。
     this.saveManager.recordClear(this.runtime.data.id, result);
     // GDD 12：一并落盘本局种子蜕变结果（totalCollected/maturity/stage 合并入 SeedMeta）。
@@ -1399,6 +1521,7 @@ export class GameScene extends Phaser.Scene {
     const isHome = this.runtime.data.metadata.theme === 'home';
     const isStreet = this.runtime.data.metadata.theme === 'street';
     const isOffice = this.runtime.data.metadata.theme === 'office';
+    const isGrass = this.runtime.data.metadata.theme === 'grass';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1482,6 +1605,17 @@ export class GameScene extends Phaser.Scene {
       this.officeScreenPhase = 0;
       this.officeNearPhase = 0;
     }
+    // 非草原关：清理可能残留的草原背景层（切换关卡安全）。镜像其他清理块。
+    if (!isGrass) {
+      this.grassSkyGfx?.destroy();
+      this.grassSkyGfx = undefined;
+      this.grassFarGfx?.destroy();
+      this.grassFarGfx = undefined;
+      this.grassMidGfx?.destroy();
+      this.grassMidGfx = undefined;
+      this.grassNearGfx?.destroy();
+      this.grassNearGfx = undefined;
+    }
 
     // 背景层：
     //  - 非海关/非沙漠/非家关：非空 palette 才平铺（洞穴暗蓝）；草原 bg=null 跳过（零回归）。
@@ -1500,6 +1634,8 @@ export class GameScene extends Phaser.Scene {
     if (isStreet) this.drawStreetBackground(pal);
     // 办公主题背景（室内办公五层视差：天花板+后墙 / 远景隔断+窗光 / 中景办公桌+显示器+绿植+荧光灯 / 游戏 / 前景悬挑/电线），仅 office 创建一次（动态层每帧重绘）
     if (isOffice) this.drawOfficeBackground(pal);
+    // 草原主题背景（天空渐变 + 远/中/近景视差：云/远山/温室 + 树/风车/花丛 + 草丛/花瓣），仅 grass 创建一次
+    if (isGrass) this.drawGrassBackground(pal);
 
     // 家具 tile-kind 查找表（sofa/table/cabinet 仅在此表达，碰撞由 world 的 solid/oneway 承接）。
     // 遍历 runtime.data.tiles 暴露 kind（home-visual-spec §2.5 允许的方案，零新增 world API）。
@@ -1516,6 +1652,10 @@ export class GameScene extends Phaser.Scene {
           const kind = kindAt.get(`${tx},${ty}`);
           if (kind === 'sofa' || kind === 'cabinet') {
             this.drawHomeFurnitureSolid(g, X, Y, ts, kind, pal); // 家具实心：暖橙面 + 暗面 + 描边 + 家具细节
+          } else if (isGrass) {
+            // 草原：地表草皮顶 + 泥土体；仅顶面有草皮与描边，埋入地下的瓦片不描边（避免 test 网格感）。
+            const surface = ty - 1 >= 0 && !this.world.isSolidTile(tx, ty - 1);
+            this.drawGrassSolid(g, X, Y, ts, pal, surface, tx);
           } else {
             g.fillStyle(pal.rockFace, 1);
             g.fillRect(X, Y, ts, ts);
@@ -1526,6 +1666,9 @@ export class GameScene extends Phaser.Scene {
           const kind = kindAt.get(`${tx},${ty}`);
           if (kind === 'table') {
             this.drawHomeFurnitureTable(g, X, Y, ts, pal); // 家具单向：仅顶半画桌面 + 暖黄沿 + 腿
+          } else if (isGrass) {
+            // 草原单向平台：红砖平台 + 顶面草皮（蘑菇/木板风，统一世界观）。
+            this.drawGrassOneway(g, X, Y, ts, pal, tx);
           } else {
             g.fillStyle(pal.rockBody, 1);
             g.fillRect(X, Y, ts, ts / 2);
@@ -2633,6 +2776,236 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0x6e7bf2, alpha * 0.6);
     g.fillCircle(camW * 0.3 + scrollX * 1.2, baseY - 10 + scrollY * 1.2, 2);
     g.fillCircle(camW * 0.7 + scrollX * 1.2, baseY - 20 + scrollY * 1.2, 2);
+  }
+
+  /**
+   * 草原主题背景层（仅 grass）：完整四层视差结构，全程序化 Graphics（零 PNG，ADR-004）——
+   *   sky  (scrollFactor 0,   depth -10) 天空竖直渐变（SKY→SKY_LIGHT），全屏一次
+   *   far  (scrollFactor 0.3, depth -9)  远山剪影 + 云朵 + 温室剪影，铺满 levelW
+   *   mid  (scrollFactor 0.6, depth -8)  树 + 风车 + 花丛，铺满 levelW
+   *   near (scrollFactor 1.2, depth 4)   前景草丛 + 漂浮花瓣（静态装饰，depth 4 克制遮挡）
+   * 颜色全部来自 11 色锁色板或由其 tint 派生（SKY_LIGHT/CLOUD 为 lighten(#5BC8F5) 派生，0 新增 hex）。
+   * 全部 create-once（静态，不进每帧 update，最低回归风险）。
+   */
+  private drawGrassBackground(pal: ThemePalette): void {
+    const ts = this.world.tileSize;
+    const levelW = this.runtime.data.width * ts;
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+
+    // 锁色板 / tint 派生（0 新增 hex）
+    const SKY = 0x5bc8f5; // 天空 #5BC8F5（#11）
+    const SKY_LIGHT = 0x9fdcf5; // lighten(#5BC8F5, ~0.4) 近地平线天光（tint 派生）
+    const CLOUD = 0xeaf6fb; // lighten(#5BC8F5, ~0.75) 云朵（tint 派生）
+    const HILL_FAR = 0x5fa82f; // 阴影绿 #5FA82F（#2）远山
+    const HILL_NEAR = 0x7cc242; // 草绿 #7CC242（#1）近树/草丛
+    const TRUNK = 0x79491e; // darken(#F2933C, 0.5) 树干（#3 派生）
+    const FIRE = 0xf2933c; // 暖橙 #F2933C（#3）风车/花心点缀
+    const GOLD = 0xf2c94c; // 经济金 #F2C94C（#8）花瓣/花心
+    const OUTLINE = pal.outline; // 全局描边 #2A1A12
+
+    // ── 1) 天空层（scrollFactor 0, depth -10）：竖直渐变 SKY→SKY_LIGHT，全屏一次 ──
+    if (!this.grassSkyGfx) this.grassSkyGfx = this.add.graphics().setScrollFactor(0).setDepth(-10);
+    const sky = this.grassSkyGfx;
+    sky.clear();
+    sky.fillGradientStyle(SKY, SKY, SKY_LIGHT, SKY_LIGHT, 1);
+    sky.fillRect(0, 0, camW, camH);
+
+    // ── 2) 远景 far（scrollFactor 0.3, depth -9）：远山 + 云 + 温室剪影，铺满 levelW ──
+    if (!this.grassFarGfx) this.grassFarGfx = this.add.graphics().setScrollFactor(0.3).setDepth(-9);
+    const far = this.grassFarGfx;
+    far.clear();
+    // 远山：3 座起伏剪影（无描边、低饱和绿）
+    const hills = [
+      { x: levelW * 0.18, y: camH * 0.72, w: 220, h: 90 },
+      { x: levelW * 0.52, y: camH * 0.7, w: 280, h: 110 },
+      { x: levelW * 0.85, y: camH * 0.74, w: 200, h: 80 },
+    ];
+    far.fillStyle(HILL_FAR, 1);
+    for (const h of hills) {
+      far.fillEllipse(h.x, h.y, h.w, h.h);
+    }
+    // 云朵：几簇椭圆（CLOUD），无描边
+    const clouds = [
+      { x: levelW * 0.1, y: camH * 0.18, s: 1.0 },
+      { x: levelW * 0.4, y: camH * 0.12, s: 1.3 },
+      { x: levelW * 0.7, y: camH * 0.22, s: 0.9 },
+      { x: levelW * 0.92, y: camH * 0.15, s: 1.1 },
+    ];
+    far.fillStyle(CLOUD, 0.95);
+    for (const c of clouds) {
+      const r = 16 * c.s;
+      far.fillCircle(c.x, c.y, r);
+      far.fillCircle(c.x + r * 0.9, c.y + r * 0.2, r * 0.8);
+      far.fillCircle(c.x - r * 0.9, c.y + r * 0.25, r * 0.7);
+      far.fillCircle(c.x + r * 0.2, c.y - r * 0.6, r * 0.7);
+    }
+    // 温室剪影（pale 轮廓，位于中远处）：矩形 + 三角顶
+    const gx = levelW * 0.62;
+    const gy = camH * 0.6;
+    const gw = 90;
+    const gh = 56;
+    far.fillStyle(CLOUD, 0.5);
+    far.fillRect(gx, gy, gw, gh);
+    far.fillTriangle(gx - 6, gy, gx + gw + 6, gy, gx + gw / 2, gy - 34);
+    far.lineStyle(1, OUTLINE, 0.25);
+    far.strokeRect(gx, gy, gw, gh);
+
+    // ── 3) 中景 mid（scrollFactor 0.6, depth -8）：树 + 风车 + 花丛，铺满 levelW ──
+    if (!this.grassMidGfx) this.grassMidGfx = this.add.graphics().setScrollFactor(0.6).setDepth(-8);
+    const mid = this.grassMidGfx;
+    mid.clear();
+    // 树：树干 + 双层树冠
+    const trees = [
+      { x: levelW * 0.25, y: camH * 0.82, s: 1.0 },
+      { x: levelW * 0.78, y: camH * 0.84, s: 1.2 },
+    ];
+    for (const t of trees) {
+      const th = 40 * t.s;
+      const tw = 8 * t.s;
+      mid.fillStyle(TRUNK, 1);
+      mid.fillRect(t.x - tw / 2, t.y - th, tw, th);
+      mid.fillStyle(HILL_NEAR, 1);
+      mid.fillCircle(t.x, t.y - th, 22 * t.s);
+      mid.fillCircle(t.x - 16 * t.s, t.y - th + 8 * t.s, 16 * t.s);
+      mid.fillCircle(t.x + 16 * t.s, t.y - th + 8 * t.s, 16 * t.s);
+      mid.fillStyle(HILL_FAR, 0.6);
+      mid.fillCircle(t.x, t.y - th - 6 * t.s, 14 * t.s);
+    }
+    // 风车：塔身 + 四叶（FIRE 描边 + CLOUD 叶面）
+    const wx = levelW * 0.45;
+    const wy = camH * 0.86;
+    const wh = 64;
+    mid.fillStyle(TRUNK, 1);
+    mid.fillTriangle(wx - 9, wy, wx + 9, wy, wx, wy - wh);
+    mid.lineStyle(1, OUTLINE, 1);
+    mid.strokeTriangle(wx - 9, wy, wx + 9, wy, wx, wy - wh);
+    const hubX = wx;
+    const hubY = wy - wh;
+    const bladeLen = 26;
+    mid.fillStyle(CLOUD, 1);
+    for (let i = 0; i < 4; i++) {
+      const a = (Math.PI / 2) * i + Math.PI / 4;
+      const tipX = hubX + Math.cos(a) * bladeLen;
+      const tipY = hubY + Math.sin(a) * bladeLen;
+      const px = hubX + Math.cos(a + 0.5) * bladeLen * 0.4;
+      const py = hubY + Math.sin(a + 0.5) * bladeLen * 0.4;
+      mid.fillTriangle(hubX, hubY, tipX, tipY, px, py);
+    }
+    mid.fillStyle(FIRE, 1);
+    mid.fillCircle(hubX, hubY, 4);
+    // 花丛（地面矮灌 + 花点）
+    const bushes = [
+      { x: levelW * 0.36, y: camH * 0.9 },
+      { x: levelW * 0.6, y: camH * 0.92 },
+      { x: levelW * 0.9, y: camH * 0.9 },
+    ];
+    for (const b of bushes) {
+      mid.fillStyle(HILL_NEAR, 1);
+      mid.fillCircle(b.x - 8, b.y, 9);
+      mid.fillCircle(b.x + 8, b.y, 9);
+      mid.fillCircle(b.x, b.y - 6, 11);
+      mid.fillStyle(GOLD, 1);
+      mid.fillCircle(b.x, b.y - 6, 3);
+    }
+
+    // ── 4) 前景 near（scrollFactor 1.2, depth 4）：草丛 + 漂浮花瓣（静态，克制遮挡）──
+    if (!this.grassNearGfx) this.grassNearGfx = this.add.graphics().setScrollFactor(1.2).setDepth(4);
+    const near = this.grassNearGfx;
+    near.clear();
+    // 前景草丛：沿底一排小三角（HILL_NEAR），仅装饰、不挡角色
+    near.fillStyle(HILL_NEAR, 1);
+    for (let x = 8; x < camW; x += 26) {
+      near.fillTriangle(x, camH, x + 5, camH - 12, x + 10, camH);
+      near.fillTriangle(x + 12, camH, x + 17, camH - 9, x + 22, camH);
+    }
+    // 漂浮花瓣（GOLD 小点），错落于中下区
+    const petals = [
+      { x: camW * 0.2, y: camH * 0.5 },
+      { x: camW * 0.5, y: camH * 0.4 },
+      { x: camW * 0.75, y: camH * 0.55 },
+      { x: camW * 0.88, y: camH * 0.42 },
+      { x: camW * 0.35, y: camH * 0.62 },
+    ];
+    near.fillStyle(GOLD, 0.85);
+    for (const p of petals) near.fillCircle(p.x, p.y, 2.5);
+  }
+
+  /** 草原实心瓦片：地表草皮顶盖 + 红砖体；埋入地下者不描边（去 test 网格感）。 */
+  private drawGrassSolid(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    pal: ThemePalette,
+    surface: boolean,
+    tx: number,
+  ): void {
+    const BRICK_FACE = 0xb54a3d; // darken(#E8483B, ~0.25) 砖红色，锁色板派生
+    const BRICK_MORTAR = pal.outline;
+    if (surface) {
+      // 红砖体
+      g.fillStyle(BRICK_FACE, 1);
+      g.fillRect(X, Y + 8, ts, ts - 8);
+      // 砖缝（横向 + 错开竖向）
+      g.lineStyle(1, BRICK_MORTAR, 0.55);
+      for (let by = Y + 8; by <= Y + ts; by += 8) {
+        g.lineBetween(X, by, X + ts, by);
+      }
+      const xOffset = (tx % 2 === 0) ? 0 : 8;
+      for (let bx = X + xOffset; bx <= X + ts; bx += 16) {
+        g.lineBetween(bx, Y + 8, bx, Y + ts);
+      }
+      // 草皮顶盖
+      g.fillStyle(0x7cc242, 1);
+      g.fillRect(X, Y, ts, 9);
+      // 草皮暗边 + 描边（仅顶面，避免整列网格）
+      g.lineStyle(1, pal.outline, 1);
+      g.strokeRect(X, Y, ts, 9);
+      // 草叶小三角点缀
+      g.fillStyle(0x5fa82f, 1);
+      for (let i = 2; i < ts; i += 8) {
+        g.fillTriangle(X + i, Y, X + i + 3, Y - 4, X + i + 6, Y);
+      }
+    } else {
+      // 埋入地下：仅填红砖，不描边
+      g.fillStyle(BRICK_FACE, 1);
+      g.fillRect(X, Y, ts, ts);
+    }
+  }
+
+  /** 草原单向平台：红砖平台 + 顶面草皮（蘑菇/木板风，统一世界观）。 */
+  private drawGrassOneway(
+    g: Phaser.GameObjects.Graphics,
+    X: number,
+    Y: number,
+    ts: number,
+    pal: ThemePalette,
+    tx: number,
+  ): void {
+    const h = ts / 2;
+    const BRICK_FACE = 0xb54a3d;
+    const BRICK_MORTAR = pal.outline;
+    // 红砖体
+    g.fillStyle(BRICK_FACE, 1);
+    g.fillRect(X, Y + 8, ts, h - 8);
+    // 砖缝
+    g.lineStyle(1, BRICK_MORTAR, 0.55);
+    for (let by = Y + 8; by <= Y + h; by += 8) {
+      g.lineBetween(X, by, X + ts, by);
+    }
+    const xOffset = (tx % 2 === 0) ? 0 : 8;
+    for (let bx = X + xOffset; bx <= X + ts; bx += 16) {
+      g.lineBetween(bx, Y + 8, bx, Y + h);
+    }
+    // 顶面草皮
+    g.fillStyle(0x7cc242, 1);
+    g.fillRect(X, Y, ts, 9);
+    g.lineStyle(1, pal.outline, 1);
+    g.strokeRect(X, Y, ts, h);
+    // 小蘑菇点（GOLD 帽 + OUTLINE 点）装饰
+    g.fillStyle(0xf2c94c, 1);
+    g.fillCircle(X + ts / 2, Y + 4, 2.5);
   }
 
   private drawSprite(): void {

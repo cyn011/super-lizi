@@ -1,139 +1,63 @@
 /**
- * game/scenes/title-scene — 标题屏（栗宝大冒险 启动首屏）。
+ * game/scenes/title-scene — 标题屏（栗宝大冒险 启动首屏，游戏封面）v6
  *
- * 启动链：BootScene → TitleScene → GameScene（点击开始 / Enter / Space 进入 1-1）。
+ * 启动链：BootScene → TitleScene → GameScene（点击开始 / Enter / Space 进 1-1；副行进续关）。
  *
- * 纯 Phaser Graphics + 系统字体绘制，零新增位图/音频/字体资源（ADR-004）。
- * 坐标全部相对逻辑中心（512×288），不依赖 window/document，Web + 微信双端兼容。
+ * v6 修复（微信蓝屏）：
+ *   Phaser Loader 对图片走 XHR，微信小游戏 XHR 无法加载包内本地图 → 纹理缺失 → 蓝屏。
+ *   v5 尝试 base64 内联 + 临时文件，仍因微信端路径/加载策略不稳而失败。
+ *   v6 策略：
+ *     - Web 端：继续使用 base64 data URL（零额外文件请求）。
+ *     - 微信端：构建时把 assets/title-bg.png 复制到 dist-wechat/title-bg.png，
+ *             运行时直接用 `new Image().src = 'title-bg.png'` 加载包内图
+ *             （game.js 的 Image polyfill 内部会走 wx.createImage，支持包内路径）。
+ *   同时加入备用背景色与错误兜底，即使图片加载失败也不会只剩默认蓝屏。
  *
- * L2「角色登场」（美术规格方向二）落地：
- *   - 圆角暖黄描边标题衬板（几何描边，非 Text 描边）；
- *   - 标题/副标题零 stroke，靠暗色衬板保证对比度；
- *   - 栗宝纯 Graphics 立绘（呼吸 + 眨眼），立于右前景山丘；
- *   - 左侧草丛 + 命粉小花；6–8 颗原创菱形星点缓慢上浮；
- *   - 云朵横向漂移、标题弹入、按钮脉冲 + 悬停放大。
- *
- * 颜色纪律（红线）：仅 grass biome 锁色板 + 栗宝身份色（art-bible §4.2），零新增色值。
- *   - 云朵白 #FFFFFF 仅作标题屏菜单背景插画，不计入游戏内资产调色板（铁律允许）。
- *   - 背景天空 #5BC8F5 由 main.ts 的 backgroundColor 提供，本场景不再重绘。
+ * 首页背景图：标题/按钮/Mali/装饰均已包含在图中；
+ * 本文件只负责背景图展示 + 虚拟点击区 + 继续行 + 键盘/BGM 交互。
+ * 坐标全部相对逻辑中心（512×288），Web + 微信双端兼容。
  */
 import Phaser from 'phaser';
 import type { Platform } from '../../platform/platform';
+import { SaveManager } from '../../core/meta/save-data';
 
+// ── 逻辑画布尺寸 ──
 const LOGICAL_W = 512;
 const LOGICAL_H = 288;
 const CENTER_X = LOGICAL_W / 2; // 256
 
-// ── 锁色板（grass biome，0 新增色）──
-const COLOR_GRASS_GREEN = 0x7cc242; // 草绿（中景山丘 / 草丛前层）
-const COLOR_SHADOW_GREEN = 0x5fa82f; // 阴影绿（远/近景山丘 / 草丛后层）
-const COLOR_OUTLINE = 0x2a1a12; // 描边 / 标题衬板填充 / 按钮描边
-const COLOR_WARM_ORANGE = 0xf2933c; // 暖橙（开始按钮填充）
-const COLOR_WARM_YELLOW = 0xffd23f; // 暖黄（衬板描边 / 栗宝嫩芽·高光 / 花心 / 星点）
-const COLOR_LIFE_PINK = 0xf26d8b; // 命粉（小花花瓣 / 栗宝腮红）
-const COLOR_CHESTNUT = 0xb5763e; // 栗宝主体（art-bible §4.2 身份色，非本屏新增）
-const COLOR_BELLY = 0xf0d9b5; // 栗宝浅色肚皮（同上）
-const COLOR_CREAM = '#F4EFE6'; // 石灰白（标题/副标题/按钮/水印文字）
-const COLOR_CREAM_NUM = 0xf4efe6; // 同色数值型，供 Graphics 高光/星点使用
-const COLOR_CLOUD_WHITE = 0xffffff; // 云朵白：仅为菜单背景插画，不进游戏资产调色板
+// 背景图路径：Web 端经 Vite 放 dist/title-bg.png，微信端经 copy-wechat 放包根。
+// 两端统一用包内相对文件名，避免 base64 内联（减小 bundle、加快首屏）。
+const TITLE_BG_KEY = 'title-bg';
+const TITLE_BG_PATH = 'title-bg.png';
 
-// 文本字体：微信真机必须显式给中文字体回退，否则 'sans-serif' 大字可能无法渲染。
+// 文本字体：微信真机必须显式给中文字体回退
 const TEXT_FONT = "'PingFang SC', 'Microsoft YaHei', 'Heiti SC', 'Noto Sans SC', sans-serif";
 
-// 构建版本水印（用于真机/预览排障，小字保证 CANVAS 可渲染）
-const BUILD_LABEL = 'v0.10.0-250725-2140';
+// 文本描边（字符串型，Phaser Text stroke 参数用）
+const OUTLINE_STR = '#2A1A12';
+const COLOR_CREAM = '#F4EFE6';
 
-// 开始按钮尺寸（热区 ≥ 触屏 32px 高）
-const BTN_W = 150;
-const BTN_H = 44;
+// 虚拟「开始冒险」按钮点击区（与背景图中按钮位置对齐）
+const START_BTN_CX = 256;
+const START_BTN_CY = 200;
+const START_BTN_W = 150;
+const START_BTN_H = 50;
 
-// 标题衬板（圆角矩形，中心 (256,84)，340×76 → x:86–426 / y:46–122）
-const PANEL_W = 340;
-const PANEL_H = 76;
-const PANEL_CX = 256;
-const PANEL_CY = 84;
+// 继续行位置（按钮下方）
+const CONTINUE_CY = 254;
 
-// 山丘 baseY（L2：远/中/近 = 200 / 222 / 244）
-const HILL_FAR = 200;
-const HILL_MID = 222;
-const HILL_NEAR = 244;
-
-// 栗宝立绘锚点（L2：中心 (404,192)，尺寸 ~34×42，立于近景山丘右隆起）
-const MALI_CX = 404;
-const MALI_CY = 192;
-
-/**
- * 画一朵云（重叠白色椭圆，menu 背景插画）。
- * 仅用 #FFFFFF，不计入资产调色板。
- */
-function drawCloud(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-  g.fillStyle(COLOR_CLOUD_WHITE, 1);
-  g.fillEllipse(cx - 14 * s, cy, 30 * s, 18 * s);
-  g.fillEllipse(cx, cy - 6 * s, 36 * s, 26 * s);
-  g.fillEllipse(cx + 16 * s, cy, 28 * s, 18 * s);
-  g.fillEllipse(cx, cy + 5 * s, 44 * s, 20 * s);
+/** 关卡 id 排序键（"c-l" → 数值，跨章可比）。 */
+function levelSortKey(id: string): number {
+  const m = /^(\d+)-(\d+)$/.exec(id);
+  if (!m) return 0;
+  return Number(m[1]) * 1000 + Number(m[2]);
 }
 
-/**
- * 画一层起伏山丘：底部实填 + 顶部一排椭圆隆起点形成连续曲线。
- * 颜色取自 grass biome 锁色板（草绿 / 阴影绿）。
- */
-function drawHillLayer(
-  g: Phaser.GameObjects.Graphics,
-  baseY: number,
-  color: number,
-  bumpW: number,
-  amp: number,
-  count: number,
-): void {
-  g.fillStyle(color, 1);
-  // 底部填色到屏幕底
-  g.fillRect(0, baseY, LOGICAL_W, LOGICAL_H - baseY);
-  // 顶部隆起的山包（椭圆中心压在 baseY，露出上半部）
-  for (let i = 0; i <= count; i++) {
-    const x = (i / count) * LOGICAL_W;
-    g.fillEllipse(x, baseY, bumpW, amp * 2);
-  }
-}
-
-/**
- * 画栗宝（纯 Graphics，局部坐标以 (0,0) 为中心，~34×42）。
- * 栗色主体 + 浅色肚皮 + 暖黄嫩芽(头顶) + 暖黄高光 + 描边轮廓 +
- * 命粉腮红 + 圆脸大眼（眼在独立子容器以便眨眼）+ 短圆手脚（art-bible §4.2）。
- */
-function drawMali(g: Phaser.GameObjects.Graphics): void {
-  g.lineStyle(2, COLOR_OUTLINE, 1);
-  // 主体栗色
-  g.fillStyle(COLOR_CHESTNUT, 1);
-  g.fillEllipse(0, 0, 28, 36);
-  g.strokeEllipse(0, 0, 28, 36);
-  // 浅色肚皮
-  g.fillStyle(COLOR_BELLY, 1);
-  g.fillEllipse(0, 6, 14, 17);
-  // 暖黄高光（左上小片，半透明）
-  g.fillStyle(COLOR_WARM_YELLOW, 0.5);
-  g.fillEllipse(-6, -7, 4, 7);
-  // 短圆手（两侧）
-  g.fillStyle(COLOR_CHESTNUT, 1);
-  g.fillCircle(-13, 8, 3.5);
-  g.strokeCircle(-13, 8, 3.5);
-  g.fillCircle(13, 8, 3.5);
-  g.strokeCircle(13, 8, 3.5);
-  // 短圆脚（底部）
-  g.fillCircle(-7, 17, 4.5);
-  g.strokeCircle(-7, 17, 4.5);
-  g.fillCircle(7, 17, 4.5);
-  g.strokeCircle(7, 17, 4.5);
-  // 命粉腮红
-  g.fillStyle(COLOR_LIFE_PINK, 1);
-  g.fillCircle(-8, 3, 2.5);
-  g.fillCircle(8, 3, 2.5);
-  // 头顶嫩芽（暖黄，两片小叶 + 描边）
-  g.fillStyle(COLOR_WARM_YELLOW, 1);
-  g.fillEllipse(-3, -18, 5, 10);
-  g.strokeEllipse(-3, -18, 5, 10);
-  g.fillEllipse(3, -18, 5, 10);
-  g.strokeEllipse(3, -18, 5, 10);
+/** 取最大（最靠后）已解锁关卡 id；空则回退 1-1。 */
+function lastUnlockedLevelId(ids: string[]): string {
+  if (ids.length === 0) return '1-1';
+  return [...ids].sort((a, b) => levelSortKey(a) - levelSortKey(b)).pop() as string;
 }
 
 export class TitleScene extends Phaser.Scene {
@@ -141,6 +65,14 @@ export class TitleScene extends Phaser.Scene {
   private started = false;
   /** 防止 scene restart / 重复 start 导致 UI 重复创建（真机偶发）。 */
   private built = false;
+  /** 全局平台（含 reduceMotion / storage / audio）。 */
+  private platform?: Platform;
+  /** 减少动态（accessibility）：开启时冻结全部循环动效，显示静态合成帧。 */
+  private reduceMotion = false;
+  /** 背景图是否已添加（防重复创建）。 */
+  private bgAdded = false;
+  /** 诊断红屏（蓝屏排查用，背景图加载成功后移除）。含红块 + 文字。 */
+  private diagObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super('Title');
@@ -154,245 +86,213 @@ export class TitleScene extends Phaser.Scene {
     }
     this.built = true;
     this.started = false;
+    this.bgAdded = false;
 
     // 固定逻辑坐标（微信端 Scale.NONE 时 this.scale.height 是真实屏幕高度，不是 288）。
+    this.platform = this.resolvePlatform();
+    this.reduceMotion = this.platform?.reduceMotion ?? false;
 
-    // 云朵（menu 背景插画，白色，不进资产调色板；各自独立横向漂移）
-    const cloudDefs = [
-      { x: 90, y: 40, s: 1.0 },
-      { x: 392, y: 32, s: 1.2 },
-      { x: 250, y: 58, s: 0.8 },
-    ];
-    cloudDefs.forEach((c, i) => {
-      const g = this.add.graphics().setDepth(1);
-      drawCloud(g, c.x, c.y, c.s);
-      this.tweens.add({
-        targets: g,
-        x: '+=10',
-        duration: 4500,
-        ease: 'Sine.InOut',
-        yoyo: true,
-        repeat: -1,
-        delay: i * 600,
-      });
-    });
-
-    // 山丘（3 层起伏，锁色板草绿/阴影绿，营造景深）
-    const hills = this.add.graphics().setDepth(2);
-    drawHillLayer(hills, HILL_FAR, COLOR_SHADOW_GREEN, 130, 22, 5);
-    drawHillLayer(hills, HILL_MID, COLOR_GRASS_GREEN, 150, 26, 4);
-    drawHillLayer(hills, HILL_NEAR, COLOR_SHADOW_GREEN, 170, 30, 4);
-
-    // 左侧草丛 + 暖黄小花（中心 (104,200)）：草绿/阴影绿草丛 + 命粉花瓣 + 暖黄花心
-    const grass = this.add.graphics().setDepth(5);
-    // 后层（阴影绿）
-    grass.fillStyle(COLOR_SHADOW_GREEN, 1);
-    grass.fillTriangle(92, 202, 98, 202, 95, 182);
-    grass.fillTriangle(102, 202, 108, 202, 105, 178);
-    grass.fillTriangle(110, 202, 116, 202, 113, 184);
-    // 前层（草绿）
-    grass.fillStyle(COLOR_GRASS_GREEN, 1);
-    grass.fillTriangle(96, 202, 101, 202, 98.5, 188);
-    grass.fillTriangle(103, 202, 108, 202, 105.5, 186);
-    // 花茎（草绿细）
-    grass.fillStyle(COLOR_GRASS_GREEN, 1);
-    grass.fillRect(103.5, 166, 1, 18);
-    // 花瓣（命粉）
-    grass.fillStyle(COLOR_LIFE_PINK, 1);
-    grass.fillCircle(104, 160, 3);
-    grass.fillCircle(104, 172, 3);
-    grass.fillCircle(98, 166, 3);
-    grass.fillCircle(110, 166, 3);
-    // 花心（暖黄）
-    grass.fillStyle(COLOR_WARM_YELLOW, 1);
-    grass.fillCircle(104, 166, 3);
-
-    // 栗宝立绘（纯 Graphics 容器：便于整体呼吸缩放，眼睛独立子容器便于眨眼）
-    const mali = this.add.container(MALI_CX, MALI_CY).setDepth(6);
-    const maliBody = this.add.graphics();
-    drawMali(maliBody);
-    mali.add(maliBody);
-    // 眼睛子容器（位于面部中心，眨眼用 scaleY 压扁，非精灵帧）
-    const eyeGroup = this.add.container(0, -4);
-    const eyes = this.add.graphics();
-    eyes.fillStyle(COLOR_OUTLINE, 1);
-    eyes.fillCircle(-6, 0, 3.5);
-    eyes.fillCircle(6, 0, 3.5);
-    eyes.fillStyle(COLOR_CREAM_NUM, 1);
-    eyes.fillCircle(-7, -1, 1.2);
-    eyes.fillCircle(5, -1, 1.2);
-    eyeGroup.add(eyes);
-    mali.add(eyeGroup);
-
-    // 星点粒子（6–8 颗原创菱形，严禁★符号；缓慢上浮 + alpha 渐隐，错相位）
-    const starDefs = [
-      { x: 140, y: 42, c: COLOR_CREAM_NUM, r: 2.4 },
-      { x: 175, y: 58, c: COLOR_WARM_YELLOW, r: 2.0 },
-      { x: 210, y: 36, c: COLOR_CREAM_NUM, r: 2.6 },
-      { x: 250, y: 64, c: COLOR_WARM_YELLOW, r: 2.2 },
-      { x: 285, y: 48, c: COLOR_CREAM_NUM, r: 2.0 },
-      { x: 325, y: 34, c: COLOR_WARM_YELLOW, r: 2.6 },
-      { x: 365, y: 56, c: COLOR_CREAM_NUM, r: 2.2 },
-    ];
-    starDefs.forEach((s, i) => {
-      const g = this.add.graphics().setDepth(8);
-      g.fillStyle(s.c, 1);
-      g.fillPoints(
-        [
-          { x: s.x, y: s.y - s.r },
-          { x: s.x + s.r, y: s.y },
-          { x: s.x, y: s.y + s.r },
-          { x: s.x - s.r, y: s.y },
-        ],
-        true,
-      );
-      g.setAlpha(0.2);
-      this.tweens.add({
-        targets: g,
-        y: g.y - 18,
-        duration: 2400,
-        repeat: -1,
-        delay: i * 340,
-        keyframes: [
-          { alpha: 0.9, duration: 1100, ease: 'Sine.Out' },
-          { alpha: 0, duration: 1300, ease: 'Sine.In' },
-        ],
-      });
-    });
-
-    // 标题区衬板：圆角矩形 + 暖黄几何细描边（几何描边安全，非 Text 描边）
-    const panelG = this.add.graphics().setDepth(9);
-    panelG.fillStyle(COLOR_OUTLINE, 0.5);
-    panelG.fillRoundedRect(PANEL_CX - PANEL_W / 2, PANEL_CY - PANEL_H / 2, PANEL_W, PANEL_H, 12);
-    panelG.lineStyle(2, COLOR_WARM_YELLOW, 1);
-    panelG.strokeRoundedRect(PANEL_CX - PANEL_W / 2, PANEL_CY - PANEL_H / 2, PANEL_W, PANEL_H, 12);
-
-    // 大标题「栗宝大冒险」：居中偏上，32px 无描边，依赖暗色衬板提供对比度
-    const title = this.add
-      .text(CENTER_X, 74, '栗宝大冒险', {
+    // === DIAG（蓝屏排查）：TitleScene 启动即铺全屏红，置于最上层。
+    // 背景图加载成功 → 移除红屏，露出真实背景；失败则保留红屏（确认场景已跑但图片未加载）。
+    // 若微信端仍纯蓝 → TitleScene.create() 未执行 / 新代码未生效。
+    const diagRect = this.add
+      .rectangle(CENTER_X, LOGICAL_H / 2, LOGICAL_W, LOGICAL_H, 0xff0000)
+      .setDepth(10000);
+    const diagText = this.add
+      .text(CENTER_X, LOGICAL_H / 2, 'DIAG TITLE', {
         fontFamily: TEXT_FONT,
-        fontSize: '32px',
-        color: COLOR_CREAM,
+        fontSize: '24px',
+        color: '#ffffff',
       })
       .setOrigin(0.5)
-      .setDepth(10);
+      .setDepth(10001);
+    this.diagObjects = [diagRect, diagText];
 
-    // 副标题「像素风横版跳跃冒险」：标题下方，小一号，无描边
-    const subtitle = this.add
-      .text(CENTER_X, 104, '像素风横版跳跃冒险', {
-        fontFamily: TEXT_FONT,
-        fontSize: '14px',
-        color: COLOR_CREAM,
-      })
-      .setOrigin(0.5)
-      .setDepth(10);
+    // 先铺一层备用背景：防止图片加载前/失败后只剩 Phaser 默认蓝屏。
+    this.addFallbackBackground();
 
-    // 标题入场弹入（scale 0.9→1，Back.easeOut 460ms，alpha 0.6→1）
-    title.setScale(0.9).setAlpha(0.6);
-    this.tweens.add({
-      targets: title,
-      scale: 1,
-      alpha: 1,
-      duration: 460,
-      ease: 'Back.easeOut',
-    });
-    subtitle.setScale(0.9).setAlpha(0.6);
-    this.tweens.add({
-      targets: subtitle,
-      scale: 1,
-      alpha: 1,
-      duration: 460,
-      ease: 'Back.easeOut',
-      delay: 80,
-    });
-    // 副标题轻微浮动（相位错开，避免与弹入冲突）
-    this.tweens.add({
-      targets: subtitle,
-      y: 101,
-      duration: 1600,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-      delay: 600,
-    });
+    // 核心 UI 立即创建（不依赖背景图是否加载成功）。
+    // 用 try/catch 包裹，任何 UI 创建错误都不阻塞进游戏。
+    try {
+      this.createInteractiveUI();
+    } catch (e) {
+      this.logDebug('createInteractiveUI failed', e);
+    }
 
-    // 栗宝呼吸（scaleY 1→1.04，1400ms Sine.InOut yoyo repeat -1）
-    this.tweens.add({
-      targets: mali,
-      scaleY: 1.04,
-      duration: 1400,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-    });
-    // 栗宝眨眼（双眼 scaleY 压扁闪 120ms，每 ~3.2s 一次）
-    this.tweens.add({
-      targets: eyeGroup,
-      scaleY: 0.12,
-      duration: 120,
-      yoyo: true,
-      repeat: -1,
-      repeatDelay: 3080,
-      delay: 3200,
-    });
+    // 背景图异步加载（不阻塞进游戏；失败也有点击区可用）。
+    try {
+      this.loadBackground();
+    } catch (e) {
+      this.logDebug('loadBackground failed', e);
+    }
+  }
 
-    // 开始按钮「▶ 开始游戏」：底部居中，暖橙填充 + 几何描边 + 石灰白文字
-    const btnY = 220;
-    const btn = this.add.container(CENTER_X, btnY).setDepth(20);
-    const btnRect = this.add
-      .rectangle(0, 0, BTN_W, BTN_H, COLOR_WARM_ORANGE, 1)
-      .setStrokeStyle(2, COLOR_OUTLINE, 1);
-    const btnText = this.add
-      .text(0, 0, '▶ 开始游戏', {
-        fontFamily: TEXT_FONT,
-        fontSize: '18px',
-        color: COLOR_CREAM,
-      })
-      .setOrigin(0.5);
-    btn.add([btnRect, btnText]);
-    btn.setSize(BTN_W, BTN_H);
-    btn.setInteractive({ useHandCursor: true });
-    btn.on('pointerdown', () => this.startGame());
-    // 按钮脉冲（scale 1→1.06，700ms）+ 悬停放大 1.08
-    const pulse = this.tweens.add({
-      targets: btn,
-      scale: 1.06,
-      duration: 700,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-    });
-    btn.on('pointerover', () => {
-      pulse.pause();
-      btn.setScale(1.08);
-    });
-    btn.on('pointerout', () => {
-      btn.setScale(1);
-      pulse.restart();
-    });
-
-    // 版本水印（右下角，小字，便于真机/预览确认是否用了最新包）
+  /** 铺一层与背景图主色调接近的备用背景，避免默认蓝屏。 */
+  private addFallbackBackground(): void {
     this.add
-      .text(LOGICAL_W - 6, LOGICAL_H - 6, BUILD_LABEL, {
+      .rectangle(CENTER_X, LOGICAL_H / 2, LOGICAL_W, LOGICAL_H, 0x3a7ca5)
+      .setDepth(-100);
+  }
+
+  /**
+   * 加载背景图并注册为 Phaser 纹理。
+   * 两端都加载包内 title-bg.png（Vite 放 dist/，copy-wechat 放 dist-wechat/ 根目录），
+   * 用原生 Image / wx.createImage 解码，绕开 Phaser Loader 的 XHR（微信端无法 XHR 本地图）。
+   */
+  private loadBackground(): void {
+    const isWechat = this.platform?.env === 'wechat';
+    if (isWechat) {
+      this.loadBackgroundWechat();
+    } else {
+      this.loadBackgroundWeb();
+    }
+  }
+
+  private loadBackgroundWeb(): void {
+    const im = new Image();
+    im.onload = () => this.addBackgroundImage(im);
+    im.onerror = () => this.onBackgroundFailed('web image load failed');
+    im.src = TITLE_BG_PATH;
+  }
+
+  private loadBackgroundWechat(): void {
+    // 优先用 wx.createImage()（微信官方加载包内图的 API，比
+    // new Image() 的 polyfill 更可靠，且返回对象可 drawImage 到 canvas）。
+    const wx = (globalThis as { wx?: {
+      createImage?: () => HTMLImageElement & { onload: unknown; onerror: unknown; src: string };
+    } }).wx;
+    if (wx && typeof wx.createImage === 'function') {
+      const im = wx.createImage();
+      im.onload = () => this.addBackgroundImage(im);
+      im.onerror = () => this.onBackgroundFailed('wx.createImage load failed');
+      im.src = TITLE_BG_PATH;
+    } else {
+      // 回退：new Image()（game.js polyfill 会桥接到 wx.createImage）。
+      const im = new Image();
+      im.onload = () => this.addBackgroundImage(im);
+      im.onerror = () => this.onBackgroundFailed('wechat new Image load failed');
+      im.src = TITLE_BG_PATH;
+    }
+  }
+
+  private addBackgroundImage(source: HTMLImageElement | HTMLCanvasElement): void {
+    if (this.started || this.bgAdded) return;
+    try {
+      // 微信的 Image polyfill 返回的对象可能不是标准 HTMLImageElement，
+      // Phaser textures.addImage 解析会失败/黑屏。统一先画到 canvas，
+      // 再用 textures.addCanvas() 注册，双端都稳。
+      const width = (source as HTMLImageElement).naturalWidth || (source as HTMLImageElement).width;
+      const height = (source as HTMLImageElement).naturalHeight || (source as HTMLImageElement).height;
+      this.logDebug('bg source size', { width, height });
+      if (!width || !height) {
+        this.onBackgroundFailed('bg source has zero size');
+        return;
+      }
+
+      const tex = this.textures.createCanvas(TITLE_BG_KEY, width, height);
+      if (!tex) {
+        this.onBackgroundFailed('createCanvas returned null');
+        return;
+      }
+      const ctx = tex.getContext();
+      ctx.drawImage(source as unknown as CanvasImageSource, 0, 0);
+      tex.refresh();
+
+      this.bgAdded = true;
+      this.add
+        .image(CENTER_X, LOGICAL_H / 2, TITLE_BG_KEY)
+        .setDepth(0)
+        .setDisplaySize(LOGICAL_W, LOGICAL_H);
+      // 背景图成功 → 移除诊断红屏，露出真实背景。
+      this.diagObjects.forEach((o) => o.destroy());
+      this.diagObjects = [];
+    } catch (e) {
+      this.logDebug('addBackgroundImage failed', e);
+      this.onBackgroundFailed('addBackgroundImage exception');
+    }
+  }
+
+  private onBackgroundFailed(_reason: string): void {
+    // 静默失败：保留核心点击区，玩家仍可点击进入游戏。
+    this.logDebug('background failed', _reason);
+  }
+
+  /** 创建虚拟点击区、继续行、键盘事件、BGM 交互。 */
+  private createInteractiveUI(): void {
+    // ═════════════════════════════════════════════════════
+    //  LAYER 1 — 虚拟「开始冒险」点击区（透明，覆盖图中按钮）
+    // ═════════════════════════════════════════════════════
+    const startHit = this.add
+      .rectangle(START_BTN_CX, START_BTN_CY, START_BTN_W, START_BTN_H, 0xffffff, 0)
+      .setDepth(10)
+      .setInteractive({ useHandCursor: true });
+
+    let pressed = false;
+    startHit.on('pointerdown', () => {
+      pressed = true;
+      startHit.setScale(0.97);
+    });
+    startHit.on('pointerup', () => {
+      if (!pressed) return;
+      pressed = false;
+      startHit.setScale(1);
+      this.startGame();
+    });
+    startHit.on('pointerout', () => {
+      pressed = false;
+      startHit.setScale(1);
+    });
+
+    // ═════════════════════════════════════════════════════
+    //  LAYER 2 — CONTINUE LINE（仅存档进度 > 1 关时显示）
+    // ═════════════════════════════════════════════════════
+    let save;
+    try {
+      save = this.platform?.storage ? new SaveManager(this.platform.storage).load() : undefined;
+    } catch (e) {
+      this.logDebug('save load failed', e);
+      save = undefined;
+    }
+    const unlocked = save?.unlockedLevels ?? ['1-1'];
+    const hasProgress = unlocked.length > 1; // 多于默认单关 = 存在进度
+    const continueId = lastUnlockedLevelId(unlocked);
+    const subline = this.add
+      .text(CENTER_X, CONTINUE_CY, hasProgress ? `继续第 ${continueId} 关` : '', {
         fontFamily: TEXT_FONT,
         fontSize: '10px',
         color: COLOR_CREAM,
+        stroke: OUTLINE_STR,
+        strokeThickness: 0.5,
       })
-      .setOrigin(1, 1)
-      .setDepth(100);
+      .setOrigin(0.5)
+      .setDepth(11);
 
-    // ── 键盘 Enter / Space 开始 ──
+    if (hasProgress) {
+      subline.setInteractive({ useHandCursor: true });
+      subline.on('pointerdown', () => this.startGame(continueId));
+      subline.setAlpha(0);
+      if (!this.reduceMotion) {
+        this.tweens.add({ targets: subline, alpha: 0.85, duration: 300, delay: 300 });
+      } else {
+        subline.setAlpha(0.85);
+      }
+    } else {
+      subline.setVisible(false);
+    }
+
+    // ═════════════════════════════════════════════════════
+    //  KEYBOARD — Enter / Space 开始游戏
+    // ═════════════════════════════════════════════════════
     this.input.keyboard?.on('keydown-ENTER', () => this.startGame());
     this.input.keyboard?.on('keydown-SPACE', () => this.startGame());
 
-    // ── S05-4-BGM：首次用户交互后播 menu BGM ──
-    // 解锁（main.ts 首次手势后才 resume）前 playMusic 会 no-op（契约允许）；故注册一次性
-    // pointerdown/keydown 监听，首次真实交互后再播。进入 startGame 会改播 stage（覆盖）。
-    const platform = this.resolvePlatform();
-    if (platform) {
+    // ═════════════════════════════════════════════════════
+    //  S05-4-BGM：首次用户交互后播 menu BGM
+    // ═════════════════════════════════════════════════════
+    if (this.platform) {
       const onFirstInteract = () => {
         if (this.started) return; // 已进入游戏则不回退播 menu
-        platform.audio.playMusic('music:menu');
+        this.platform?.audio.playMusic('music:menu');
       };
       this.input.once('pointerdown', onFirstInteract);
       this.input.keyboard?.once('keydown', onFirstInteract);
@@ -406,12 +306,22 @@ export class TitleScene extends Phaser.Scene {
     return (globalThis as unknown as { __superMaliPlatform?: Platform }).__superMaliPlatform;
   }
 
-  /** 进入 GameScene（关卡 1-1，GameScene 默认加载首关）。防重复触发。 */
-  private startGame(): void {
+  /** 进入 GameScene。默认 1-1；副行传入续关 id。防重复触发。 */
+  private startGame(levelId: string = '1-1'): void {
     if (this.started) return;
     this.started = true;
     // S05-4-BGM：进关改播 stage（AudioPort 换名先停 menu 后起 stage，无双循环叠加）。
-    this.resolvePlatform()?.audio.playMusic('music:stage');
-    this.scene.start('Game');
+    this.platform?.audio.playMusic('music:stage');
+    this.scene.start('Game', { startLevel: levelId });
+  }
+
+  /** 调试日志：微信真机可开 vConsole 查看；生产环境默认静默。 */
+  private logDebug(label: string, info?: unknown): void {
+    try {
+      // eslint-disable-next-line no-console
+      console.warn(`[TitleScene] ${label}:`, info);
+    } catch (_) {
+      // ignore
+    }
   }
 }

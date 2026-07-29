@@ -17,3 +17,4 @@ dist-wechat/
 # Local screenshots / debug captures (not project assets)
 screenshot-*.png
 screenshot-new-*.png
+.gstack/

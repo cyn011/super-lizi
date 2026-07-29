@@ -14,6 +14,7 @@ export default defineConfig({
     globals: true,
     fileParallelism: false,
     sequence: { hooks: 'list' },
+    setupFiles: ['tests/setup/mock-phaser-env.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/core/**'],

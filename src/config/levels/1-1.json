@@ -534,23 +534,57 @@
       "tx": 23,
       "ty": 4,
       "kind": "solid"
+    },
+    {
+      "tx": 22,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 23,
+      "ty": 5,
+      "kind": "oneway"
     }
   ],
   "entities": [
     {
+      "type": "coin",
+      "x": 120,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 170,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 220,
+      "y": 200
+    },
+    {
+      "type": "chestnut",
+      "x": 270,
+      "y": 200,
+      "params": {
+        "amount": 5
+      }
+    },
+    {
+      "type": "coin",
+      "x": 480,
+      "y": 128
+    },
+    {
       "type": "ci_li",
+      "x": 620,
+      "y": 200
+    },
+    {
+      "type": "seed",
       "x": 320,
-      "y": 200
-    },
-    {
-      "type": "ci_li",
-      "x": 560,
-      "y": 200
-    },
-    {
-      "type": "chong_feng",
-      "x": 880,
-      "y": 200
+      "y": 200,
+      "seedId": "seed_01"
     },
     {
       "type": "du_fu",
@@ -559,28 +593,30 @@
     },
     {
       "type": "coin",
-      "x": 200,
+      "x": 720,
+      "y": 90
+    },
+    {
+      "type": "seed",
+      "x": 560,
+      "y": 200,
+      "seedId": "seed_02"
+    },
+    {
+      "type": "coin",
+      "x": 960,
+      "y": 162
+    },
+    {
+      "type": "chong_feng",
+      "x": 1080,
       "y": 200
     },
     {
-      "type": "coin",
-      "x": 400,
-      "y": 200
-    },
-    {
-      "type": "coin",
-      "x": 480,
-      "y": 200
-    },
-    {
-      "type": "coin",
-      "x": 620,
-      "y": 150
-    },
-    {
-      "type": "coin",
-      "x": 760,
-      "y": 96
+      "type": "seed",
+      "x": 900,
+      "y": 200,
+      "seedId": "seed_03"
     },
     {
       "type": "coin",
@@ -589,49 +625,8 @@
     },
     {
       "type": "coin",
-      "x": 1080,
+      "x": 1120,
       "y": 200
-    },
-    {
-      "type": "seed",
-      "x": 380,
-      "y": 200,
-      "seedId": "seed_01"
-    },
-    {
-      "type": "seed",
-      "x": 1010,
-      "y": 200,
-      "seedId": "seed_02"
-    },
-    {
-      "type": "seed",
-      "x": 600,
-      "y": 200,
-      "seedId": "seed_03"
-    },
-    {
-      "type": "seed",
-      "x": 920,
-      "y": 200,
-      "seedId": "seed_04"
-    },
-    {
-      "type": "seed",
-      "x": 1100,
-      "y": 200,
-      "seedId": "seed_05"
-    },
-    {
-      "type": "seed",
-      "x": 1150,
-      "y": 200,
-      "seedId": "seed_06"
-    },
-    {
-      "type": "checkpoint",
-      "x": 960,
-      "y": 176
     },
     {
       "type": "chestnut",
@@ -656,6 +651,11 @@
       "params": {
         "amount": 5
       }
+    },
+    {
+      "type": "checkpoint",
+      "x": 960,
+      "y": 176
     }
   ],
   "props": [],

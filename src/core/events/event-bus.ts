@@ -61,6 +61,8 @@ export const ON_FORM_CHANGED = 'ON_FORM_CHANGED';
 export const ON_LEVEL_COMPLETE_UI = 'ON_LEVEL_COMPLETE_UI';
 /** 进入下一关（结算页「下一关」按钮触发）：UI 发、game-scene 订阅后加载 nextLevel。 */
 export const ON_NEXT_LEVEL = 'ON_NEXT_LEVEL';
+/** 返回标题（结算页「关卡选择」按钮触发）：UI 发、game-scene 订阅后切回 TitleScene。 */
+export const ON_RETURN_TITLE = 'ON_RETURN_TITLE';
 
 export type EventName = string;
 export type EventHandler = (payload?: unknown) => void;

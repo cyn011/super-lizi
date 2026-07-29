@@ -1,16 +1,17 @@
 /**
- * ui/touch-buttons — 微信触屏虚拟控件可视化（参考用户截图药丸长条 + 大圆钮风格）。
+ * ui/touch-buttons — 微信触屏虚拟控件可视化。
  *
- * 设计要点：
- * - 左下：左/右合并为一个"方向药丸"长条，中间竖线分隔，视觉连续、命中区分独立。
- * - 右下：跳（暖黄大圆 + 白色上三角）、扔栗子（暖橙大圆 + 白色栗子嫩芽）。
- * - 右上：暂停小圆钮（白边 + 浅色磨砂玻璃底 + 深褐双竖线）。
- * - 全部 Phaser Graphics 实时绘制（fillRoundedRect / strokeRoundedRect / fillTriangle 等），**零位图资产**（ADR-004）。
- * - 命中区/坐标/半径仍来自 inputConfig.wechat.buttons，与 wechat-touch 命中公式一致，不破坏平台输入层。
+ * 设计风格（方案 G · 深底浅边）：
+ * - 参考用户截图：深棕色按钮底板 + 奶油米色粗描边 + 奶油色图标。
+ * - 立体感来自内倒角：顶部/左侧浅高光 + 底部/右侧深阴影，外圈一道明显的浅米色描边。
+ * - 左/右：横向圆角矩形（圆角较小），内嵌用户提供胖箭头 PNG（左键水平翻转）。
+ * - 动作：小圆钮，内嵌用户提供的栗子攻击星形 PNG。
+ * - 跳跃：大圆钮，内嵌用户提供的上箭头 PNG。
+ * - 暂停：右上深底圆钮，内嵌双竖线（仍用 Graphics 实时绘制）。
  *
- * 视觉风格（方案 E · 更淡玻璃）：静止态低 alpha（方向 0.20 / 跳·扔 0.30 / 暂停 0.18）+ 1px 白细边，降低抢眼度；
- * 填充色仍取自 11 色锁色板（暖黄 #FFD23F / 暖橙 #F2933C）或中性白，方向键中性白低权重；
- * 按下时缩回 + 描边切暖黄 #FFD23F + 线宽 +1（保留方案 A 已验证反馈），整体轻盈透气；无内圈高光、无投影。
+ * 四个控制按钮优先使用 PNG 纹理（'ui-arrow-btn' / 'ui-action-btn' / 'ui-jump-btn'），
+ * 加载失败则降级为代码绘制（零位图资产，ADR-004）。
+ * 命中区/坐标/半径仍来自 inputConfig.wechat.buttons，与 wechat-touch 命中公式一致。
  */
 import Phaser from 'phaser';
 import { inputConfig } from '../core/config';
@@ -40,25 +41,28 @@ export function resolveButtonId(signalId: SignalId): ButtonId | null {
   return null;
 }
 
-// ---- 颜色（全部取自 11 色锁色板；白为通用 UI 中性色，不计入新增 hue）----
-/** 通用描边 / 图标（中性白） */
-const COLOR_OUTLINE = 0xffffff;
-/** 按下态描边：暖黄 #FFD23F（锁色板 #4）✅ 替代原 off-lock #B5763E */
-const COLOR_PRESSED_OUTLINE = 0xffd23f;
-/** 图标色：白（中性） */
-const COLOR_ICON = 0xffffff;
-/** 暂停双竖线：描边 #2A1A12（锁色板 #5），浅底深图标 */
-const COLOR_PAUSE_ICON = 0x2a1a12;
-/** 暂停圆底填充：中性白（浅色磨砂玻璃，替代原近黑 #3E2723） */
-const COLOR_FILL_PAUSE = 0xffffff;
-/** 填充（全部锁色板 / 中性）。方向键回归中性白（呼应变体 B「方向=白低权重」） */
-const COLOR_FILL_DIRECTION = 0xffffff; // 中性白（原 #DC4438 离板 → 移除）
-const COLOR_FILL_ACTION = 0xffd23f;    // 暖黄 #FFD23F（锁色板 #4，原 #F2C83C 离板 → 修正）
-const COLOR_FILL_THROW = 0xf2933c;     // 暖橙 #F2933C（锁色板 #3，原 #AC703B 离板 → 修正）
+// ---- 深底浅边调色板（参考用户截图：深棕底 + 奶油边/图标）----
+/** 深棕主底板：#5D4037 */
+export const BASE_DARK = 0x5d4037;
+/** 略浅内部色（用于内倒角层次）：#6D4C41 */
+export const BASE_MID = 0x6d4c41;
+/** 浅米色外描边 / 暂停图标：#F5DEB3 */
+export const OUTLINE_LIGHT = 0xf5deb3;
+/** 图标主色：奶油色 #FFF8DC */
+export const ICON_CREAM = 0xfff8dc;
+/** 图标顶部高光：#FFFFFF（淡） */
+export const ICON_HIGHLIGHT = 0xffffff;
+/** 图标底部阴影：#D7CCC8 */
+export const ICON_SHADOW = 0xd7ccc8;
+/** 按钮顶部高光：浅米色 #EFEBE9 */
+export const HIGHLIGHT = 0xefebe9;
+/** 按钮底部阴影：深棕 #3E2723 */
+export const SHADOW_DARK = 0x3e2723;
+/** 按下态描边：暖黄 #FFD54F */
+export const PRESSED_OUTLINE = 0xffd54f;
 
-/** 暂停圆底 alpha（方案 E · 更淡玻璃：默认 0.18 / 按下 0.28；lineWidth 1px；PauseIcon 当前无按压态，静态用 PAUSE_ALPHA_DEFAULT） */
-const PAUSE_ALPHA_DEFAULT = 0.18;
-const PAUSE_ALPHA_PRESSED = 0.28;
+/** 底部阴影向下偏移像素。 */
+const SHADOW_OFFSET = 3;
 
 // ---- 视觉规格（导出给测试回归）----
 export interface ButtonVisualSpec {
@@ -67,54 +71,50 @@ export interface ButtonVisualSpec {
   fillAlphaPressed: number;
   lineWidthDefault: number;
   lineWidthPressed: number;
-  lineAlphaDefault: number;
-  lineAlphaPressed: number;
+  lineColorDefault: number;
+  lineColorPressed: number;
   pressedScale: number;
 }
 
 export const BUTTON_VISUAL_SPEC: Record<ButtonId, ButtonVisualSpec> = {
-  // 方向药丸（左）—— 方案 E：中性白低权重，静止 0.20/1px，按下填 0.30 + 描边暖黄(线宽 +1)
   left: {
-    fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.20,
-    fillAlphaPressed: 0.30,
-    lineWidthDefault: 1,
+    fillColor: BASE_DARK,
+    fillAlphaDefault: 1.0,
+    fillAlphaPressed: 1.0,
+    lineWidthDefault: 2,
     lineWidthPressed: 2,
-    lineAlphaDefault: 1.0,
-    lineAlphaPressed: 1.0,
-    pressedScale: 0.97,
+    lineColorDefault: OUTLINE_LIGHT,
+    lineColorPressed: PRESSED_OUTLINE,
+    pressedScale: 0.96,
   },
-  // 方向药丸（右）—— 与 left 同
   right: {
-    fillColor: COLOR_FILL_DIRECTION,
-    fillAlphaDefault: 0.20,
-    fillAlphaPressed: 0.30,
-    lineWidthDefault: 1,
+    fillColor: BASE_DARK,
+    fillAlphaDefault: 1.0,
+    fillAlphaPressed: 1.0,
+    lineWidthDefault: 2,
     lineWidthPressed: 2,
-    lineAlphaDefault: 1.0,
-    lineAlphaPressed: 1.0,
-    pressedScale: 0.97,
+    lineColorDefault: OUTLINE_LIGHT,
+    lineColorPressed: PRESSED_OUTLINE,
+    pressedScale: 0.96,
   },
-  // 跳圆钮 —— 暖黄 #FFD23F（锁 #4），方案 E：静止 0.30/1px，按下填 0.42 + 描边暖黄(线宽 +1)
   jump: {
-    fillColor: COLOR_FILL_ACTION,
-    fillAlphaDefault: 0.30,
-    fillAlphaPressed: 0.42,
-    lineWidthDefault: 1,
+    fillColor: BASE_DARK,
+    fillAlphaDefault: 1.0,
+    fillAlphaPressed: 1.0,
+    lineWidthDefault: 2,
     lineWidthPressed: 2,
-    lineAlphaDefault: 1.0,
-    lineAlphaPressed: 1.0,
+    lineColorDefault: OUTLINE_LIGHT,
+    lineColorPressed: PRESSED_OUTLINE,
     pressedScale: 0.92,
   },
-  // 扔栗圆钮 —— 暖橙 #F2933C（锁 #3），方案 E：静止 0.30/1px，按下填 0.42 + 描边暖黄(线宽 +1)
   action: {
-    fillColor: COLOR_FILL_THROW,
-    fillAlphaDefault: 0.30,
-    fillAlphaPressed: 0.42,
-    lineWidthDefault: 1,
+    fillColor: BASE_DARK,
+    fillAlphaDefault: 1.0,
+    fillAlphaPressed: 1.0,
+    lineWidthDefault: 2,
     lineWidthPressed: 2,
-    lineAlphaDefault: 1.0,
-    lineAlphaPressed: 1.0,
+    lineColorDefault: OUTLINE_LIGHT,
+    lineColorPressed: PRESSED_OUTLINE,
     pressedScale: 0.92,
   },
 };
@@ -122,174 +122,330 @@ export const BUTTON_VISUAL_SPEC: Record<ButtonId, ButtonVisualSpec> = {
 /** 弹起弹性回弹 tween 参数。 */
 const RELEASE_TWEEN_MS = 200;
 const RELEASE_TWEEN_EASE = 'Back.Out';
-/** 虚线圆周采样段数（48 = 2 实 1 空循环）。 */
-const DASH_SEGMENTS = 48;
 
-// ---- 几何 ----
-interface BarGeom {
-  cx: number;
-  cy: number;
-  width: number;
-  height: number;
-  radius: number;
+/** 图片纹理键：用户提供的 PNG 按钮素材。 */
+const ARROW_TEXTURE_KEY = 'ui-arrow-btn';
+const ACTION_TEXTURE_KEY = 'ui-action-btn';
+const JUMP_TEXTURE_KEY = 'ui-jump-btn';
+
+/** 四钮公共控制接口（DarkRect / DarkCircle / ImageButton 统一实现）。 */
+interface ButtonControl {
+  readonly id: ButtonId;
+  setPressed(pressed: boolean): void;
+  setDisabled(disabled: boolean): void;
+  destroy(): void;
 }
 
+// ---- 几何 ----
+interface RoundRectGeom {
+  w: number;
+  h: number;
+  radius: number;
+}
 interface CircleGeom {
-  cx: number;
-  cy: number;
   r: number;
 }
 
-// ---- 辅助：绘制虚线圆 ----
-function drawDashedCircle(
-  g: Phaser.GameObjects.Graphics,
-  cx: number,
-  cy: number,
-  r: number,
-  color: number,
-  alpha: number,
-  lineWidth: number,
-): void {
-  g.lineStyle(lineWidth, color, alpha);
-  const step = (Math.PI * 2) / DASH_SEGMENTS;
-  for (let i = 0; i < DASH_SEGMENTS; i += 3) {
-    const a1 = i * step;
-    const a2 = (i + 2) * step;
-    const x1 = cx + Math.cos(a1) * r;
-    const y1 = cy + Math.sin(a1) * r;
-    const x2 = cx + Math.cos(a2) * r;
-    const y2 = cy + Math.sin(a2) * r;
-    g.lineBetween(x1, y1, x2, y2);
-  }
-}
+type IconPainter = (g: Phaser.GameObjects.Graphics, size: number) => void;
 
-// ---- 左/右方向药丸 ----
-class TouchBar {
+// ---- 图片按钮（四个控制钮通用；方向键可为矩形，动作/跳跃为圆钮）----
+class ImageButton implements ButtonControl {
+  readonly id: ButtonId;
   private readonly container: Phaser.GameObjects.Container;
-  private readonly g: Phaser.GameObjects.Graphics;
+  private readonly image: Phaser.GameObjects.Image;
   private readonly scene: Phaser.Scene;
-  private readonly geom: BarGeom;
-  private readonly spec = BUTTON_VISUAL_SPEC.left;
+  private readonly spec: ButtonVisualSpec;
 
-  private pressedLeft = false;
-  private pressedRight = false;
+  private pressed = false;
   private disabled = false;
 
-  constructor(scene: Phaser.Scene, left: CircleGeom, right: CircleGeom) {
+  constructor(
+    scene: Phaser.Scene,
+    id: ButtonId,
+    cx: number,
+    cy: number,
+    textureKey: string,
+    displayW: number,
+    displayH: number,
+    flipX = false,
+  ) {
+    this.id = id;
     this.scene = scene;
-    // 药丸覆盖左右两个命中圆的外接矩形，半径取二者较小者保证两端圆润一致。
-    const radius = Math.min(left.r, right.r);
-    const width = right.cx + right.r - (left.cx - left.r);
-    const height = radius * 2;
-    const cx = (left.cx + right.cx) / 2;
-    const cy = (left.cy + right.cy) / 2;
-    this.geom = { cx, cy, width, height, radius };
+    this.spec = BUTTON_VISUAL_SPEC[id];
 
     this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
-    this.g = scene.add.graphics().setScrollFactor(0);
-    this.container.add(this.g);
-    this.redraw();
+    this.image = scene.add.image(0, 0, textureKey).setScrollFactor(0);
+    // 像素风按钮：关闭平滑过滤，保持锐利（Web + 微信两端）
+    this.image.setTexture(textureKey);
+    this.image.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.image.setDisplaySize(displayW, displayH);
+    this.image.setFlipX(flipX);
+    this.container.add(this.image);
   }
 
-  setPressed(id: 'left' | 'right', pressed: boolean): void {
-    const prevAny = this.pressedLeft || this.pressedRight;
-    if (id === 'left') this.pressedLeft = pressed;
-    else this.pressedRight = pressed;
-    const nowAny = this.pressedLeft || this.pressedRight;
-    if (prevAny !== nowAny) {
-      this.scene.tweens.killTweensOf(this.container);
-      if (nowAny) {
-        this.container.setScale(this.spec.pressedScale);
-      } else {
-        this.scene.tweens.add({
-          targets: this.container,
-          scale: 1.0,
-          duration: RELEASE_TWEEN_MS,
-          ease: RELEASE_TWEEN_EASE,
-        });
-      }
+  setPressed(pressed: boolean): void {
+    if (this.pressed === pressed) return;
+    this.pressed = pressed;
+    this.scene.tweens.killTweensOf(this.container);
+    if (pressed) {
+      this.container.setScale(this.spec.pressedScale);
+      this.image.setTint(0xdddddd);
+    } else {
+      this.scene.tweens.add({
+        targets: this.container,
+        scale: 1.0,
+        duration: RELEASE_TWEEN_MS,
+        ease: RELEASE_TWEEN_EASE,
+      });
+      this.image.clearTint();
     }
-    this.redraw();
   }
 
   setDisabled(disabled: boolean): void {
     if (this.disabled === disabled) return;
     this.disabled = disabled;
-    this.redraw();
+    this.image.setAlpha(disabled ? 0.5 : 1.0);
   }
 
   destroy(): void {
     this.scene.tweens.killTweensOf(this.container);
     this.container.destroy();
   }
-
-  private redraw(): void {
-    const { width: w, height: h, radius: r } = this.geom;
-    const g = this.g;
-    g.clear();
-
-    const anyPressed = this.pressedLeft || this.pressedRight;
-    const lineWidth = anyPressed ? this.spec.lineWidthPressed : this.spec.lineWidthDefault;
-    const lineAlpha = (anyPressed ? this.spec.lineAlphaPressed : this.spec.lineAlphaDefault) * (this.disabled ? 0.6 : 1);
-    const lineColor = anyPressed ? COLOR_PRESSED_OUTLINE : COLOR_OUTLINE;
-    const baseAlpha = this.disabled ? 0.3 : 1;
-
-    const x = -w / 2;
-    const y = -h / 2;
-    const hw = w / 2;
-
-    // 左半
-    const leftAlpha = (this.pressedLeft ? this.spec.fillAlphaPressed : this.spec.fillAlphaDefault) * baseAlpha;
-    g.fillStyle(this.spec.fillColor, leftAlpha);
-    g.fillRoundedRect(x, y, hw, h, { tl: r, tr: 0, bl: r, br: 0 });
-
-    // 右半
-    const rightAlpha = (this.pressedRight ? this.spec.fillAlphaPressed : this.spec.fillAlphaDefault) * baseAlpha;
-    g.fillStyle(this.spec.fillColor, rightAlpha);
-    g.fillRoundedRect(x + hw, y, hw, h, { tl: 0, tr: r, bl: 0, br: r });
-
-    // 外描边
-    g.lineStyle(lineWidth, lineColor, lineAlpha);
-    g.strokeRoundedRect(x, y, w, h, r);
-
-    // 中间分隔线
-    g.lineStyle(2, COLOR_OUTLINE, 0.6 * baseAlpha);
-    g.lineBetween(0, -h / 2 + r * 0.3, 0, h / 2 - r * 0.3);
-
-    // 左/右箭头
-    g.fillStyle(COLOR_ICON, this.disabled ? 0.5 : 1.0);
-    const arrowW = h * 0.35;
-    const arrowH = h * 0.45;
-    // 左箭头
-    const lx = -hw / 2;
-    g.fillTriangle(lx - arrowW / 2, 0, lx + arrowW / 2, -arrowH / 2, lx + arrowW / 2, arrowH / 2);
-    g.fillRect(lx - arrowW / 2 - 3, -2, 3, 4);
-    // 右箭头
-    const rx = hw / 2;
-    g.fillTriangle(rx + arrowW / 2, 0, rx - arrowW / 2, -arrowH / 2, rx - arrowW / 2, arrowH / 2);
-    g.fillRect(rx + arrowW / 2, -2, 3, 4);
-  }
 }
 
-// ---- 跳 / 扔栗子 大圆钮 ----
-class TouchCircle {
+// ---- 绘制：深底圆角矩形按钮（以 (0,0) 为中心）----
+function paintDarkRoundRect(
+  g: Phaser.GameObjects.Graphics,
+  w: number,
+  h: number,
+  radius: number,
+  pressed: boolean,
+  disabled: boolean,
+  icon: IconPainter,
+): void {
+  const x = -w / 2;
+  const y = -h / 2;
+  const baseA = disabled ? 0.5 : 1.0;
+  const outlineColor = disabled ? OUTLINE_LIGHT : pressed ? PRESSED_OUTLINE : OUTLINE_LIGHT;
+
+  // 底部阴影（按下态消失，整体下沉）
+  if (!pressed && !disabled) {
+    g.fillStyle(SHADOW_DARK, 0.9);
+    g.fillRoundedRect(x + 1, y + SHADOW_OFFSET, w, h, radius);
+  }
+
+  // 主体深底
+  g.fillStyle(BASE_DARK, baseA);
+  g.fillRoundedRect(x, y, w, h, radius);
+
+  // 内层略浅倒角（左上/顶部受光）
+  g.fillStyle(BASE_MID, (disabled ? 0.35 : pressed ? 0.45 : 0.55) * baseA);
+  g.fillRoundedRect(x + 3, y + 3, w - 6, h * 0.45, {
+    tl: Math.max(1, radius - 2),
+    tr: Math.max(1, radius - 2),
+    bl: 0,
+    br: 0,
+  });
+
+  // 顶部高光条（淡米色，强化倒角）
+  g.fillStyle(HIGHLIGHT, (disabled ? 0.25 : pressed ? 0.3 : 0.45) * baseA);
+  g.fillRoundedRect(x + 4, y + 4, w - 8, Math.min(5, h * 0.18), {
+    tl: Math.max(1, radius - 3),
+    tr: Math.max(1, radius - 3),
+    bl: 0,
+    br: 0,
+  });
+
+  // 外描边（浅米色，细；按下暖黄）
+  g.lineStyle(2, outlineColor, disabled ? 0.45 : 1.0);
+  g.strokeRoundedRect(x, y, w, h, radius);
+
+  // 图标（按下时上移 1px）
+  g.translateCanvas(0, pressed ? -1 : 0);
+  icon(g, Math.min(w, h));
+  g.translateCanvas(0, pressed ? 1 : 0);
+}
+
+// ---- 绘制：深底圆钮（以 (0,0) 为中心）----
+function paintDarkCircle(
+  g: Phaser.GameObjects.Graphics,
+  r: number,
+  pressed: boolean,
+  disabled: boolean,
+  icon: IconPainter,
+): void {
+  const baseA = disabled ? 0.5 : 1.0;
+  const outlineColor = disabled ? OUTLINE_LIGHT : pressed ? PRESSED_OUTLINE : OUTLINE_LIGHT;
+
+  // 底部阴影
+  if (!pressed && !disabled) {
+    g.fillStyle(SHADOW_DARK, 0.9);
+    g.fillCircle(0, SHADOW_OFFSET, r);
+  }
+
+  // 主体深底
+  g.fillStyle(BASE_DARK, baseA);
+  g.fillCircle(0, 0, r);
+
+  // 内层略浅倒角（左上受光）
+  g.fillStyle(BASE_MID, (disabled ? 0.3 : pressed ? 0.4 : 0.5) * baseA);
+  g.fillCircle(-r * 0.15, -r * 0.25, r * 0.62);
+
+  // 顶部高光小圆
+  g.fillStyle(HIGHLIGHT, (disabled ? 0.2 : pressed ? 0.25 : 0.4) * baseA);
+  g.fillCircle(-r * 0.1, -r * 0.35, r * 0.35);
+
+  // 外描边
+  g.lineStyle(2, outlineColor, disabled ? 0.45 : 1.0);
+  g.strokeCircle(0, 0, r);
+
+  // 图标（按下上移 1px）
+  g.translateCanvas(0, pressed ? -1 : 0);
+  icon(g, r * 1.9);
+  g.translateCanvas(0, pressed ? 1 : 0);
+}
+
+// ---- 图标绘制 ----
+
+/**
+ * 圆润粗箭头（参考用户截图）：深棕描边 + 奶油填充 + 顶部高光 + 底部阴影。
+ * 箭头由粗矩形杆 + 圆钝三角头组成，整体感觉厚重可爱。
+ */
+function drawRoundArrow(g: Phaser.GameObjects.Graphics, size: number, dir: 'left' | 'right' | 'up'): void {
+  const len = size * 0.80;
+  const headW = size * 0.54;
+  const headL = size * 0.40;
+  const shaftW = size * 0.28;
+
+  // 右向箭头基础坐标（中心在原点，箭头朝右）
+  const shaftL = len - headL;
+  const shaft = [
+    { x: -len / 2, y: -shaftW / 2 },
+    { x: shaftL - len / 2, y: -shaftW / 2 },
+    { x: shaftL - len / 2, y: -headW / 2 },
+    { x: len / 2, y: 0 },
+    { x: shaftL - len / 2, y: headW / 2 },
+    { x: shaftL - len / 2, y: shaftW / 2 },
+    { x: -len / 2, y: shaftW / 2 },
+  ];
+
+  let pts = shaft;
+  if (dir === 'left') {
+    pts = pts.map((p) => ({ x: -p.x, y: p.y }));
+  } else if (dir === 'up') {
+    pts = pts.map((p) => ({ x: -p.y, y: -p.x }));
+  }
+
+  // 阴影偏移
+  const shadowPts = pts.map((p) => ({ x: p.x + 1, y: p.y + 1 }));
+
+  // 外描边阴影
+  g.fillStyle(SHADOW_DARK, 0.6);
+  drawPoly(g, shadowPts);
+
+  // 主体填充（奶油色）
+  g.fillStyle(ICON_CREAM, 1);
+  drawPoly(g, pts);
+
+  // 顶部高光（让箭头有倒角受光感）
+  g.fillStyle(ICON_HIGHLIGHT, 0.45);
+  const hi = dir === 'left'
+    ? pts.map((p) => ({ x: p.x + 1.5, y: p.y - 1.5 }))
+    : dir === 'up'
+      ? pts.map((p) => ({ x: p.x + 1.5, y: p.y - 1.5 }))
+      : pts.map((p) => ({ x: p.x - 1.5, y: p.y - 1.5 }));
+  // 只保留上半部分近似：用 slightly smaller polygon 做高光 mask 太复杂，直接画一个覆盖上半的高光条
+  g.fillStyle(ICON_HIGHLIGHT, 0.35);
+  if (dir === 'left' || dir === 'right') {
+    const y0 = -shaftW * 0.35;
+    g.fillRect(-len * 0.35, y0, len * 0.55, Math.max(2, shaftW * 0.22));
+  } else {
+    const x0 = -shaftW * 0.35;
+    g.fillRect(x0, -len * 0.35, Math.max(2, shaftW * 0.22), len * 0.55);
+  }
+
+  // 深棕细描边
+  g.lineStyle(1, SHADOW_DARK, 0.85);
+  g.strokePoints(pts, true, true);
+}
+
+/** 绘制钝角多边形箭头（不用贝塞尔，避免 Phaser Graphics 类型缺少 quadraticCurveTo）。 */
+function drawPoly(g: Phaser.GameObjects.Graphics, pts: { x: number; y: number }[]): void {
+  g.beginPath();
+  g.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    g.lineTo(pts[i].x, pts[i].y);
+  }
+  g.closePath();
+  g.fillPath();
+}
+
+function drawLeftArrow(g: Phaser.GameObjects.Graphics, size: number): void {
+  drawRoundArrow(g, size, 'left');
+}
+function drawRightArrow(g: Phaser.GameObjects.Graphics, size: number): void {
+  drawRoundArrow(g, size, 'right');
+}
+function drawJumpArrow(g: Phaser.GameObjects.Graphics, size: number): void {
+  drawRoundArrow(g, size, 'up');
+}
+
+/** 八角闪光星（动作键：呼应"种子精灵/收集"星徽）。 */
+function drawStar(g: Phaser.GameObjects.Graphics, size: number): void {
+  const outer = size * 0.32;
+  const inner = size * 0.14;
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI * 2 * i) / 8 - Math.PI / 2;
+    const rad = i % 2 === 0 ? outer : inner;
+    pts.push({ x: Math.cos(a) * rad, y: Math.sin(a) * rad });
+  }
+
+  // 阴影
+  g.fillStyle(SHADOW_DARK, 0.5);
+  g.fillPoints(pts.map((p) => ({ x: p.x + 1, y: p.y + 1 })), true, true);
+
+  // 主体
+  g.fillStyle(ICON_CREAM, 1);
+  g.fillPoints(pts, true, true);
+
+  // 中心高光
+  g.fillStyle(ICON_HIGHLIGHT, 0.5);
+  g.fillCircle(0, -2, size * 0.08);
+
+  // 描边
+  g.lineStyle(1, SHADOW_DARK, 0.85);
+  g.strokePoints(pts, true, true);
+}
+
+// ---- 深底圆角矩形按钮（方向左/右）----
+class DarkRect implements ButtonControl {
   readonly id: ButtonId;
   private readonly container: Phaser.GameObjects.Container;
   private readonly g: Phaser.GameObjects.Graphics;
   private readonly scene: Phaser.Scene;
-  private readonly geom: CircleGeom;
+  private readonly geom: RoundRectGeom;
   private readonly spec: ButtonVisualSpec;
+  private readonly icon: IconPainter;
 
   private pressed = false;
   private disabled = false;
 
-  constructor(scene: Phaser.Scene, id: 'jump' | 'action', geom: CircleGeom) {
+  constructor(
+    scene: Phaser.Scene,
+    id: ButtonId,
+    geom: RoundRectGeom,
+    cx: number,
+    cy: number,
+    icon: IconPainter,
+  ) {
     this.scene = scene;
     this.id = id;
     this.geom = geom;
     this.spec = BUTTON_VISUAL_SPEC[id];
+    this.icon = icon;
 
-    this.container = scene.add.container(geom.cx, geom.cy).setDepth(1000).setScrollFactor(0);
+    this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
     this.g = scene.add.graphics().setScrollFactor(0);
     this.container.add(this.g);
     this.redraw();
@@ -324,77 +480,113 @@ class TouchCircle {
   }
 
   private redraw(): void {
-    const { r } = this.geom;
-    const g = this.g;
-    const spec = this.spec;
-    g.clear();
-
-    const fillAlpha = (this.pressed ? spec.fillAlphaPressed : spec.fillAlphaDefault) * (this.disabled ? 0.6 : 1);
-    const lineWidth = this.pressed ? spec.lineWidthPressed : spec.lineWidthDefault;
-    const lineAlpha = (this.pressed ? spec.lineAlphaPressed : spec.lineAlphaDefault) * (this.disabled ? 0.6 : 1);
-    const lineColor = this.pressed ? COLOR_PRESSED_OUTLINE : COLOR_OUTLINE;
-
-    // 填充圆
-    g.fillStyle(spec.fillColor, fillAlpha);
-    g.fillCircle(0, 0, r);
-
-    // 描边（disabled 改虚线）
-    if (this.disabled) {
-      drawDashedCircle(g, 0, 0, r, lineColor, lineAlpha * 0.6, lineWidth);
-    } else {
-      g.lineStyle(lineWidth, lineColor, lineAlpha);
-      g.strokeCircle(0, 0, r);
-    }
-
-    // 图标
-    g.fillStyle(COLOR_ICON, this.disabled ? 0.6 : 1.0);
-    this.drawIcon(g, r);
-  }
-
-  private drawIcon(g: Phaser.GameObjects.Graphics, r: number): void {
-    if (this.id === 'jump') {
-      // 上三角（箭头）+ 底部横线
-      const h = r * 0.55;
-      const w = r * 0.6;
-      const t = r * 0.18;
-      g.fillTriangle(0, -h / 2 - 2, -w / 2, h / 2 - 2, w / 2, h / 2 - 2);
-      g.fillRect(-w / 2 - 2, h / 2, w + 4, 3);
-      // 加一条小横线表示"地面"
-      g.fillStyle(COLOR_ICON, 0.6);
-      g.fillRect(-w / 2 - 4, h / 2 + 4, w + 8, 2);
-    } else {
-      // 栗子：圆身 + 顶部嫩芽（呼应栗宝）
-      const bodyR = r * 0.35;
-      g.fillCircle(0, r * 0.1, bodyR);
-      // 栗身顶部小缺口
-      g.fillStyle(this.spec.fillColor, 1.0);
-      g.fillCircle(0, -r * 0.28, r * 0.12);
-      // 重新画图标色嫩芽
-      g.fillStyle(COLOR_ICON, 1.0);
-      g.fillTriangle(-r * 0.12, -r * 0.22, -r * 0.22, -r * 0.45, 0, -r * 0.28);
-      g.fillTriangle(r * 0.12, -r * 0.22, r * 0.22, -r * 0.45, 0, -r * 0.28);
-    }
+    this.g.clear();
+    paintDarkRoundRect(
+      this.g,
+      this.geom.w,
+      this.geom.h,
+      this.geom.radius,
+      this.pressed,
+      this.disabled,
+      this.icon,
+    );
   }
 }
 
-// ---- 暂停小圆钮 ----
+// ---- 深底圆钮（跳/动作）----
+class DarkCircle implements ButtonControl {
+  readonly id: ButtonId;
+  private readonly container: Phaser.GameObjects.Container;
+  private readonly g: Phaser.GameObjects.Graphics;
+  private readonly scene: Phaser.Scene;
+  private readonly geom: CircleGeom;
+  private readonly spec: ButtonVisualSpec;
+  private readonly icon: IconPainter;
+
+  private pressed = false;
+  private disabled = false;
+
+  constructor(
+    scene: Phaser.Scene,
+    id: ButtonId,
+    geom: CircleGeom,
+    cx: number,
+    cy: number,
+    icon: IconPainter,
+  ) {
+    this.scene = scene;
+    this.id = id;
+    this.geom = geom;
+    this.spec = BUTTON_VISUAL_SPEC[id];
+    this.icon = icon;
+
+    this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
+    this.g = scene.add.graphics().setScrollFactor(0);
+    this.container.add(this.g);
+    this.redraw();
+  }
+
+  setPressed(pressed: boolean): void {
+    if (this.pressed === pressed) return;
+    this.pressed = pressed;
+    this.scene.tweens.killTweensOf(this.container);
+    if (pressed) {
+      this.container.setScale(this.spec.pressedScale);
+    } else {
+      this.scene.tweens.add({
+        targets: this.container,
+        scale: 1.0,
+        duration: RELEASE_TWEEN_MS,
+        ease: RELEASE_TWEEN_EASE,
+      });
+    }
+    this.redraw();
+  }
+
+  setDisabled(disabled: boolean): void {
+    if (this.disabled === disabled) return;
+    this.disabled = disabled;
+    this.redraw();
+  }
+
+  destroy(): void {
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.destroy();
+  }
+
+  private redraw(): void {
+    this.g.clear();
+    paintDarkCircle(this.g, this.geom.r, this.pressed, this.disabled, this.icon);
+  }
+}
+
+// ---- 暂停深底圆钮 ----
 class PauseIcon {
   private readonly g: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, cx: number, cy: number, r: number) {
     this.g = scene.add.graphics().setDepth(1000).setScrollFactor(0);
 
-    // 圆底（浅色磨砂玻璃：中性白半透，替代原近黑 #3E2723）
-    this.g.fillStyle(COLOR_FILL_PAUSE, PAUSE_ALPHA_DEFAULT);
+    // 底部阴影
+    this.g.fillStyle(SHADOW_DARK, 0.9);
+    this.g.fillCircle(cx, cy + SHADOW_OFFSET, r);
+    // 主体深底
+    this.g.fillStyle(BASE_DARK, 1);
     this.g.fillCircle(cx, cy, r);
-    this.g.lineStyle(1, COLOR_OUTLINE, 0.9);
+    // 内层倒角
+    this.g.fillStyle(BASE_MID, 0.55);
+    this.g.fillCircle(cx - r * 0.15, cy - r * 0.25, r * 0.62);
+    // 顶部高光
+    this.g.fillStyle(HIGHLIGHT, 0.45);
+    this.g.fillCircle(cx - r * 0.1, cy - r * 0.35, r * 0.35);
+    // 外描边
+    this.g.lineStyle(2, OUTLINE_LIGHT, 1);
     this.g.strokeCircle(cx, cy, r);
-
-    // 双竖线（浅底深图标：#2A1A12 描边色，替代原白色图标，对比 ≥ 4.5:1）
-    const barW = Math.max(2, r * 0.18);
-    const barH = r * 0.55;
-    const gap = barW * 0.8;
-    this.g.fillStyle(COLOR_PAUSE_ICON, 1.0);
+    // 双竖线（奶油色）
+    const barW = Math.max(2, r * 0.16);
+    const barH = r * 0.48;
+    const gap = barW * 1.0;
+    this.g.fillStyle(OUTLINE_LIGHT, 1);
     this.g.fillRect(cx - gap - barW, cy - barH / 2, barW, barH);
     this.g.fillRect(cx + gap, cy - barH / 2, barW, barH);
   }
@@ -406,37 +598,51 @@ class PauseIcon {
 
 // ---- 顶层：控件聚合 + 与 RawInputProvider 的同步入口 ----
 export class TouchButtons {
-  private readonly bar: TouchBar;
-  private readonly circles: Record<'jump' | 'action', TouchCircle>;
+  /** 4 钮控件（优先使用用户提供的 PNG 纹理；加载失败则降级为代码绘制）。 */
+  private readonly controls: Record<ButtonId, ButtonControl>;
   private readonly pauseIcon?: PauseIcon;
   /** 上一次同步的 down 集合（用于边沿检测：触发 squash/弹起 tween） */
   private readonly down: Set<ButtonId> = new Set();
 
   constructor(scene: Phaser.Scene) {
     const cfg = inputConfig.wechat.buttons;
-    const left: CircleGeom = {
-      cx: cfg.left.x * LOGICAL_WIDTH,
-      cy: cfg.left.y * LOGICAL_HEIGHT,
-      r: cfg.left.r * LOGICAL_WIDTH,
-    };
-    const right: CircleGeom = {
-      cx: cfg.right.x * LOGICAL_WIDTH,
-      cy: cfg.right.y * LOGICAL_HEIGHT,
-      r: cfg.right.r * LOGICAL_WIDTH,
-    };
-    this.bar = new TouchBar(scene, left, right);
 
-    this.circles = {
-      jump: new TouchCircle(scene, 'jump', {
-        cx: cfg.jump.x * LOGICAL_WIDTH,
-        cy: cfg.jump.y * LOGICAL_HEIGHT,
-        r: cfg.jump.r * LOGICAL_WIDTH,
-      }),
-      action: new TouchCircle(scene, 'action', {
-        cx: cfg.action.x * LOGICAL_WIDTH,
-        cy: cfg.action.y * LOGICAL_HEIGHT,
-        r: cfg.action.r * LOGICAL_WIDTH,
-      }),
+    // 方向键：横向圆角矩形，圆角较小（参考截图）
+    const toDirectionGeom = (id: ButtonId): { geom: RoundRectGeom; cx: number; cy: number } => {
+      const r = cfg[id].r * LOGICAL_WIDTH;
+      const h = r * 2 * 0.86;
+      const w = r * 2 * 1.18;
+      return {
+        geom: { w, h, radius: h * 0.18 },
+        cx: cfg[id].x * LOGICAL_WIDTH,
+        cy: cfg[id].y * LOGICAL_HEIGHT,
+      };
+    };
+
+    const toCircleGeom = (id: ButtonId): { geom: CircleGeom; cx: number; cy: number } => ({
+      geom: { r: cfg[id].r * LOGICAL_WIDTH },
+      cx: cfg[id].x * LOGICAL_WIDTH,
+      cy: cfg[id].y * LOGICAL_HEIGHT,
+    });
+
+    const left = toDirectionGeom('left');
+    const right = toDirectionGeom('right');
+    const action = toCircleGeom('action');
+    const jump = toCircleGeom('jump');
+
+    this.controls = {
+      left: scene.textures.exists(ARROW_TEXTURE_KEY)
+        ? new ImageButton(scene, 'left', left.cx, left.cy, ARROW_TEXTURE_KEY, left.geom.w, left.geom.h, true)
+        : new DarkRect(scene, 'left', left.geom, left.cx, left.cy, drawLeftArrow),
+      right: scene.textures.exists(ARROW_TEXTURE_KEY)
+        ? new ImageButton(scene, 'right', right.cx, right.cy, ARROW_TEXTURE_KEY, right.geom.w, right.geom.h, false)
+        : new DarkRect(scene, 'right', right.geom, right.cx, right.cy, drawRightArrow),
+      action: scene.textures.exists(ACTION_TEXTURE_KEY)
+        ? new ImageButton(scene, 'action', action.cx, action.cy, ACTION_TEXTURE_KEY, action.geom.r * 2, action.geom.r * 2, false)
+        : new DarkCircle(scene, 'action', action.geom, action.cx, action.cy, drawStar),
+      jump: scene.textures.exists(JUMP_TEXTURE_KEY)
+        ? new ImageButton(scene, 'jump', jump.cx, jump.cy, JUMP_TEXTURE_KEY, jump.geom.r * 2, jump.geom.r * 2, false)
+        : new DarkCircle(scene, 'jump', jump.geom, jump.cx, jump.cy, drawJumpArrow),
     };
 
     const pIcon = inputConfig.wechat.pauseIcon;
@@ -452,7 +658,6 @@ export class TouchButtons {
 
   /**
    * 由场景固定步循环调：传入 platform.input.sample().down，TouchButtons 自检边沿并触发 tween。
-   * 不修改 wechat-touch.ts：通过既有的 RawInputFrame.down 这条渠道同步，单一事实来源保持。
    */
   syncDown(downSet: Set<SignalId>): void {
     const next = new Set<ButtonId>();
@@ -464,25 +669,20 @@ export class TouchButtons {
       const was = this.down.has(id);
       const now = next.has(id);
       if (was !== now) {
-        if (id === 'left' || id === 'right') {
-          this.bar.setPressed(id, now);
-        } else {
-          this.circles[id].setPressed(now);
-        }
+        this.controls[id].setPressed(now);
       }
     }
     this.down.clear();
     for (const id of next) this.down.add(id);
   }
 
-  /** action 预留态：disabled=true 时该按钮整体 alpha ×0.6 + 描边改虚线。 */
+  /** action 预留态：disabled=true 时该按钮整体 alpha ×0.5 + 描边变淡。 */
   setActionDisabled(disabled: boolean): void {
-    this.circles.action.setDisabled(disabled);
+    this.controls.action.setDisabled(disabled);
   }
 
   destroy(): void {
-    this.bar.destroy();
-    for (const c of Object.values(this.circles)) c.destroy();
+    for (const c of Object.values(this.controls)) c.destroy();
     this.pauseIcon?.destroy();
     this.down.clear();
   }
