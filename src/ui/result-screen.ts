@@ -100,10 +100,8 @@ const COLOR_TEXT_ACCENT = '#FFD23F';
 const COLOR_TEXT_DANGER = '#ff8a7a'; // 未达标提示
 const COLOR_BTN_MAIN = 0x70a82e;
 const COLOR_BTN_MAIN_HIGH = 0x9bca3e;
-const COLOR_BTN_MAIN_SHADOW = 0x47751c;
 const COLOR_BTN_SECONDARY = 0xa75e28;
 const COLOR_BTN_SECONDARY_HIGH = 0xc77b39;
-const COLOR_BTN_SECONDARY_SHADOW = 0x713a19;
 const TEXT_FONT = 'sans-serif';
 
 // 目标稿是接近方形的奖章卡片；在 16:9 画布中保留左右安全区，不压到刘海/微信胶囊。
@@ -111,10 +109,10 @@ const PANEL_W = 344;
 const PANEL_H = 270;
 
 // 主按钮
-const MAIN_BTN_W = 280;
+const MAIN_BTN_W = 252;
 const MAIN_BTN_H = 34;
 // 次按钮（底部横排两个）
-const SUB_BTN_W = 134;
+const SUB_BTN_W = 120;
 const SUB_BTN_H = 28;
 const SUB_BTN_GAP = 12;
 
@@ -212,7 +210,7 @@ function drawPixelPanel(
   g.strokePath();
 }
 
-/** 绘制像素立体按钮（顶部高光条 + 底部阴影条）。 */
+/** 绘制平整纯色按钮：单一底色 + 统一像素描边，不使用渐变或上下色带。 */
 function drawPixelButton(
   g: Phaser.GameObjects.Graphics,
   x: number,
@@ -220,11 +218,10 @@ function drawPixelButton(
   w: number,
   h: number,
   base: number,
-  high: number,
-  shadow: number,
+  inset: number,
 ): void {
   const r = 5;
-  // 底色
+  // 单一纯色表面
   g.fillStyle(base, 1);
   g.beginPath();
   g.moveTo(x + r, y);
@@ -238,31 +235,7 @@ function drawPixelButton(
   g.closePath();
   g.fillPath();
 
-  // 顶部高光（1/3 高度）
-  g.fillStyle(high, 1);
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.lineTo(x + w - r, y);
-  g.lineTo(x + w, y + r);
-  g.lineTo(x + w, y + h * 0.45);
-  g.lineTo(x, y + h * 0.45);
-  g.lineTo(x, y + r);
-  g.closePath();
-  g.fillPath();
-
-  // 底部阴影（1/4 高度）
-  g.fillStyle(shadow, 1);
-  g.beginPath();
-  g.moveTo(x, y + h * 0.72);
-  g.lineTo(x + w, y + h * 0.72);
-  g.lineTo(x + w, y + h - r);
-  g.lineTo(x + w - r, y + h);
-  g.lineTo(x + r, y + h);
-  g.lineTo(x, y + h - r);
-  g.closePath();
-  g.fillPath();
-
-  // 描边
+  // 外描边
   g.lineStyle(2, COLOR_OUTLINE, 1);
   g.beginPath();
   g.moveTo(x + r, y);
@@ -273,6 +246,20 @@ function drawPixelButton(
   g.lineTo(x + r, y + h);
   g.lineTo(x, y + h - r);
   g.lineTo(x, y + r);
+  g.closePath();
+  g.strokePath();
+
+  // 等距内描边只定义边界，不制造凸起方向。
+  g.lineStyle(1, inset, 0.85);
+  g.beginPath();
+  g.moveTo(x + r, y + 2);
+  g.lineTo(x + w - r, y + 2);
+  g.lineTo(x + w - 2, y + r);
+  g.lineTo(x + w - 2, y + h - r);
+  g.lineTo(x + w - r, y + h - 2);
+  g.lineTo(x + r, y + h - 2);
+  g.lineTo(x + 2, y + h - r);
+  g.lineTo(x + 2, y + r);
   g.closePath();
   g.strokePath();
 }
@@ -879,7 +866,7 @@ export class ResultScreen {
 
     // 主按钮「下一关 →」
     const mainBtnG = this.scene.add.graphics();
-    drawPixelButton(mainBtnG, -MAIN_BTN_W / 2, MAIN_BTN_Y - MAIN_BTN_H / 2, MAIN_BTN_W, MAIN_BTN_H, COLOR_BTN_MAIN, COLOR_BTN_MAIN_HIGH, COLOR_BTN_MAIN_SHADOW);
+    drawPixelButton(mainBtnG, -MAIN_BTN_W / 2, MAIN_BTN_Y - MAIN_BTN_H / 2, MAIN_BTN_W, MAIN_BTN_H, COLOR_BTN_MAIN, COLOR_BTN_MAIN_HIGH);
     const mainBtnHit = this.scene.add
       .rectangle(0, MAIN_BTN_Y, MAIN_BTN_W, MAIN_BTN_H, 0x000000, 0)
       .setInteractive({ useHandCursor: true });
@@ -905,8 +892,8 @@ export class ResultScreen {
       leftCenterX,
       rightCenterX,
     } = computeSubButtonPositions();
-    drawPixelButton(subBtnG, leftBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, COLOR_BTN_SECONDARY, COLOR_BTN_SECONDARY_HIGH, COLOR_BTN_SECONDARY_SHADOW);
-    drawPixelButton(subBtnG, rightBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, 0x9c783f, 0xc19a55, 0x6d5129);
+    drawPixelButton(subBtnG, leftBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, COLOR_BTN_SECONDARY, COLOR_BTN_SECONDARY_HIGH);
+    drawPixelButton(subBtnG, rightBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, 0x9c783f, 0xc19a55);
     const subIconG = this.scene.add.graphics();
     drawSubButtonIcons(subIconG, leftCenterX - 43, rightCenterX - 43, SUB_BTN_Y);
 
