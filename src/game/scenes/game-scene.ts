@@ -281,6 +281,8 @@ export class GameScene extends Phaser.Scene {
   private officeScreenPhase = 0;
   /** 草原主题背景-天空层（scrollFactor 0，depth -10，全屏竖直渐变，仅 grass 创建一次）。 */
   private grassSkyGfx?: Phaser.GameObjects.Graphics;
+  /** 1-1 花园美术背景（固定于相机，1024×576 原图以 2:1 整数比例缩放到设计画布）。 */
+  private grassGardenBackdrop?: Phaser.GameObjects.Image;
   /** 草原主题背景-远景层（scrollFactor 0.3，depth -9，远山+云+温室剪影，仅 grass 创建一次）。 */
   private grassFarGfx?: Phaser.GameObjects.Graphics;
   /** 草原主题背景-中景层（scrollFactor 0.6，depth -8，树+风车+花丛，仅 grass 创建一次）。 */
@@ -451,12 +453,13 @@ export class GameScene extends Phaser.Scene {
       };
     }
 
-    const uiButtons = [
+    const images = [
       { key: 'ui-arrow-btn', path: 'ui/arrow-btn.png' },
       { key: 'ui-action-btn', path: 'ui/action-btn.png' },
       { key: 'ui-jump-btn', path: 'ui/jump-btn.png' },
+      { key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.png' },
     ] as const;
-    for (const { key, path } of uiButtons) {
+    for (const { key, path } of images) {
       if (this.textures.exists(key)) continue; // 场景重启时跳过重复加载
       if (isWechat) {
         (this.load as unknown as { wechatImage: (k: string, u: string) => void }).wechatImage(key, path);
@@ -1523,6 +1526,7 @@ export class GameScene extends Phaser.Scene {
     const isStreet = this.runtime.data.metadata.theme === 'street';
     const isOffice = this.runtime.data.metadata.theme === 'office';
     const isGrass = this.runtime.data.metadata.theme === 'grass';
+    const usesGrassGardenBackdrop = isGrass && this.runtime.data.id === '1-1';
 
     // 非海关：清理可能残留的海背景（四层视差）/潮汐层（切换关卡安全）
     if (!isSea) {
@@ -1616,6 +1620,10 @@ export class GameScene extends Phaser.Scene {
       this.grassMidGfx = undefined;
       this.grassNearGfx?.destroy();
       this.grassNearGfx = undefined;
+    }
+    if (!usesGrassGardenBackdrop) {
+      this.grassGardenBackdrop?.destroy();
+      this.grassGardenBackdrop = undefined;
     }
 
     // 背景层：
@@ -2793,6 +2801,31 @@ export class GameScene extends Phaser.Scene {
     const levelW = this.runtime.data.width * ts;
     const camW = this.cameras.main.width;
     const camH = this.cameras.main.height;
+
+    // 1-1 作为花园美术纵向切片：只替换非交互背景，地形、角色、碰撞与操作层仍走原逻辑。
+    // 原图为设计画布的 2 倍尺寸，pixelArt + 0.5 整数缩放可避免微信端非整数采样导致的模糊。
+    if (this.runtime.data.id === '1-1' && this.textures.exists('grass-garden-backdrop-v1')) {
+      this.grassSkyGfx?.destroy();
+      this.grassSkyGfx = undefined;
+      this.grassFarGfx?.destroy();
+      this.grassFarGfx = undefined;
+      this.grassMidGfx?.destroy();
+      this.grassMidGfx = undefined;
+      this.grassNearGfx?.destroy();
+      this.grassNearGfx = undefined;
+
+      if (!this.grassGardenBackdrop) {
+        this.grassGardenBackdrop = this.add
+          .image(camW / 2, camH / 2, 'grass-garden-backdrop-v1')
+          .setDisplaySize(camW, camH)
+          .setScrollFactor(0)
+          .setDepth(-10);
+      }
+      return;
+    }
+
+    this.grassGardenBackdrop?.destroy();
+    this.grassGardenBackdrop = undefined;
 
     // 锁色板 / tint 派生（0 新增 hex）
     const SKY = 0x5bc8f5; // 天空 #5BC8F5（#11）
