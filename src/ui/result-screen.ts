@@ -86,54 +86,54 @@ const CENTER_Y = LOGICAL_H / 2; // 144
 
 // 颜色（春日花园气质 + 像素清晰描边）
 const COLOR_OVERLAY_BG = 0x000000;
-const OVERLAY_ALPHA = 0.72;
-const COLOR_PANEL = 0x3d2b1f; // 深棕（比旧 0x35251b 稍暖）
-const COLOR_PANEL_TOP = 0x4a3527; // 顶部微亮，制造渐变/体积感
-const COLOR_OUTLINE = 0x1f120d; // 深棕近黑描边
+const OVERLAY_ALPHA = 0.78;
+const COLOR_PANEL = 0x2b190f;
+const COLOR_PANEL_TOP = 0x3a2518;
+const COLOR_OUTLINE = 0x160b07;
 const COLOR_HIGHLIGHT = 0xffd23f; // 暖金高光
 const COLOR_TITLE = '#FFD23F';
 const COLOR_RANK_ON = 0xffd23f; // 金星填充
-const COLOR_RANK_OFF = 0x5a5045; // 暗灰星
+const COLOR_RANK_OFF = 0x554938; // 暗金棕星
 const COLOR_TEXT_MAIN = '#F4EFE6';
 const COLOR_TEXT_MUTED = '#C9B8A3';
 const COLOR_TEXT_ACCENT = '#FFD23F';
 const COLOR_TEXT_DANGER = '#ff8a7a'; // 未达标提示
-const COLOR_BTN_MAIN = 0x7cc242; // 明亮草绿主按钮
-const COLOR_BTN_MAIN_HIGH = 0x9be05f; // 主按钮顶部高光
-const COLOR_BTN_MAIN_SHADOW = 0x56912c; // 主按钮底部阴影
-const COLOR_BTN_SECONDARY = 0xb5763e; // 栗色次按钮
-const COLOR_BTN_SECONDARY_HIGH = 0xd4965a;
-const COLOR_BTN_SECONDARY_SHADOW = 0x8a5a2e;
+const COLOR_BTN_MAIN = 0x70a82e;
+const COLOR_BTN_MAIN_HIGH = 0x9bca3e;
+const COLOR_BTN_MAIN_SHADOW = 0x47751c;
+const COLOR_BTN_SECONDARY = 0xa75e28;
+const COLOR_BTN_SECONDARY_HIGH = 0xc77b39;
+const COLOR_BTN_SECONDARY_SHADOW = 0x713a19;
 const TEXT_FONT = 'sans-serif';
 
-// 面板尺寸：结算页是通关后的主视觉，横向铺满约 82% 画布，避免内容挤成窄竖卡。
-const PANEL_W = 420;
-const PANEL_H = 264;
+// 目标稿是接近方形的奖章卡片；在 16:9 画布中保留左右安全区，不压到刘海/微信胶囊。
+const PANEL_W = 344;
+const PANEL_H = 270;
 
 // 主按钮
-const MAIN_BTN_W = 320;
-const MAIN_BTN_H = 36;
+const MAIN_BTN_W = 280;
+const MAIN_BTN_H = 34;
 // 次按钮（底部横排两个）
-const SUB_BTN_W = 154;
-const SUB_BTN_H = 30;
+const SUB_BTN_W = 134;
+const SUB_BTN_H = 28;
 const SUB_BTN_GAP = 12;
 
 // 评级星
-const RANK_ROW_Y = -62;
-const RANK_GAP = 72;
-const RANK_OUTER_R = 29; // 五角星外半径
-const RANK_INNER_R = 13; // 五角星内半径
+const RANK_ROW_Y = -64;
+const RANK_GAP = 58;
+const RANK_OUTER_R = 27;
+const RANK_INNER_R = 12;
 
 // 栗宝头像
-const AVATAR_X = -PANEL_W / 2 + 47;
+const AVATAR_X = -PANEL_W / 2 + 36;
 const AVATAR_Y = RANK_ROW_Y + 1;
 
 // 成绩区
 const STATS_Y = -2;
 const STAT_ROW_H = 22;
 
-const MAIN_BTN_Y = 80;
-const SUB_BTN_Y = 116;
+const MAIN_BTN_Y = 78;
+const SUB_BTN_Y = 114;
 
 /** 可单测的结算布局合同：防止后续把主视觉再次压回窄竖卡或让按钮互相覆盖。 */
 export const RESULT_LAYOUT = {
@@ -144,6 +144,22 @@ export const RESULT_LAYOUT = {
   mainButton: { width: MAIN_BTN_W, height: MAIN_BTN_H, y: MAIN_BTN_Y },
   subButton: { width: SUB_BTN_W, height: SUB_BTN_H, gap: SUB_BTN_GAP, y: SUB_BTN_Y },
 } as const;
+
+export function computeSubButtonPositions(): {
+  leftX: number;
+  rightX: number;
+  leftCenterX: number;
+  rightCenterX: number;
+} {
+  const leftX = -SUB_BTN_W - SUB_BTN_GAP / 2;
+  const rightX = SUB_BTN_GAP / 2;
+  return {
+    leftX,
+    rightX,
+    leftCenterX: leftX + SUB_BTN_W / 2,
+    rightCenterX: rightX + SUB_BTN_W / 2,
+  };
+}
 
 /** 像素风：手绘圆角矩形（每角 3 段折线，避免 fillRoundedRect 的平滑感）。 */
 function drawPixelPanel(
@@ -261,10 +277,13 @@ function drawPixelButton(
   g.strokePath();
 }
 
-/** 绘制一个矢量五角星（10 顶点外-内交替）。 */
-function drawStar(g: Phaser.GameObjects.Graphics, cx: number, cy: number, outer: number, inner: number, fill: number): void {
-  g.fillStyle(fill, 1);
-  g.lineStyle(2, COLOR_OUTLINE, 1);
+function traceStar(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  outer: number,
+  inner: number,
+): void {
   g.beginPath();
   for (let i = 0; i < 10; i++) {
     const r = i % 2 === 0 ? outer : inner;
@@ -275,8 +294,38 @@ function drawStar(g: Phaser.GameObjects.Graphics, cx: number, cy: number, outer:
     else g.lineTo(px, py);
   }
   g.closePath();
+}
+
+/** 带投影、金边和高光的像素五角星。 */
+function drawStar(g: Phaser.GameObjects.Graphics, cx: number, cy: number, outer: number, inner: number, fill: number): void {
+  const active = fill === COLOR_RANK_ON;
+
+  if (active) {
+    g.fillStyle(COLOR_HIGHLIGHT, 0.12);
+    g.fillCircle(cx, cy, outer + 5);
+  }
+
+  // 右下硬阴影，制造目标稿里的厚像素体积。
+  g.fillStyle(0x120906, 0.9);
+  traceStar(g, cx + 2, cy + 3, outer, inner);
+  g.fillPath();
+
+  g.fillStyle(fill, 1);
+  g.lineStyle(active ? 2.5 : 2, active ? 0xffb51f : COLOR_OUTLINE, 1);
+  traceStar(g, cx, cy, outer, inner);
   g.fillPath();
   g.strokePath();
+
+  if (active) {
+    // 左上角小高光，避免纯色星星显得扁平。
+    g.fillStyle(0xfff6b2, 0.95);
+    g.beginPath();
+    g.moveTo(cx - 8, cy - 11);
+    g.lineTo(cx - 2, cy - 15);
+    g.lineTo(cx - 4, cy - 7);
+    g.closePath();
+    g.fillPath();
+  }
 }
 
 /** 绘制栗宝庆祝小头像（圆润栗形 + 嫩芽 + 挥手）。 */
@@ -459,6 +508,41 @@ function drawStatIcons(g: Phaser.GameObjects.Graphics, x: number, y: number): vo
   g.strokePath();
 }
 
+/** 次按钮图标：重玩圆箭头 + 折叠地图，避免 Unicode 图标在微信端发生字形偏移。 */
+function drawSubButtonIcons(
+  g: Phaser.GameObjects.Graphics,
+  replayX: number,
+  mapX: number,
+  y: number,
+): void {
+  g.lineStyle(2, 0xfff1d2, 1);
+
+  // 重玩圆箭头
+  g.beginPath();
+  g.arc(replayX, y, 7, Math.PI * 0.15, Math.PI * 1.75);
+  g.moveTo(replayX - 7, y - 4);
+  g.lineTo(replayX - 9, y + 1);
+  g.lineTo(replayX - 4, y);
+  g.strokePath();
+
+  // 折叠地图
+  g.beginPath();
+  g.moveTo(mapX - 9, y - 7);
+  g.lineTo(mapX - 3, y - 4);
+  g.lineTo(mapX + 3, y - 7);
+  g.lineTo(mapX + 9, y - 4);
+  g.lineTo(mapX + 9, y + 7);
+  g.lineTo(mapX + 3, y + 4);
+  g.lineTo(mapX - 3, y + 7);
+  g.lineTo(mapX - 9, y + 4);
+  g.closePath();
+  g.moveTo(mapX - 3, y - 4);
+  g.lineTo(mapX - 3, y + 7);
+  g.moveTo(mapX + 3, y - 7);
+  g.lineTo(mapX + 3, y + 4);
+  g.strokePath();
+}
+
 /** 星级规则文案：告诉玩家差多少达成下一颗星。 */
 function rankHint(result: RankResult, totalCoins: number): string {
   if (result.ranks === 3) return '三星达成！完美通关！';
@@ -582,7 +666,7 @@ export class ResultScreen {
     if (statCoinVal) statCoinVal.setText(`${collectedCoins} / ${totalCoins}`);
     if (statBestVal) {
       statBestVal.setText(`${best.text}秒`);
-      statBestVal.setX(best.isNewBest ? PANEL_W / 2 - 102 : PANEL_W / 2 - 73);
+      statBestVal.setX(best.isNewBest ? PANEL_W / 2 - 90 : PANEL_W / 2 - 55);
     }
     if (newBadge) newBadge.setVisible(best.isNewBest);
 
@@ -596,9 +680,10 @@ export class ResultScreen {
       rect: { x: CENTER_X - MAIN_BTN_W / 2, y: CENTER_Y + MAIN_BTN_Y - MAIN_BTN_H / 2, w: MAIN_BTN_W, h: MAIN_BTN_H },
       action: hasNext ? this.nextAction : this.returnTitleAction,
     });
+    const subPositions = computeSubButtonPositions();
     this.buttons.push({
       rect: {
-        x: CENTER_X - SUB_BTN_W - SUB_BTN_GAP / 2,
+        x: CENTER_X + subPositions.leftX,
         y: CENTER_Y + SUB_BTN_Y - SUB_BTN_H / 2,
         w: SUB_BTN_W,
         h: SUB_BTN_H,
@@ -607,7 +692,7 @@ export class ResultScreen {
     });
     this.buttons.push({
       rect: {
-        x: CENTER_X + SUB_BTN_GAP / 2,
+        x: CENTER_X + subPositions.rightX,
         y: CENTER_Y + SUB_BTN_Y - SUB_BTN_H / 2,
         w: SUB_BTN_W,
         h: SUB_BTN_H,
@@ -677,17 +762,19 @@ export class ResultScreen {
 
     // 面板阴影（在面板后下方，制造悬浮感）
     const shadow = this.scene.add.graphics();
-    shadow.fillStyle(0x000000, 0.35);
-    shadow.fillRoundedRect(-PANEL_W / 2 + 4, -PANEL_H / 2 + 6, PANEL_W, PANEL_H, 8);
+    shadow.fillStyle(0x000000, 0.55);
+    shadow.fillRoundedRect(-PANEL_W / 2 + 5, -PANEL_H / 2 + 7, PANEL_W, PANEL_H, 8);
 
     // 面板主体
     const g = this.scene.add.graphics();
     drawPixelPanel(g, -PANEL_W / 2, -PANEL_H / 2, PANEL_W, PANEL_H, COLOR_PANEL, COLOR_PANEL_TOP);
 
     // 金色内框与顶部高光，呼应目标稿的厚重像素卡片。
-    g.lineStyle(2, 0xc9862f, 1);
-    g.strokeRoundedRect(-PANEL_W / 2 + 4, -PANEL_H / 2 + 4, PANEL_W - 8, PANEL_H - 8, 7);
-    g.lineStyle(2, 0xffc95a, 0.9);
+    g.lineStyle(3, 0x8f561f, 1);
+    g.strokeRoundedRect(-PANEL_W / 2 + 3, -PANEL_H / 2 + 3, PANEL_W - 6, PANEL_H - 6, 7);
+    g.lineStyle(1.5, 0xe6a43b, 1);
+    g.strokeRoundedRect(-PANEL_W / 2 + 6, -PANEL_H / 2 + 6, PANEL_W - 12, PANEL_H - 12, 5);
+    g.lineStyle(2, 0xffca5c, 0.95);
     g.beginPath();
     g.moveTo(-PANEL_W / 2 + 14, -PANEL_H / 2 + 5);
     g.lineTo(PANEL_W / 2 - 14, -PANEL_H / 2 + 5);
@@ -695,7 +782,7 @@ export class ResultScreen {
 
     // 标题
     const title = this.scene.add
-      .text(0, -108, '通关成功！', {
+      .text(0, -112, '通关成功！', {
         fontFamily: TEXT_FONT,
         fontSize: '30px',
         fontStyle: 'bold',
@@ -704,11 +791,12 @@ export class ResultScreen {
         strokeThickness: 4,
       })
       .setOrigin(0.5);
+    title.setShadow(2, 3, '#120906', 2, true, true);
     title.setName('title');
 
     // 栗宝庆祝头像
     const avatar = this.scene.add.graphics();
-    drawCelebrationLibao(avatar, AVATAR_X, AVATAR_Y, 1.25);
+    drawCelebrationLibao(avatar, AVATAR_X, AVATAR_Y, 1.3);
     this.avatar = avatar;
 
     // 右侧奖励装饰
@@ -728,7 +816,7 @@ export class ResultScreen {
 
     // 星级提示
     const rankHintText = this.scene.add
-      .text(0, -26, '', {
+      .text(0, -27, '', {
         fontFamily: TEXT_FONT,
         fontSize: '13px',
         fontStyle: 'bold',
@@ -739,28 +827,28 @@ export class ResultScreen {
 
     // 成绩区背景条
     const statsBg = this.scene.add.graphics();
-    drawPixelPanel(statsBg, -PANEL_W / 2 + 54, STATS_Y - 13, PANEL_W - 108, 69, 0x2a1d15);
-    statsBg.lineStyle(1, 0x76502f, 0.55);
+    drawPixelPanel(statsBg, -PANEL_W / 2 + 42, STATS_Y - 13, PANEL_W - 84, 69, 0x24130c);
+    statsBg.lineStyle(1, 0x6d4428, 0.7);
     statsBg.beginPath();
-    statsBg.moveTo(-PANEL_W / 2 + 70, STATS_Y + 9);
-    statsBg.lineTo(PANEL_W / 2 - 70, STATS_Y + 9);
-    statsBg.moveTo(-PANEL_W / 2 + 70, STATS_Y + 31);
-    statsBg.lineTo(PANEL_W / 2 - 70, STATS_Y + 31);
+    statsBg.moveTo(-PANEL_W / 2 + 54, STATS_Y + 9);
+    statsBg.lineTo(PANEL_W / 2 - 54, STATS_Y + 9);
+    statsBg.moveTo(-PANEL_W / 2 + 54, STATS_Y + 31);
+    statsBg.lineTo(PANEL_W / 2 - 54, STATS_Y + 31);
     statsBg.strokePath();
 
     const statIcons = this.scene.add.graphics();
-    drawStatIcons(statIcons, -PANEL_W / 2 + 75, STATS_Y);
+    drawStatIcons(statIcons, -PANEL_W / 2 + 59, STATS_Y);
 
     // 成绩行
     const makeStatRow = (idx: number, label: string, nameVal: string) => {
       const y = STATS_Y + idx * STAT_ROW_H;
-      const lab = this.scene.add.text(-PANEL_W / 2 + 94, y, label, {
+      const lab = this.scene.add.text(-PANEL_W / 2 + 78, y, label, {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
         color: COLOR_TEXT_MUTED,
       }).setOrigin(0, 0.5);
-      const val = this.scene.add.text(PANEL_W / 2 - 73, y, '', {
+      const val = this.scene.add.text(PANEL_W / 2 - 55, y, '', {
         fontFamily: TEXT_FONT,
         fontSize: '17px',
         fontStyle: 'bold',
@@ -777,7 +865,7 @@ export class ResultScreen {
 
     // NEW 标签
     const newBadge = this.scene.add
-      .text(PANEL_W / 2 - 66, STATS_Y + 2 * STAT_ROW_H, 'NEW!', {
+      .text(PANEL_W / 2 - 45, STATS_Y + 2 * STAT_ROW_H, 'NEW!', {
         fontFamily: TEXT_FONT,
         fontSize: '10px',
         fontStyle: 'bold',
@@ -800,28 +888,34 @@ export class ResultScreen {
     const nextBtnText = this.scene.add
       .text(0, MAIN_BTN_Y - 1, '下一关  →', {
         fontFamily: TEXT_FONT,
-        fontSize: '19px',
+        fontSize: '18px',
         fontStyle: 'bold',
-        color: '#2A1A12',
-        stroke: '#ffffff',
-        strokeThickness: 1,
+        color: '#FFF7DC',
+        stroke: '#2A1A12',
+        strokeThickness: 3,
       })
       .setOrigin(0.5);
     nextBtnText.setName('nextBtnText');
 
     // 次按钮「再玩一次」「关卡选择」
     const subBtnG = this.scene.add.graphics();
-    const leftX = -SUB_BTN_W - SUB_BTN_GAP / 2;
-    const rightX = SUB_BTN_GAP / 2;
-    drawPixelButton(subBtnG, leftX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, COLOR_BTN_SECONDARY, COLOR_BTN_SECONDARY_HIGH, COLOR_BTN_SECONDARY_SHADOW);
-    drawPixelButton(subBtnG, rightX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, 0xb88b4a, 0xd7ad68, 0x8e6936);
+    const {
+      leftX: leftBtnX,
+      rightX: rightBtnX,
+      leftCenterX,
+      rightCenterX,
+    } = computeSubButtonPositions();
+    drawPixelButton(subBtnG, leftBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, COLOR_BTN_SECONDARY, COLOR_BTN_SECONDARY_HIGH, COLOR_BTN_SECONDARY_SHADOW);
+    drawPixelButton(subBtnG, rightBtnX, SUB_BTN_Y - SUB_BTN_H / 2, SUB_BTN_W, SUB_BTN_H, 0x9c783f, 0xc19a55, 0x6d5129);
+    const subIconG = this.scene.add.graphics();
+    drawSubButtonIcons(subIconG, leftCenterX - 43, rightCenterX - 43, SUB_BTN_Y);
 
     const replayHit = this.scene.add
-      .rectangle(leftX, SUB_BTN_Y, SUB_BTN_W, SUB_BTN_H, 0x000000, 0)
+      .rectangle(leftCenterX, SUB_BTN_Y, SUB_BTN_W, SUB_BTN_H, 0x000000, 0)
       .setInteractive({ useHandCursor: true });
     replayHit.on('pointerdown', this.restartAction);
     const replayText = this.scene.add
-      .text(leftX, SUB_BTN_Y - 1, '↻  再玩一次', {
+      .text(leftCenterX + 9, SUB_BTN_Y - 1, '再玩一次', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
@@ -832,11 +926,11 @@ export class ResultScreen {
       .setOrigin(0.5);
 
     const titleHit = this.scene.add
-      .rectangle(rightX, SUB_BTN_Y, SUB_BTN_W, SUB_BTN_H, 0x000000, 0)
+      .rectangle(rightCenterX, SUB_BTN_Y, SUB_BTN_W, SUB_BTN_H, 0x000000, 0)
       .setInteractive({ useHandCursor: true });
     titleHit.on('pointerdown', this.returnTitleAction);
     const titleBtnText = this.scene.add
-      .text(rightX, SUB_BTN_Y - 1, '▣  关卡选择', {
+      .text(rightCenterX + 9, SUB_BTN_Y - 1, '关卡选择', {
         fontFamily: TEXT_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
@@ -867,6 +961,7 @@ export class ResultScreen {
       mainBtnHit,
       nextBtnText,
       subBtnG,
+      subIconG,
       replayHit,
       replayText,
       titleHit,

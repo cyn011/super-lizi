@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  computeSubButtonPositions,
   computeRanks,
   evaluateRanks,
   formatBestTime,
@@ -81,8 +82,13 @@ describe('结算评级计算（S05-2，纯函数零 Phaser）', () => {
 });
 
 describe('通关结算布局合同', () => {
-  it('面板占据至少 80% 逻辑画布宽度，保持横向主视觉而非窄竖卡', () => {
-    expect(RESULT_LAYOUT.panelWidth / RESULT_LAYOUT.logicalWidth).toBeGreaterThanOrEqual(0.8);
+  it('面板保持近方形奖章卡比例，并为横屏安全区留出左右空间', () => {
+    const widthRatio = RESULT_LAYOUT.panelWidth / RESULT_LAYOUT.logicalWidth;
+    const panelAspect = RESULT_LAYOUT.panelWidth / RESULT_LAYOUT.panelHeight;
+
+    expect(widthRatio).toBeGreaterThanOrEqual(0.65);
+    expect(widthRatio).toBeLessThanOrEqual(0.75);
+    expect(panelAspect).toBeLessThanOrEqual(1.3);
   });
 
   it('主按钮与底部双按钮互不重叠，且全部收在面板内', () => {
@@ -102,6 +108,16 @@ describe('通关结算布局合同', () => {
     const subRowWidth =
       RESULT_LAYOUT.subButton.width * 2 + RESULT_LAYOUT.subButton.gap;
     expect(subRowWidth).toBeLessThanOrEqual(RESULT_LAYOUT.mainButton.width);
+  });
+
+  it('次按钮绘制起点与交互中心共享同一套坐标', () => {
+    const p = computeSubButtonPositions();
+    const halfWidth = RESULT_LAYOUT.subButton.width / 2;
+
+    expect(p.leftCenterX).toBe(p.leftX + halfWidth);
+    expect(p.rightCenterX).toBe(p.rightX + halfWidth);
+    expect(p.rightX - (p.leftX + RESULT_LAYOUT.subButton.width))
+      .toBe(RESULT_LAYOUT.subButton.gap);
   });
 });
 
