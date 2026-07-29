@@ -119,9 +119,10 @@ const SUB_BTN_GAP = 12;
 // 评级星
 const RANK_ROW_Y = -64;
 const RANK_GAP = 58;
-const RANK_STAR_SCALE = 0.8;
+const RANK_STAR_SCALE = 0.8 * 0.82;
 const RANK_OUTER_R = 27 * RANK_STAR_SCALE;
 const RANK_INNER_R = 12 * RANK_STAR_SCALE;
+const TITLE_FONT_SIZE = 30 * 0.9;
 
 // 栗宝头像
 const AVATAR_X = -PANEL_W / 2 + 36;
@@ -140,6 +141,9 @@ export const RESULT_LAYOUT = {
   logicalHeight: LOGICAL_H,
   panelWidth: PANEL_W,
   panelHeight: PANEL_H,
+  titleFontSize: TITLE_FONT_SIZE,
+  rankStarScale: RANK_STAR_SCALE,
+  rankStarOuterRadius: RANK_OUTER_R,
   mainButton: { width: MAIN_BTN_W, height: MAIN_BTN_H, y: MAIN_BTN_Y },
   subButton: { width: SUB_BTN_W, height: SUB_BTN_H, gap: SUB_BTN_GAP, y: SUB_BTN_Y },
 } as const;
@@ -772,7 +776,7 @@ export class ResultScreen {
     const title = this.scene.add
       .text(0, -112, '通关成功！', {
         fontFamily: TEXT_FONT,
-        fontSize: '30px',
+        fontSize: `${TITLE_FONT_SIZE}px`,
         fontStyle: 'bold',
         color: COLOR_TITLE,
         stroke: '#2A1A12',
