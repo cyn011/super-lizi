@@ -123,14 +123,13 @@ export interface CircleGeom {
   r: number;
 }
 
-/** 方向键矩形几何（基于 inputConfig）。 */
+/** 方向键几何（基于 inputConfig）；PNG 为正方形，禁止非等比拉伸。 */
 export function buildDirectionGeom(id: ButtonId): { geom: RoundRectGeom; cx: number; cy: number } {
   const cfg = inputConfig.wechat.buttons[id];
   const r = cfg.r * LOGICAL_WIDTH;
-  const h = r * 2 * 0.86;
-  const w = r * 2 * 1.18;
+  const size = r * 2;
   return {
-    geom: { w, h, radius: h * 0.18 },
+    geom: { w: size, h: size, radius: size * 0.18 },
     cx: cfg.x * LOGICAL_WIDTH,
     cy: cfg.y * LOGICAL_HEIGHT,
   };
