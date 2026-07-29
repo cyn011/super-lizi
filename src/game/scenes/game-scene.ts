@@ -117,6 +117,72 @@ const NEUTRAL_INPUT: InputState = {
   throwReleased: false,
 };
 
+/**
+ * 微信端自定义图片加载文件：把 wx.createImage 接入 Phaser Loader 队列，
+ * 使 preload() 真正等待图片解码完成再进入 create()（否则 TouchButtons 看到纹理未就绪会降级为代码绘制）。
+ * 解码后的图片画到 canvas 纹理后再 refresh，与微信端绕开 XHR 的方案一致。
+ */
+class WechatImageFile extends Phaser.Loader.File {
+  constructor(loader: Phaser.Loader.LoaderPlugin, key: string, url: string) {
+    super(loader, {
+      type: 'wechatImage',
+      key,
+      url,
+      extension: 'png',
+    });
+  }
+
+  load(): void {
+    const wx = (globalThis as unknown as {
+      wx?: {
+        createImage?: () => HTMLImageElement & { onload: unknown; onerror: unknown; src: string };
+      };
+    }).wx;
+    const src = this.url as string;
+
+    const onError = () => (this.onError as (xhr?: unknown, event?: unknown) => void)();
+
+    const finished = (im: HTMLImageElement | HTMLCanvasElement) => {
+      try {
+        const w = (im as HTMLImageElement).naturalWidth || (im as HTMLImageElement).width;
+        const h = (im as HTMLImageElement).naturalHeight || (im as HTMLImageElement).height;
+        if (!w || !h) {
+          onError();
+          return;
+        }
+        const textures = (this.loader as unknown as { scene: Phaser.Scene }).scene.sys.textures;
+        if (textures.exists(this.key)) {
+          (this.onLoad as (xhr?: unknown, event?: unknown) => void)();
+          return;
+        }
+        const cv = textures.createCanvas(this.key, w, h);
+        if (!cv) {
+          onError();
+          return;
+        }
+        (cv.getContext() as CanvasRenderingContext2D).drawImage(im as CanvasImageSource, 0, 0);
+        cv.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        cv.refresh();
+        (this.onLoad as (xhr?: unknown, event?: unknown) => void)();
+      } catch (_) {
+        onError();
+      }
+    };
+
+    if (wx && typeof wx.createImage === 'function') {
+      const im = wx.createImage();
+      im.onload = () => finished(im);
+      im.onerror = onError;
+      im.src = src;
+    } else {
+      const im = new Image();
+      im.onload = () => finished(im);
+      im.onerror = onError;
+      im.src = src;
+    }
+  }
+}
+
 export class GameScene extends Phaser.Scene {
   private platform!: Platform;
   private abstraction!: InputAbstraction;
@@ -357,6 +423,46 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('Game');
+  }
+
+  /**
+   * 预加载关卡内位图资源。
+   * - Web 端：用 Phaser 自带 Loader（this.load.image），Loader 会等待加载完成再进 create()。
+   * - 微信端：用自定义 Loader 文件 WechatImageFile（wx.createImage 绕开 XHR 并画到 canvas 纹理），
+   *   同样纳入 Phaser 加载队列，确保 create() 时纹理已就绪（否则 TouchButtons 会降级为代码绘制）。
+   * 四个触屏按钮（左/右/动作/跳跃）均使用用户提供的 PNG；加载失败则降级为代码绘制。
+   */
+  preload(): void {
+    const platform = this.registry.get('platform') as Platform | undefined;
+    const isWechat = platform?.env === 'wechat';
+
+    // 注册微信端自定义图片加载器（仅一次）。
+    const loader = this.load as unknown as {
+      wechatImage?: (key: string, url: string) => void;
+    };
+    if (isWechat && typeof loader.wechatImage !== 'function') {
+      (this.load as unknown as Record<string, unknown>).wechatImage = function (
+        this: Phaser.Loader.LoaderPlugin,
+        key: string,
+        url: string,
+      ) {
+        this.addFile(new WechatImageFile(this, key, url));
+      };
+    }
+
+    const uiButtons = [
+      { key: 'ui-arrow-btn', path: 'ui/arrow-btn.png' },
+      { key: 'ui-action-btn', path: 'ui/action-btn.png' },
+      { key: 'ui-jump-btn', path: 'ui/jump-btn.png' },
+    ] as const;
+    for (const { key, path } of uiButtons) {
+      if (this.textures.exists(key)) continue; // 场景重启时跳过重复加载
+      if (isWechat) {
+        (this.load as unknown as { wechatImage: (k: string, u: string) => void }).wechatImage(key, path);
+      } else {
+        this.load.image(key, path);
+      }
+    }
   }
 
   /** 分享深链：Boot 经 scene.start('Game', { startLevel }) 带 data 进入时调用。 */

@@ -4,13 +4,13 @@
  * 设计风格（方案 G · 深底浅边）：
  * - 参考用户截图：深棕色按钮底板 + 奶油米色粗描边 + 奶油色图标。
  * - 立体感来自内倒角：顶部/左侧浅高光 + 底部/右侧深阴影，外圈一道明显的浅米色描边。
- * - 左/右：横向圆角矩形（圆角较小），内嵌程序绘制胖箭头。
- * - 动作：小圆钮，内嵌程序绘制八角闪光星。
- * - 跳跃：大圆钮，内嵌程序绘制上箭头。
+ * - 左/右：横向圆角矩形（圆角较小），内嵌用户提供胖箭头 PNG（左键水平翻转）。
+ * - 动作：小圆钮，内嵌用户提供的栗子攻击星形 PNG。
+ * - 跳跃：大圆钮，内嵌用户提供的上箭头 PNG。
  * - 暂停：右上深底圆钮，内嵌双竖线（仍用 Graphics 实时绘制）。
  *
- * 四个控制按钮统一用 Phaser Graphics 按逻辑尺寸直接绘制，避免 128px PNG 先压缩到
- * 28–36px、再随微信固定分辨率画布放大时产生的重采样模糊。
+ * 四个控制按钮优先使用 PNG 纹理（'ui-arrow-btn' / 'ui-action-btn' / 'ui-jump-btn'），
+ * 加载失败则降级为代码绘制（零位图资产，ADR-004）。
  * 命中区/坐标/半径仍来自 inputConfig.wechat.buttons，与 wechat-touch 命中公式一致。
  */
 import Phaser from 'phaser';
@@ -61,7 +61,12 @@ export {
   resolveButtonId,
 };
 
-/** 四钮公共控制接口（DarkRect / DarkCircle 统一实现）。 */
+/** 图片纹理键：用户提供的 PNG 按钮素材。 */
+const ARROW_TEXTURE_KEY = 'ui-arrow-btn';
+const ACTION_TEXTURE_KEY = 'ui-action-btn';
+const JUMP_TEXTURE_KEY = 'ui-jump-btn';
+
+/** 四钮公共控制接口（DarkRect / DarkCircle / ImageButton 统一实现）。 */
 interface ButtonControl {
   readonly id: ButtonId;
   setPressed(pressed: boolean): void;
@@ -70,6 +75,71 @@ interface ButtonControl {
 }
 
 type IconPainter = (g: Phaser.GameObjects.Graphics, size: number) => void;
+
+// ---- 图片按钮（四个控制钮通用；方向键可为矩形，动作/跳跃为圆钮）----
+class ImageButton implements ButtonControl {
+  readonly id: ButtonId;
+  private readonly container: Phaser.GameObjects.Container;
+  private readonly image: Phaser.GameObjects.Image;
+  private readonly scene: Phaser.Scene;
+  private readonly spec: ButtonVisualSpec;
+
+  private pressed = false;
+  private disabled = false;
+
+  constructor(
+    scene: Phaser.Scene,
+    id: ButtonId,
+    cx: number,
+    cy: number,
+    textureKey: string,
+    displayW: number,
+    displayH: number,
+    flipX = false,
+  ) {
+    this.id = id;
+    this.scene = scene;
+    this.spec = BUTTON_VISUAL_SPEC[id];
+
+    this.container = scene.add.container(cx, cy).setDepth(1000).setScrollFactor(0);
+    this.image = scene.add.image(0, 0, textureKey).setScrollFactor(0);
+    // 像素风按钮：关闭平滑过滤，保持锐利（Web + 微信两端）
+    this.image.setTexture(textureKey);
+    this.image.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.image.setDisplaySize(displayW, displayH);
+    this.image.setFlipX(flipX);
+    this.container.add(this.image);
+  }
+
+  setPressed(pressed: boolean): void {
+    if (this.pressed === pressed) return;
+    this.pressed = pressed;
+    this.scene.tweens.killTweensOf(this.container);
+    if (pressed) {
+      this.container.setScale(this.spec.pressedScale);
+      this.image.setTint(0xdddddd);
+    } else {
+      this.scene.tweens.add({
+        targets: this.container,
+        scale: 1.0,
+        duration: RELEASE_TWEEN_MS,
+        ease: RELEASE_TWEEN_EASE,
+      });
+      this.image.clearTint();
+    }
+  }
+
+  setDisabled(disabled: boolean): void {
+    if (this.disabled === disabled) return;
+    this.disabled = disabled;
+    this.image.setAlpha(disabled ? 0.5 : 1.0);
+  }
+
+  destroy(): void {
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.destroy();
+  }
+}
 
 // ---- 绘制：深底圆角矩形按钮（以 (0,0) 为中心）----
 function paintDarkRoundRect(
@@ -456,7 +526,7 @@ class PauseIcon {
 
 // ---- 顶层：控件聚合 + 与 RawInputProvider 的同步入口 ----
 export class TouchButtons {
-  /** 4 钮控件：按逻辑尺寸直接绘制，避免位图缩放后再放大的二次采样。 */
+  /** 4 钮控件（优先使用用户提供的 PNG 纹理；加载失败则降级为代码绘制）。 */
   private readonly controls: Record<ButtonId, ButtonControl>;
   private readonly pauseIcon?: PauseIcon;
   /** 上一次同步的 down 集合（用于边沿检测：触发 squash/弹起 tween） */
@@ -469,10 +539,18 @@ export class TouchButtons {
     const jump = buildCircleGeom('jump');
 
     this.controls = {
-      left: new DarkRect(scene, 'left', left.geom, left.cx, left.cy, drawLeftArrow),
-      right: new DarkRect(scene, 'right', right.geom, right.cx, right.cy, drawRightArrow),
-      action: new DarkCircle(scene, 'action', action.geom, action.cx, action.cy, drawStar),
-      jump: new DarkCircle(scene, 'jump', jump.geom, jump.cx, jump.cy, drawJumpArrow),
+      left: scene.textures.exists(ARROW_TEXTURE_KEY)
+        ? new ImageButton(scene, 'left', left.cx, left.cy, ARROW_TEXTURE_KEY, left.geom.w, left.geom.h, true)
+        : new DarkRect(scene, 'left', left.geom, left.cx, left.cy, drawLeftArrow),
+      right: scene.textures.exists(ARROW_TEXTURE_KEY)
+        ? new ImageButton(scene, 'right', right.cx, right.cy, ARROW_TEXTURE_KEY, right.geom.w, right.geom.h, false)
+        : new DarkRect(scene, 'right', right.geom, right.cx, right.cy, drawRightArrow),
+      action: scene.textures.exists(ACTION_TEXTURE_KEY)
+        ? new ImageButton(scene, 'action', action.cx, action.cy, ACTION_TEXTURE_KEY, action.geom.r * 2, action.geom.r * 2, false)
+        : new DarkCircle(scene, 'action', action.geom, action.cx, action.cy, drawStar),
+      jump: scene.textures.exists(JUMP_TEXTURE_KEY)
+        ? new ImageButton(scene, 'jump', jump.cx, jump.cy, JUMP_TEXTURE_KEY, jump.geom.r * 2, jump.geom.r * 2, false)
+        : new DarkCircle(scene, 'jump', jump.geom, jump.cx, jump.cy, drawJumpArrow),
     };
 
     const pIcon = inputConfig.wechat.pauseIcon;
