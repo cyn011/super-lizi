@@ -29,6 +29,7 @@ import {
   formatCombo,
   shouldShowCombo,
 } from './hud-economy';
+import { detectEnv } from '../platform/detect';
 
 // ---- 颜色（美术圣经 §3 / placeholder-spec §0，禁止硬编码语义外的色）----
 const COLOR_HEART_FULL = 0xf26d8b; // 生命粉红 #F26D8B（与警示红解耦，§9.1）
@@ -46,10 +47,11 @@ const FORM_X = 72; // 心形右侧，间隔 8px（slot2 末 64 + 8）
 const FORM_Y = 8;
 
 // ---- 经济字段（S04-5，hud-spec 未覆盖 / 08-ui-hud §3 中上分数金币）----
-// 布局：顶部右侧（与左上心形+形态镜像，margin 8，512×288 坐标系）。
+// 布局：顶部右侧（与左上心形+形态镜像，512×288 坐标系）。
+// 微信右上角有系统胶囊按钮（... / 关闭），留足安全边距避免遮挡；Web 保持紧凑。
+const ECON_MARGIN = detectEnv() === 'wechat' ? 96 : 8; // 距右边距（微信 96 / Web 8）
 const COLOR_COIN = 0xf2c94c; // 经济金（与 coin-view.ts 同色，双编码：形状+色，色盲安全）
 const COLOR_COMBO_TEXT = '#E8483B'; // 警示红（连击文本，双编码危险色，对齐敌人/弹丸；越界橙已归位锁色板 #E8483B，P6 整改 A）
-const ECON_MARGIN = 8; // 距右边距（与心形左 margin 对称）
 const ECON_Y = 8; // 与心形同行
 const ECON_GAP = 8; // 分数 ↔ 金币组 间距
 const SCORE_FONT_SIZE = '14px'; // 中文 ≥14px 等效（accessibility §9.2）

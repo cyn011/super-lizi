@@ -10,10 +10,12 @@
  */
 import Phaser from 'phaser';
 import { EventBus, ON_AMMO_CHANGED } from '../core/events/event-bus';
+import { detectEnv } from '../platform/detect';
 
 const LOGICAL_W = 512;
 const AMMO_Y = 46; // 经济字段（分数/连击）在 y=8/26，弹药置于其下一行，避免重叠
-const AMMO_MARGIN = 8;
+// 微信右上角有系统胶囊按钮（... / 关闭），留足安全边距避免遮挡；Web 保持紧凑。
+const AMMO_MARGIN = detectEnv() === 'wechat' ? 96 : 8;
 const ICON_SIZE = 14;
 const TEXT_SLOT_W = 24;
 const COLOR_CHESTNUT = 0xb5763e; // 栗色（与主角一致，art-bible §4.2）
