@@ -57,33 +57,26 @@ export function startGame(parent?: string | HTMLElement): Phaser.Game {
   gm.__superMaliPlatform = platform;
   gm.__superMaliEvents = events;
 
-  // 首次交互解锁音频（自动播放限制）
-  platform.audio.unlock();
-
   // 微信分享（转发）+ 关卡深链：开启右上角「...」转发菜单（Web 端 share 为 undefined → no-op）。
   platform.share?.enableShare('栗宝大冒险 · 一起来跳！');
 
-  // 真实手势内再次 resume（绕过自动播放限制；boot 时调用因无手势无效）。
-  // Web：window 事件（pointerdown/keydown/touchstart）；微信沙盒无 window，
-  // 改用 wx.onTouchStart 在首次触控内 resume——AudioContext 必须于用户手势中 resume，
-  // 否则始终 suspended → 真机无声。unlock() 幂等，wx 无 {once} 故用 flag 守卫。
-  let audioUnlocked = false;
-  const resumeAudio = () => {
-    if (audioUnlocked) return;
-    audioUnlocked = true;
-    platform.audio.unlock();
-  };
+  // 首次交互解锁音频（绕过自动播放限制）。
+  // 关键：AudioContext 必须在用户手势内首次创建并 resume。boot 期创建会被微信自动播放策略
+  // 永久置为 suspended（之后 resume 也救不回）→ 真机全程无声。故 boot 不预创建 ctx，
+  // 仅在真实手势回调内首次创建+恢复；unlock() 幂等且可重复调用：若 resume 被策略拒绝，
+  // 后续触摸会再次调用并重试。
+  const unlockAudio = () => platform.audio.unlock();
   if (typeof window !== 'undefined') {
-    window.addEventListener('pointerdown', resumeAudio, { once: true });
-    window.addEventListener('keydown', resumeAudio, { once: true });
-    window.addEventListener('touchstart', resumeAudio, { once: true });
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
   }
+  // 微信沙盒无 window 事件，改用 wx 真实手势回调内 resume；不加 {once}，允许策略拒绝后重试。
   const wxGlobal = globalThis as unknown as {
-    wx?: { onTouchStart?: (cb: () => void) => void };
+    wx?: { onTouchStart?: (cb: () => void) => void; onTouchEnd?: (cb: () => void) => void };
   };
-  if (wxGlobal.wx && typeof wxGlobal.wx.onTouchStart === 'function') {
-    wxGlobal.wx.onTouchStart(resumeAudio);
-  }
+  if (wxGlobal.wx?.onTouchStart) wxGlobal.wx.onTouchStart(unlockAudio);
+  if (wxGlobal.wx?.onTouchEnd) wxGlobal.wx.onTouchEnd(unlockAudio);
 
   return game;
 }

@@ -19,8 +19,10 @@ import { SynthEngine } from '../shared/synth-engine';
 export type AudioContextCtor = () => typeof AudioContext | null;
 
 /**
- * 微信端 getCtor：优先全局 `AudioContext`，否则 `wx.createWebAudioContext`
- * （wx 返回实例而非构造器，故包装成可被 `new` 调用的工厂）。非微信/无 WebAudio 环境 → null 静默。
+ * 微信端 getCtor：优先微信原生 `wx.createWebAudioContext`，否则才回退全局 `AudioContext`。
+ * weapp-adapter 可能暴露“存在但不可播放”的 AudioContext 占位，若先选它会造成真机全程静音。
+ * wx 返回实例而非构造器，故包装成可被 `new` 调用、且保持 wx receiver 的工厂。
+ * 非微信/无 WebAudio 环境 → null 静默。
  */
 function defaultWechatCtor(): typeof AudioContext | null {
   const w = globalThis as unknown as {
@@ -28,29 +30,45 @@ function defaultWechatCtor(): typeof AudioContext | null {
     webkitAudioContext?: typeof AudioContext;
     wx?: { createWebAudioContext?: () => AudioContext };
   };
-  const AC = w.AudioContext ?? w.webkitAudioContext;
-  if (AC) return AC;
   const wx = w.wx;
   if (wx && typeof wx.createWebAudioContext === 'function') {
-    const factory = wx.createWebAudioContext;
     return (function (this: unknown) {
-      return factory();
+      return wx.createWebAudioContext!();
     } as unknown) as typeof AudioContext;
   }
-  return null;
+  return w.AudioContext ?? w.webkitAudioContext ?? null;
 }
 
 export class WechatAudio implements AudioPort {
   private engine: SynthEngine;
   private readonly getCtor: AudioContextCtor;
+  /** 一次性诊断开关（console.error 在 game.js 静音策略下仍保留，可在 vConsole 看到）。 */
+  private static diagDone = false;
 
   constructor(audioContextCtor?: AudioContextCtor) {
     this.getCtor = audioContextCtor ?? defaultWechatCtor;
     this.engine = new SynthEngine(null, audioConfig);
+    // iOS 静音/震动档下也尝试出声（InnerAudioContext 生效；WebAudio 视基础库而定，无害）。
+    const w = globalThis as unknown as { wx?: { setInnerAudioOption?: (o: Record<string, unknown>) => void } };
+    if (w.wx && typeof w.wx.setInnerAudioOption === 'function') {
+      try { w.wx.setInnerAudioOption({ obeyMuteSwitch: false, mixWithOther: true }); } catch { /* noop */ }
+    }
   }
 
   unlock(): void {
     this.engine.unlock(this.getCtor);
+    if (!WechatAudio.diagDone) {
+      WechatAudio.diagDone = true;
+      const w = globalThis as unknown as {
+        wx?: { createWebAudioContext?: unknown };
+      };
+      const hasWxWAA = !!(w.wx && typeof w.wx.createWebAudioContext === 'function');
+      // eslint-disable-next-line no-console
+      console.error(
+        '[audio-diag] unlock: hasWxCreateWebAudioContext=' + hasWxWAA +
+        ' ctxState=' + this.engine.contextState,
+      );
+    }
   }
 
   play(name: string): void {

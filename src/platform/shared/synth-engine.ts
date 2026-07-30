@@ -415,6 +415,11 @@ export class SynthEngine {
     this.audioConfig = audioConfig;
   }
 
+  /** 诊断用：当前 ctx 状态（无 ctx 返回 'none'）。供平台层一次性上报。 */
+  get contextState(): string {
+    return this.ctx ? (typeof this.ctx.state === 'string' ? this.ctx.state : 'unknown') : 'none';
+  }
+
   /**
    * 建/resume ctx（幂等）。getCtor 由上层包装提供（Web=globalThis.AudioContext，
    * 微信=wx.createWebAudioContext 包装）；无可用构造器时静默返回（无 WebAudio 环境）。
@@ -430,13 +435,30 @@ export class SynthEngine {
         return;
       }
     }
-    // resume 幂等：首屏调用一次后，真实手势内浏览器自动续 resume；重复调用安全。
-    void this.ctx.resume();
-    // 补播解锁前被拦的 BGM 意愿（真机首屏菜单/进关静音修复）。
-    if (this.pendingName) {
+    // resume 幂等，但必须等恢复完成后才能安排待播 BGM。真机首屏的第一次
+    // resume 常因不在用户手势中被拒绝；后续触摸会再次调用 unlock 重试。
+    const ctx = this.ctx;
+    const flushPendingMusic = () => {
+      if (!this.pendingName) return;
       const n = this.pendingName;
       this.pendingName = null;
       this.playMusic(n);
+    };
+    try {
+      if (ctx.state === 'running') {
+        flushPendingMusic();
+        return;
+      }
+      const resumed = ctx.resume();
+      if (resumed && typeof resumed.then === 'function') {
+        void resumed.then(flushPendingMusic).catch(() => {
+          // 自动播放限制拒绝时保留 pendingName，等待下一次真实触摸重试。
+        });
+      } else {
+        flushPendingMusic();
+      }
+    } catch {
+      // 同上：保持 ctx 与 pendingName，允许下一次触摸重试。
     }
   }
 
@@ -463,8 +485,8 @@ export class SynthEngine {
    */
   playMusic(name: string): void {
     if (!(name in MUSIC_SPECS)) return; // 未知 name：静默
-    if (!this.ctx) {
-      // 解锁前（ctx 为 null）记意愿，unlock 续上后自动补播；避免真机首屏静音。
+    if (!this.ctx || (typeof this.ctx.state === 'string' && this.ctx.state !== 'running')) {
+      // 解锁前或 context 仍 suspended/interrupted 时记意愿，resume 成功后补播。
       this.pendingName = name;
       return;
     }
