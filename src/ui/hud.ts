@@ -53,10 +53,10 @@ const ECON_MARGIN = detectEnv() === 'wechat' ? 96 : 8; // 距右边距（微信 
 const COLOR_COIN = 0xf2c94c; // 经济金（与 coin-view.ts 同色，双编码：形状+色，色盲安全）
 const COLOR_COMBO_TEXT = '#E8483B'; // 警示红（连击文本，双编码危险色，对齐敌人/弹丸；越界橙已归位锁色板 #E8483B，P6 整改 A）
 const ECON_Y = 8; // 与心形同行
-const ECON_GAP = 8; // 分数 ↔ 金币组 间距
+const ECON_GAP = 12; // 分数 ↔ 金币组 间距
 const SCORE_FONT_SIZE = '14px'; // 中文 ≥14px 等效（accessibility §9.2）
 const COIN_ICON_SIZE = 14; // 金币图标 ~14×14（放大，提升存在感）
-const COIN_TEXT_GAP = 3; // 金币图标 ↔ 数字 间距
+const COIN_TEXT_GAP = 6; // 金币图标 ↔ 数字 间距
 const ECON_LINE_H = 18; // 连击行相对分数行下移（font 14 + 间距）
 
 // ---- Game Over 覆盖层（hud-spec §6）----
@@ -368,7 +368,7 @@ export class Hud {
 
   /**
    * S04-5 经济字段绘制：金币图标（Graphics 矢量，绘在共享 gfx 上）+ 分数/金币/连击（Text 系统字体）。
-   * 全部右对齐到 x = LOGICAL_W - ECON_MARGIN (504)；金币组置于分数左侧。
+   * 全部右对齐到 x = LOGICAL_W - ECON_MARGIN；金币组置于分数左侧。
    * 连击「xN」仅在 comboMult > 1 时显示（=1 常态隐藏，避免常驻干扰）。
    * 禁用位图字体（ADR-004）：Text 用运行时系统 'sans-serif'。
    */
@@ -390,8 +390,8 @@ export class Hud {
     const coinGroupW = COIN_ICON_SIZE + COIN_TEXT_GAP + coinTextW;
     const coinGroupRight = right - scoreW - ECON_GAP;
     this.coinText.setOrigin(1, 0).setPosition(coinGroupRight, y);
-    // 金币图标在金币数字左侧（垂直相对分数文本居中）
-    const iconX = coinGroupRight - coinTextW - COIN_TEXT_GAP;
+    // 金币图标在金币数字左侧：图标右沿 = 数字左沿 - COIN_TEXT_GAP，故左沿需再减图标宽。
+    const iconX = coinGroupRight - coinTextW - COIN_TEXT_GAP - COIN_ICON_SIZE;
     const iconY = y + Math.max(0, Math.floor((this.scoreText.height - COIN_ICON_SIZE) / 2));
     this.drawCoinIcon(g, iconX, iconY, COIN_ICON_SIZE);
 
