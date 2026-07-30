@@ -19,7 +19,7 @@ const level = JSON.parse(readFileSync(join(root, 'src/config/levels/1-3.json'), 
 describe('1-3 澜屿潮汐 visual slice', () => {
   it('loads dedicated island and reef assets through the shared Web/WeChat image chain', () => {
     expect(gameScene).toContain(
-      "{ key: 'sea-island-backdrop-v1', path: 'art/sea/sea-island-backdrop-v1.png' }",
+      "{ key: 'sea-island-backdrop-v1', path: 'art/sea/sea-island-backdrop-v1.jpg' }",
     );
     expect(gameScene).toContain(
       "{ key: 'sea-reef-foreground-v1', path: 'art/sea/sea-reef-foreground-v1.png' }",

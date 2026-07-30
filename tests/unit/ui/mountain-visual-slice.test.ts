@@ -14,7 +14,7 @@ const level = JSON.parse(readFileSync(join(root, 'src/config/levels/1-2.json'), 
 
 describe('1-2 黛峦·续章 visual slice', () => {
   it('keeps the dedicated mountain art gated to level 1-2', () => {
-    expect(gameScene).toContain("path: 'art/mountain/mountain-moon-backdrop-v1.png'");
+    expect(gameScene).toContain("path: 'art/mountain/mountain-moon-backdrop-v1.jpg'");
     expect(gameScene).toContain("path: 'art/mountain/mountain-stone-foreground-v1.png'");
     expect(gameScene).toContain("isMountain && this.runtime.data.id === '1-2'");
     expect(gameScene).toContain('if (usesMountainArt) this.drawMountainBackground(pal)');

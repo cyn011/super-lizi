@@ -29,7 +29,7 @@ export class AmmoHud {
   private readonly bus: EventBus;
   private ammo = 0;
   private cap = 0;
-  /** 海关用海星表现同一弹药数值；仅换皮，不改变投掷资源语义。 */
+  /** 海关用海星、沙漠关用红色沙果表现同一弹药数值；仅换皮，不改变投掷资源语义。 */
   private theme = 'grass';
 
   private readonly gfx: Phaser.GameObjects.Graphics;
@@ -75,7 +75,7 @@ export class AmmoHud {
     if (this.ammo <= 0) this.flashEmpty();
   }
 
-  /** 切关时同步主题皮肤；1-3 海关显示参考图中的珊瑚海星。 */
+  /** 切关时同步主题皮肤；1-3 海关显示海星，1-4 沙漠关显示沙果。 */
   setTheme(theme: string): void {
     this.theme = theme;
     this.draw();
@@ -112,6 +112,20 @@ export class AmmoHud {
       if (!empty) {
         g.fillStyle(0xffd6a3, 0.9);
         g.fillCircle(cx, cy, 1.5);
+      }
+    } else if (this.theme === 'desert') {
+      const cx = x + ICON_SIZE / 2;
+      const cy = y + ICON_SIZE / 2 + 1;
+      g.fillStyle(empty ? COLOR_EMPTY : 0xf05b3f, 1);
+      g.fillCircle(cx, cy, ICON_SIZE / 2 - 1);
+      g.lineStyle(1, COLOR_OUTLINE, 1);
+      g.strokeCircle(cx, cy, ICON_SIZE / 2 - 1);
+      if (!empty) {
+        g.fillStyle(0xff8a58, 0.9);
+        g.fillCircle(cx - 2, cy - 2, 1.5);
+        g.fillStyle(COLOR_SPROUT, 1);
+        g.fillTriangle(cx - 3, y + 2, cx, y - 1, cx + 1, y + 4);
+        g.fillTriangle(cx, y + 3, cx + 4, y, cx + 3, y + 5);
       }
     } else {
       // 栗子：圆身 + 顶部嫩芽

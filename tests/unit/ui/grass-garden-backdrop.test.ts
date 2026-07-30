@@ -18,7 +18,7 @@ const gameSceneSource = readFileSync(
 describe('game-scene · 1-1 花园美术背景', () => {
   it('通过统一加载链加载花园背景，兼容 Web 与微信小游戏', () => {
     expect(gameSceneSource).toContain(
-      "{ key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.png' }",
+      "{ key: 'grass-garden-backdrop-v1', path: 'art/grass/grass-garden-backdrop-v1.jpg' }",
     );
     expect(gameSceneSource).toContain("this.textures.exists('grass-garden-backdrop-v1')");
     expect(gameSceneSource).toContain(
