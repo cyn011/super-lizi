@@ -397,6 +397,8 @@ export class SynthEngine {
   // ── BGM 调度状态 ──
   private readonly schedCache = new Map<string, SchedSpec>();
   private currentName: string | null = null;
+  /** 解锁前请求的 BGM（ctx 为 null 时无法启动）；unlock 续上后自动补播，避免真机首屏静音。 */
+  private pendingName: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private phase: 'intro' | 'loop' = 'intro';
   private nextIdx = 0;
@@ -430,6 +432,12 @@ export class SynthEngine {
     }
     // resume 幂等：首屏调用一次后，真实手势内浏览器自动续 resume；重复调用安全。
     void this.ctx.resume();
+    // 补播解锁前被拦的 BGM 意愿（真机首屏菜单/进关静音修复）。
+    if (this.pendingName) {
+      const n = this.pendingName;
+      this.pendingName = null;
+      this.playMusic(n);
+    }
   }
 
   /** 播放 SFX（解锁前 ctx 为 null → no-op）。 */
@@ -454,8 +462,12 @@ export class SynthEngine {
    * - 换 name → 先 stopMusic 当前，再启动新 BGM。
    */
   playMusic(name: string): void {
-    if (!this.ctx) return; // 解锁闸门
     if (!(name in MUSIC_SPECS)) return; // 未知 name：静默
+    if (!this.ctx) {
+      // 解锁前（ctx 为 null）记意愿，unlock 续上后自动补播；避免真机首屏静音。
+      this.pendingName = name;
+      return;
+    }
     if (this.currentName === name) return; // idempotent
     this.stopMusic(); // 换名先停后起
 
@@ -479,6 +491,7 @@ export class SynthEngine {
    * 无当前 BGM 时 no-op。
    */
   stopMusic(): void {
+    this.pendingName = null; // 取消任何待补播意愿
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
