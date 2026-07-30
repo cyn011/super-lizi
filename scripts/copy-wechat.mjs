@@ -46,6 +46,17 @@ if (existsSync(publicDir)) {
   console.warn('[copy-wechat] public/ not found; static assets may be missing.');
 }
 
+// public/ 只能提供静态资源，不能覆盖小游戏运行入口。
+// 历史上 public/game.js 曾是旧副本，cpSync 后会把根目录新版入口覆盖掉，
+// 导致真机缺少 EventTarget shim 并在 Phaser.startListeners 黑屏。
+// 无论 public/ 内容如何，最后都以仓库根目录的运行入口为唯一真源。
+copyFileSync(resolve(root, 'game.js'), resolve(out, 'game.js'));
+copyFileSync(resolve(root, 'game.json'), resolve(out, 'game.json'));
+if (readFileSync(resolve(out, 'game.js'), 'utf8') !== readFileSync(resolve(root, 'game.js'), 'utf8')) {
+  throw new Error('[copy-wechat] canonical game.js integrity check failed');
+}
+console.log('[copy-wechat] canonical game.js/game.json restored after public copy');
+
 // 3. Babel 后处理：把 index.js 整体降到 ES5（bundled helpers，不依赖 @babel/runtime）
 const indexPath = resolve(out, 'index.js');
 if (existsSync(indexPath)) {
