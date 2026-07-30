@@ -606,7 +606,14 @@ export class GameScene extends Phaser.Scene {
     // GDD 17：扔栗子机制实例化（控制器 + 弹药 HUD + 弹丸渲染；每关 loadLevel 内 reset 弹药）。
     // 必须在 loadLevel（首关）之前创建，使 loadLevel 的 ON_AMMO_CHANGED 重绘命中订阅。
     this.throwController = new ThrowController(attackConfig);
-    this.ammoHud = new AmmoHud(this, this.bus, attackConfig.ammoStart, attackConfig.ammoCap);
+    // 弹药 HUD 同行排到金币组左侧：锚点取 Hud 经济行金币组左沿。
+    this.ammoHud = new AmmoHud(
+      this,
+      this.bus,
+      attackConfig.ammoStart,
+      attackConfig.ammoCap,
+      () => this.hud.getCoinGroupLeftX(),
+    );
     this.chestnutView = new ChestnutView(this);
 
     // S04-4 经济/分数：实例化控制器并订阅事件 → 计算 → 发 ON_SCORE_CHANGED（供 S04-5 HUD）。

@@ -98,6 +98,8 @@ export class Hud {
   private levelText!: Phaser.GameObjects.Text;
   /** 顶部半透明信息栏底板（固定相机层 depth 999，位于 gfx 之下，统一 HUD 容器感）。 */
   private barGfx?: Phaser.GameObjects.Graphics;
+  /** 经济行「金币组」左沿 x（drawEconomy 计算后更新；供弹药 HUD 同行左排定位）。 */
+  private coinGroupLeftX = LOGICAL_W - ECON_MARGIN;
 
   /** bus.on 返回的 off 函数集合，destroy 时统一解绑（hud-spec §8.1）。 */
   private readonly offs: Array<() => void> = [];
@@ -290,6 +292,14 @@ export class Hud {
     this.levelText?.destroy();
   }
 
+  /**
+   * 经济行「金币组」左沿 x（drawEconomy 实时更新）。弹药 HUD 据此把自身排到金币左侧、同一行。
+   * 构造早期（drawEconomy 尚未执行）返回保守估算值，不影响最终布局。
+   */
+  getCoinGroupLeftX(): number {
+    return this.coinGroupLeftX;
+  }
+
   /** 顶部信息栏：半透明木质/像素风条带，横跨顶部，承载心形+形态+经济字段（hud-spec §2 容器感）。 */
   private drawTopBar(): void {
     const g = this.barGfx;
@@ -394,6 +404,7 @@ export class Hud {
     const iconX = coinGroupRight - coinTextW - COIN_TEXT_GAP - COIN_ICON_SIZE;
     const iconY = y + Math.max(0, Math.floor((this.scoreText.height - COIN_ICON_SIZE) / 2));
     this.drawCoinIcon(g, iconX, iconY, COIN_ICON_SIZE);
+    this.coinGroupLeftX = iconX; // 供弹药 HUD 同行左排锚点
 
     // 连击：仅 mult>1 显示，右对齐到右边距、分数下一行
     if (shouldShowCombo(this.comboMult)) {
