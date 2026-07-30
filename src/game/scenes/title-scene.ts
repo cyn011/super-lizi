@@ -38,12 +38,6 @@ const TEXT_FONT = "'PingFang SC', 'Microsoft YaHei', 'Heiti SC', 'Noto Sans SC',
 const OUTLINE_STR = '#2A1A12';
 const COLOR_CREAM = '#F4EFE6';
 
-// 虚拟「开始冒险」按钮点击区（与背景图中按钮位置对齐）
-const START_BTN_CX = 256;
-const START_BTN_CY = 200;
-const START_BTN_W = 150;
-const START_BTN_H = 50;
-
 // 继续行位置（按钮下方，与按钮阴影保持间距避免重叠）
 const CONTINUE_CY = 268;
 
@@ -73,58 +67,86 @@ export class TitleScene extends Phaser.Scene {
   private bgAdded = false;
   /** 诊断红屏（蓝屏排查用，背景图加载成功后移除）。含红块 + 文字。 */
   private diagObjects: Phaser.GameObjects.GameObject[] = [];
+  /** 音频是否已解锁（首触解锁后=true；从游戏返回且仍在 running 时初始化为 true）。 */
+  private audioArmed = false;
+  /** 首触解锁阶段锁定的进入关卡（有进度=续关，否则 1-1）。 */
+  private pendingLevel = '1-1';
+  /** 解锁提示（首触后出现，提示玩家再点一次进入）。 */
+  private startPrompt?: Phaser.GameObjects.Text;
 
   constructor() {
     super('Title');
   }
 
   create(): void {
-    // 幂等：若已构建过（scene restart 等），仅重置触发锁，避免叠加创建 UI。
-    if (this.built) {
-      this.started = false;
-      return;
-    }
+    // 场景重启（从游戏返回标题等）会清空显示列表与输入监听，交互 UI 必须重建；
+    // 但诊断红屏 / 备用背景等一次性初始化只在首次进行，避免叠加。
+    const firstTime = !this.built;
     this.built = true;
     this.started = false;
+    this.startPrompt = undefined;
     this.bgAdded = false;
 
     // 固定逻辑坐标（微信端 Scale.NONE 时 this.scale.height 是真实屏幕高度，不是 288）。
     this.platform = this.resolvePlatform();
     this.reduceMotion = this.platform?.reduceMotion ?? false;
 
-    // === DIAG（蓝屏排查）：TitleScene 启动即铺全屏红，置于最上层。
-    // 背景图加载成功 → 移除红屏，露出真实背景；失败则保留红屏（确认场景已跑但图片未加载）。
-    // 若微信端仍纯蓝 → TitleScene.create() 未执行 / 新代码未生效。
-    const diagRect = this.add
-      .rectangle(CENTER_X, LOGICAL_H / 2, LOGICAL_W, LOGICAL_H, 0xff0000)
-      .setDepth(10000);
-    const diagText = this.add
-      .text(CENTER_X, LOGICAL_H / 2, 'DIAG TITLE', {
-        fontFamily: TEXT_FONT,
-        fontSize: '24px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5)
-      .setDepth(10001);
-    this.diagObjects = [diagRect, diagText];
+    if (firstTime) {
+      // === DIAG（蓝屏排查）：TitleScene 启动即铺全屏红，置于最上层。
+      // 背景图加载成功 → 移除红屏，露出真实背景；失败则保留红屏（确认场景已跑但图片未加载）。
+      // 若微信端仍纯蓝 → TitleScene.create() 未执行 / 新代码未生效。
+      const diagRect = this.add
+        .rectangle(CENTER_X, LOGICAL_H / 2, LOGICAL_W, LOGICAL_H, 0xff0000)
+        .setDepth(10000);
+      const diagText = this.add
+        .text(CENTER_X, LOGICAL_H / 2, 'DIAG TITLE', {
+          fontFamily: TEXT_FONT,
+          fontSize: '24px',
+          color: '#ffffff',
+        })
+        .setOrigin(0.5)
+        .setDepth(10001);
+      this.diagObjects = [diagRect, diagText];
 
-    // 先铺一层备用背景：防止图片加载前/失败后只剩 Phaser 默认蓝屏。
-    this.addFallbackBackground();
+      // 先铺一层备用背景：防止图片加载前/失败后只剩 Phaser 默认蓝屏。
+      this.addFallbackBackground();
 
-    // 核心 UI 立即创建（不依赖背景图是否加载成功）。
+      // 背景图异步加载（不阻塞进游戏；失败也有点击区可用）。
+      try {
+        this.loadBackground();
+      } catch (e) {
+        this.logDebug('loadBackground failed', e);
+      }
+    }
+
+    this.recomputeEntryState();
+
+    // 核心 UI 立即创建（不依赖背景图是否加载成功）。每次 create 重建，保证返程可点。
     // 用 try/catch 包裹，任何 UI 创建错误都不阻塞进游戏。
     try {
       this.createInteractiveUI();
     } catch (e) {
       this.logDebug('createInteractiveUI failed', e);
     }
+  }
 
-    // 背景图异步加载（不阻塞进游戏；失败也有点击区可用）。
+  /** 依据存档进度重算待进关卡，并按音频是否已在 running 决定是否需要两步解锁。 */
+  private recomputeEntryState(): void {
+    this.pendingLevel = this.computePendingLevel();
+    // 音频已在 running（如从游戏内返回标题）→ 首触即进，无需两步唤醒。
+    this.audioArmed = this.platform?.audio.isRunning() ?? false;
+  }
+
+  /** 取续关关卡：有进度（>1 关）取最靠后，否则 1-1。 */
+  private computePendingLevel(): string {
     try {
-      this.loadBackground();
-    } catch (e) {
-      this.logDebug('loadBackground failed', e);
+      const save = this.platform?.storage ? new SaveManager(this.platform.storage).load() : undefined;
+      const unlocked = save?.unlockedLevels ?? ['1-1'];
+      if (unlocked.length > 1) return lastUnlockedLevelId(unlocked);
+    } catch {
+      /* 存档读取失败 → 回退 1-1 */
     }
+    return '1-1';
   }
 
   /** 铺一层与背景图主色调接近的备用背景，避免默认蓝屏。 */
@@ -219,43 +241,12 @@ export class TitleScene extends Phaser.Scene {
 
   /** 创建虚拟点击区、继续行、键盘事件、BGM 交互。 */
   private createInteractiveUI(): void {
-    // ═════════════════════════════════════════════════════
-    //  LAYER 1 — 虚拟「开始冒险」点击区（透明，覆盖图中按钮）
-    // ═════════════════════════════════════════════════════
-    const startHit = this.add
-      .rectangle(START_BTN_CX, START_BTN_CY, START_BTN_W, START_BTN_H, 0xffffff, 0)
-      .setDepth(10)
-      .setInteractive({ useHandCursor: true });
-
-    let pressed = false;
-    startHit.on('pointerdown', () => {
-      pressed = true;
-      startHit.setScale(0.97);
-    });
-    startHit.on('pointerup', () => {
-      if (!pressed) return;
-      pressed = false;
-      startHit.setScale(1);
-      this.startGame();
-    });
-    startHit.on('pointerout', () => {
-      pressed = false;
-      startHit.setScale(1);
-    });
+    const hasProgress = this.pendingLevel !== '1-1';
+    const continueId = this.pendingLevel;
 
     // ═════════════════════════════════════════════════════
-    //  LAYER 2 — CONTINUE LINE（仅存档进度 > 1 关时显示）
+    //  CONTINUE LINE（纯视觉提示，不拦截点击；进度 >1 关时显示）
     // ═════════════════════════════════════════════════════
-    let save;
-    try {
-      save = this.platform?.storage ? new SaveManager(this.platform.storage).load() : undefined;
-    } catch (e) {
-      this.logDebug('save load failed', e);
-      save = undefined;
-    }
-    const unlocked = save?.unlockedLevels ?? ['1-1'];
-    const hasProgress = unlocked.length > 1; // 多于默认单关 = 存在进度
-    const continueId = lastUnlockedLevelId(unlocked);
     const subline = this.add
       .text(CENTER_X, CONTINUE_CY, hasProgress ? `继续第 ${continueId} 关` : '', {
         fontFamily: TEXT_FONT,
@@ -268,11 +259,9 @@ export class TitleScene extends Phaser.Scene {
       .setDepth(11);
 
     if (hasProgress) {
-      subline.setInteractive({ useHandCursor: true });
-      subline.on('pointerdown', () => this.startGame(continueId));
       subline.setAlpha(0);
       if (!this.reduceMotion) {
-        this.tweens.add({ targets: subline, alpha: 0.85, duration: 300, delay: 300 });
+        this.tweens.add({ targets: subline, alpha: 0.85, duration: 300, delay: 400 });
       } else {
         subline.setAlpha(0.85);
       }
@@ -281,21 +270,74 @@ export class TitleScene extends Phaser.Scene {
     }
 
     // ═════════════════════════════════════════════════════
-    //  KEYBOARD — Enter / Space 开始游戏
+    //  全屏透明热区：点击整页任意位置进入游戏
+    //  （修「只点按钮才进 / 要点很多次」——旧实现是 START_BTN_W×H 的小块）
     // ═════════════════════════════════════════════════════
-    this.input.keyboard?.on('keydown-ENTER', () => this.startGame());
-    this.input.keyboard?.on('keydown-SPACE', () => this.startGame());
+    const enterZone = this.add
+      .rectangle(CENTER_X, LOGICAL_H / 2, LOGICAL_W, LOGICAL_H, 0xffffff, 0)
+      .setDepth(10)
+      .setInteractive({ useHandCursor: true });
+
+    let pressed = false;
+    enterZone.on('pointerdown', () => {
+      pressed = true;
+    });
+    enterZone.on('pointerup', () => {
+      if (!pressed) return;
+      pressed = false;
+      this.handleTitleTap();
+    });
+    enterZone.on('pointerout', () => {
+      pressed = false;
+    });
 
     // ═════════════════════════════════════════════════════
-    //  S05-4-BGM：首次用户交互后播 menu BGM
+    //  KEYBOARD — Enter / Space 进入（同两步逻辑）
     // ═════════════════════════════════════════════════════
-    if (this.platform) {
-      const onFirstInteract = () => {
-        if (this.started) return; // 已进入游戏则不回退播 menu
-        this.platform?.audio.playMusic('music:menu');
-      };
-      this.input.once('pointerdown', onFirstInteract);
-      this.input.keyboard?.once('keydown', onFirstInteract);
+    this.input.keyboard?.on('keydown-ENTER', () => this.handleTitleTap());
+    this.input.keyboard?.on('keydown-SPACE', () => this.handleTitleTap());
+  }
+
+  /**
+   * 标题页点击统一入口（两步解锁）：
+   *  - 未解锁：首触解锁音频 + 播 menu BGM 并停留在标题页（让玩家听到首页音乐），
+   *    同时弹出「点击任意位置开始」提示；再次点击任意位置才进游戏。
+   *  - 已解锁（音频已 running，如从游戏返回）：首触直接进游戏。
+   * 微信自动播放策略下，AudioContext 必须在用户手势内创建/resume，故首页有声需先有一步唤醒。
+   */
+  private handleTitleTap(): void {
+    if (this.started) return;
+    if (!this.audioArmed) {
+      this.platform?.audio.unlock();
+      this.platform?.audio.playMusic('music:menu');
+      this.audioArmed = true;
+      this.showStartPrompt();
+      return;
+    }
+    this.startGame(this.pendingLevel);
+  }
+
+  /** 首触解锁后出现的提示，引导玩家再次点击进入。 */
+  private showStartPrompt(): void {
+    if (this.startPrompt) return;
+    this.startPrompt = this.add
+      .text(CENTER_X, LOGICAL_H - 26, '▶ 点击任意位置开始游戏', {
+        fontFamily: TEXT_FONT,
+        fontSize: '12px',
+        color: COLOR_CREAM,
+        stroke: OUTLINE_STR,
+        strokeThickness: 1,
+      })
+      .setOrigin(0.5)
+      .setDepth(12);
+    if (!this.reduceMotion) {
+      this.tweens.add({
+        targets: this.startPrompt,
+        alpha: { from: 0.45, to: 1 },
+        duration: 600,
+        yoyo: true,
+        repeat: -1,
+      });
     }
   }
 

@@ -26,6 +26,9 @@ class MockAudioPort implements AudioPort {
   stopMusic(): void {
     /* no-op */
   }
+  isRunning(): boolean {
+    return false;
+  }
 }
 
 describe('AudioBus · 事件 → play(name) 映射（S05-4）', () => {

@@ -82,4 +82,8 @@ export class WechatAudio implements AudioPort {
   stopMusic(): void {
     this.engine.stopMusic();
   }
+
+  isRunning(): boolean {
+    return this.engine.contextState === 'running';
+  }
 }

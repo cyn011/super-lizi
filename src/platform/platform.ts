@@ -19,6 +19,8 @@ export interface AudioPort {
   playMusic(name: string): void;
   /** 停止当前 BGM（取消已预排未触发 oscillator）。解锁前或没有当前 BGM → no-op。 */
   stopMusic(): void;
+  /** 当前 AudioContext 是否已处于 running（已解锁且恢复成功）。用于标题页判断是否需两步解锁。 */
+  isRunning(): boolean;
 }
 
 export interface StoragePort {
