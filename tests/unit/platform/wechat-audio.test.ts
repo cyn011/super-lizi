@@ -103,6 +103,57 @@ describe('WechatAudio · WebAudio 合成（S05-4-BGM，不再依赖 CDN）', () 
     expect(MockAudioContext.oscCount).toBeGreaterThan(0);
   });
 
+  it('真机优先使用 wx 原生 WebAudio，并保持 createWebAudioContext 的 wx receiver', () => {
+    let nativeCalls = 0;
+    const wxMock = {
+      createWebAudioContext(this: unknown) {
+        expect(this).toBe(wxMock);
+        nativeCalls++;
+        return new MockAudioContext();
+      },
+    };
+    (globalThis as unknown as { wx?: unknown }).wx = wxMock;
+    (globalThis as unknown as { AudioContext?: unknown }).AudioContext = class {
+      constructor() {
+        throw new Error('adapter AudioContext placeholder must not be selected');
+      }
+    };
+    const a = new WechatAudio();
+    a.unlock();
+    a.play('sfx:jump');
+    expect(nativeCalls).toBe(1);
+    expect(MockAudioContext.oscCount).toBeGreaterThan(0);
+  });
+
+  it('首次 resume 被拒后保留音乐意愿，下一次触摸解锁成功后补播', async () => {
+    class SuspendedContext extends MockAudioContext {
+      state = 'suspended';
+      resumeCalls = 0;
+      resume(): Promise<void> {
+        this.resumeCalls++;
+        if (this.resumeCalls === 1) return Promise.reject(new Error('gesture required'));
+        this.state = 'running';
+        return Promise.resolve();
+      }
+    }
+    const ctx = new SuspendedContext();
+    (globalThis as unknown as { wx?: unknown }).wx = {
+      createWebAudioContext: () => ctx,
+    };
+    const a = new WechatAudio();
+    a.unlock(); // 启动阶段：不在用户手势中，被拒
+    a.playMusic('music:menu');
+    await Promise.resolve();
+    expect(MockAudioContext.oscCount).toBe(0);
+
+    a.unlock(); // 首次真实触摸：允许重试并恢复
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.resumeCalls).toBe(2);
+    expect(MockAudioContext.oscCount).toBeGreaterThan(0);
+    a.stopMusic();
+  });
+
   it('unlock 前 play 静默（ctx 为 null）', () => {
     (globalThis as unknown as { wx?: unknown }).wx = {
       createWebAudioContext: () => new MockAudioContext(),

@@ -18,9 +18,9 @@ import {
 
 const LOGICAL_W = 512;
 const AMMO_Y = 8; // 与经济字段（分数/金币）同行
-const AMMO_GAP = 12; // 弹药组 ↔ 金币组 间距
+const AMMO_GAP = 14; // 弹药组 ↔ 金币组 间距
 const ICON_SIZE = 14;
-const ICON_TEXT_GAP = 4; // 栗子图标 ↔ 数字 间距
+const ICON_TEXT_GAP = 8; // 栗子图标 ↔ 数字 间距
 const COLOR_CHESTNUT = 0xb5763e; // 栗色（与主角一致，art-bible §4.2）
 const COLOR_SPROUT = 0x7cc242; // 嫩芽草绿
 const COLOR_EMPTY = 0xe8483b; // 警示红（弹药空红闪，与敌人/弹丸同色板）
@@ -113,8 +113,8 @@ export class AmmoHud {
     this.text.setText(`×${this.ammo}`);
     const ammoTextW = this.text.width;
     const y = AMMO_Y;
-    const textRight = this.anchorXProvider() - AMMO_GAP; // “×N”数字右沿（金币组左沿左侧留间距）
-    const x = textRight - ammoTextW - ICON_TEXT_GAP; // 图标左沿
+    const groupRight = this.anchorXProvider() - AMMO_GAP; // 弹药组右沿（金币组左沿左侧留间距）
+    const x = groupRight - ICON_SIZE - ICON_TEXT_GAP - ammoTextW; // 图标左沿
     const fill = empty ? COLOR_EMPTY : COLOR_CHESTNUT;
     if (this.theme === 'sea') {
       const cx = x + ICON_SIZE / 2;
@@ -158,8 +158,8 @@ export class AmmoHud {
         g.fillCircle(x + ICON_SIZE / 2, y + 2, 2);
       }
     }
-    // 数字右对齐到 textRight（与图标同行、右侧留 ICON_TEXT_GAP 间距）
-    this.text.setOrigin(1, 0).setPosition(textRight, y);
+    // 数字左对齐到图标右侧，同行；避免右对齐时字形悬垂导致与图标重叠。
+    this.text.setOrigin(0, 0).setPosition(x + ICON_SIZE + ICON_TEXT_GAP, y);
   }
 
   /** 解绑事件 + 销毁图层（场景 shutdown 调用）。 */
