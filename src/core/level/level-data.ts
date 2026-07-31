@@ -40,6 +40,8 @@ export type EntityDef =
  * 'office' = 1-7 办公主题（批次 3，office-visual-spec §3 权威 8 槽，0 新增 hex）。
  * 'silhouette' = 2-4「剪影回廊」专属主题（逆光辉廊 + 暗蓝剪影，锁色板内 0 新增 hex）。
  * 'volcano' = 2-6「熔心终焉」第二章终章主题（熔岩 biome，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
+ * 'astral' = 3-1「浮空初息」第三章开篇主题（星界 biome，astral-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex；
+ *            全 biome 唯一「明度翻面」：星白浮岩亮地面 #BEC4F9 + 墨蓝星空 #1F2244）。
  */
 export type LevelTheme =
   | 'grass'
@@ -53,7 +55,8 @@ export type LevelTheme =
   | 'street'
   | 'office'
   | 'silhouette'
-  | 'volcano';
+  | 'volcano'
+  | 'astral';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =
@@ -337,6 +340,22 @@ export interface BeatDef {
   tracks: BeatTrackEntry[]; // S05-1：原 unknown[] → 真实谱面 schema
 }
 
+/**
+ * 关卡级机制开关（GDD level-3-1-design §4.7，加法扩展，全部 optional）。
+ *
+ * 红线：**缺省 = 机制关闭**——旧 13 关（1-1~2-6）无此字段，行为完全不变（零回归）。
+ * 机制本身不是「关卡实体」：entities[] 零新增类型、tiles[] 零新增 kind、敌人代码零改动。
+ */
+export interface LevelMechanicsDef {
+  /**
+   * 羽降（Feather Descent，第三章新动词「浮」）：true = 本关启用「条件性 maxFall 钳制」。
+   * 语义见 character-controller.glideEnabled：下落段持续按住跳跃键 → 下落速度由全局 maxFall(900)
+   * 钳到 GLIDE_MAX_FALL(140)，滞空大幅延长；不提供水平推力、不新增输入信号。
+   * MVP 仅布尔开关；数值（fallMax / activateVy）集中在 physics-config.json，便于 QA 统一调校。
+   */
+  glide?: boolean;
+}
+
 export interface LevelData {
   id: string;
   version: number;
@@ -359,6 +378,11 @@ export interface LevelData {
   riptide?: RiptideDef[];
   /** 流沙区（GDD 1-4 §4，批次 3 沙漠主题）：地面下陷致死机制；缺省 = 无流沙。取代 1-3 的 tideSegments。 */
   quicksand?: QuicksandDef[];
+  /**
+   * 关卡级机制开关（3-1 起）：缺省 = 全部机制关闭（旧 13 关零回归）。
+   * 目前仅 `glide`（羽降）；由 game-scene / headless 在 loadLevel 时注入 CharacterController。
+   */
+  mechanics?: LevelMechanicsDef;
   metadata: { name: string; theme: LevelTheme; parTimeMs?: number };
 }
 

@@ -2,7 +2,8 @@
  * core/character/character-controller — 角色状态与控制器（GDD 03，E2.S3 完整手感）。
  *
  * 消费 InputState + 固定 dt，管理：
- *   水平加速/摩擦、单跳、二段跳(airJumps)、coyote time、jump buffer、可变跳高（短跳）、踩踏反弹。
+ *   水平加速/摩擦、单跳、二段跳(airJumps)、coyote time、jump buffer、可变跳高（短跳）、踩踏反弹、
+ *   羽降 glide（Ch3 新机制：下落段持续按住跳跃 → 条件性 maxFall 钳制，见 consume 第 7 步）。
  *
  * 关键边界（架构 §4 / GDD 02 / control-list §1）：
  *   - 本控制器「只设 vx/vy」，绝不积分位置、绝不施加重力——重力由场景 stepBody 负责。
@@ -14,7 +15,7 @@
  * 卡点要求短跳高度 = 全跳 45~55%。卡点优先 → 用 shortHopCut=0.7（高度 ∝ v² → ≈49%）实现。
  */
 import type { InputState } from '../input/input-abstraction';
-import { characterConfig } from '../config';
+import { characterConfig, GRAVITY, GLIDE_MAX_FALL, GLIDE_ACTIVATE_VY } from '../config';
 
 /** 角色运行时状态（碰撞盒尺寸受 damage.sizeScale 影响，见 GDD 07）。 */
 export interface CharacterState {
@@ -76,6 +77,19 @@ export class CharacterController {
    * 仅缩放「无方向输入时的水平减速摩擦」，不改变加速/最大速度（设计附录 D.2 伪代码）。
    */
   currentFrictionScale = 1.0;
+
+  /**
+   * 羽降（glide）总开关（GDD level-3-1-design §4.7 / E1）。默认 false（旧 13 关零回归）。
+   * 由 game-scene.loadLevel / HeadlessSim 构造时按 `LevelData.mechanics?.glide === true` 注入
+   * （与 currentFrictionScale 同款「外部注入 + 局部钳制」范式，不新增系统、不动重力积分、不动碰撞）。
+   */
+  glideEnabled = false;
+
+  /**
+   * 本步是否处于羽降态（只读输出信号）。供渲染层画薄翼占位（astral-biome-spec A4.3）
+   * 与音频 ON_GLIDE 事件消费；控制器自身不读它，每步 consume 重算。
+   */
+  glideActive = false;
 
   constructor(
     private readonly config: CharacterConfig = characterConfig,
@@ -165,6 +179,30 @@ export class CharacterController {
     if (!this.shortHopApplied && released && (jumped || s.vy < 0)) {
       s.vy *= cfg.shortHopCut;
       this.shortHopApplied = true;
+    }
+
+    // 7. 羽降（glide，第三章新机制 · GDD level-3-1-design §4.3/§4.4/§4.7）：
+    //    「条件性 maxFall 钳制」—— 关卡启用 + 未着地 + 持续按住跳跃键 + 已在下落段(vy>activateVy)
+    //    → 把下落速度钳到 GLIDE_MAX_FALL(140)，取代全局 MAX_FALL(900)，滞空由 0.363s 拉到 0.850s。
+    //    守「只设 vx/vy」铁律：仅钳制、不施力、不积分位置、不提供任何水平推力（水平仍受 moveSpeed 约束）。
+    //    与既有跳跃三语义靠「边沿类型 + 状态」正交，互不冲突：
+    //      起跳/二段跳 = jumpPressed 按下沿；短跳截断 = jumpReleased 松开沿 + 上升段；羽降 = jumpHeld 持续态 + 下落段。
+    //    「起跳后一直按住」= 满跳 + 羽降但放弃二段跳（二段跳需新的按下沿）→ 真实取舍，非无脑最优。
+    if (
+      this.glideEnabled &&
+      !s.grounded &&
+      input.jumpHeld &&
+      s.vy > GLIDE_ACTIVATE_VY
+    ) {
+      // ⚠️ 时序补偿：本控制器不施加重力，consume 之后 stepBody 还会再加一帧重力
+      //    （vy = min(vy + GRAVITY*dt, MAX_FALL)）。故此处预扣一帧重力，
+      //    使真正参与位置积分的下落速度恰为 GLIDE_MAX_FALL —— 设计稿的 45° 斜降可读性、
+      //    6.0 格射程与四连金币教学弧的斜率匹配都强依赖这个精确值（§6.4 金币弧特别说明）。
+      const cap = Math.max(0, GLIDE_MAX_FALL - GRAVITY * dt);
+      s.vy = Math.min(s.vy, cap);
+      this.glideActive = true;
+    } else {
+      this.glideActive = false;
     }
 
     // 记录本步是否发生跳跃（供真实运行路径发 ON_JUMP；headless 独立仿真，不依赖此字段）。

@@ -21,7 +21,12 @@
  *  - 'volcano'（2-6 熔心终焉·第二章终章）：熔岩 biome，art/volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex——
  *    玄武岩黑地面主面 #2A1A12（全 biome 唯一黑曜岩）/ 暗紫天空 #3F45A8（darken(#6E7BF2,0.3) tint 派生）/
  *    熔岩橙红辉光 #F2933C / 灼热高光 #FFD23F / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
+ *  - 'astral'（3-1 浮空初息·第三章开篇）：星界 biome，art/astral-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex——
+ *    **明度翻面**（全 biome 唯一亮地面 + 最暗天）：星白浮岩 #BEC4F9（lighten(#6E7BF2,0.55) tint）/
+ *    墨蓝星空 #1F2244（darken(#6E7BF2,0.72) tint）/ 浮岩暗面 #6E7BF2 / 星屑暖黄 #FFD23F /
+ *    星辉青 #5BC8F5（星核 + 星云辉光）/ 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
  *
+
  * 未知 / 缺省 theme 回退 'grass'（fail-safe，保证旧关 / 回归稳定，art §6.1）。
  */
 import type { LevelData } from '../../core/level/level-data';
@@ -243,6 +248,33 @@ const VOLCANO: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
 };
 
+/**
+ * 星界调色板（3-1「浮空初息」第三章开篇，art/astral-biome-spec.md §1.2/§8.2 权威 8 槽，锁色板内 0 新增 hex）：
+ *   本 biome 的破局点不是色相、是**明度翻面**——全 12 前序 biome 的 rockFace 都落在中—暗明度带，
+ *   astral 是全项目**唯一高明度地面**：
+ *   墨蓝星空 #1F2244（bg，darken(#6E7BF2,0.72) tint 派生，全 biome 最暗天，锁色板 #4 派生，0 新增）/
+ *   星白浮岩 #BEC4F9（rockFace 地面主面，lighten(#6E7BF2,0.55) tint 派生，**签名色 / 识别锚点**，0 新增）/
+ *   蓝紫 #6E7BF2（rockBody 浮岩暗面 / oneway / 顶缘暗边，锁色板 #4）/ 描边 #2A1A12（锁色板 #1）/
+ *   星屑暖黄 #FFD23F（firelight，暗天里唯一暖色，锁色板 #3）/
+ *   星辉青 #5BC8F5（crystalCore 星核高光 / 星门核心 + crystalGlow 星云辉光，锁色板 #6，同色有意复用）/
+ *   警示红 #E8483B（danger 危险双编码，锁色板 #7）。
+ *   bg vs rockFace 亮度对比 ≈ 10:1（远超 WCAG AA）。
+ *   派生 tint（不进 palette 槽，由渲染分支直接引用）：星云雾 #BDE9FB=lighten(#5BC8F5,0.6)、
+ *   深空影 #101A2A=darken(#4A78C0,0.78)、星屑暗 #8C7422=darken(#FFD23F,0.45)、深星紫 #373D79=darken(#6E7BF2,0.5)。
+ *   ⚠️ 可站立信号相对 volcano **反转**：volcano = 黑岩 + 亮顶缘发光边；astral = 亮岩 + 暗顶缘边（rockBody）。
+ *   ⚠️ 亮底敌人可读性（spec A5）：敌体在星白浮岩前景须 2px outline 描边 + 暗体/暗斑，属渲染分支职责，不进 palette 槽。
+ */
+const ASTRAL: ThemePalette = {
+  bg: 0x1f2244, // 墨蓝星空 #1F2244（darken(#6E7BF2,0.72) tint 派生，全 biome 最暗天，0 新增）
+  rockFace: 0xbec4f9, // 星白浮岩 #BEC4F9（lighten(#6E7BF2,0.55) tint 派生，全 biome 唯一亮地面，0 新增）
+  rockBody: 0x6e7bf2, // 蓝紫 #6E7BF2（浮岩暗面 / oneway / 顶缘暗边，锁色板 #4）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #1）
+  firelight: 0xffd23f, // 星屑暖黄 #FFD23F（暗天里唯一暖色，锁色板 #3）
+  crystalCore: 0x5bc8f5, // 星辉青 #5BC8F5（星核高光 / 星门核心，锁色板 #6）
+  crystalGlow: 0x5bc8f5, // 星辉青 #5BC8F5（星云辉光，与 crystalCore 同源有意复用，锁色板 #6）
+  danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -266,6 +298,9 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   silhouette: SILHOUETTE,
   // 火山 volcano = 2-6「熔心终焉」终章主题（熔岩 biome，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
   volcano: VOLCANO,
+  // 星界 astral = 3-1「浮空初息」第三章开篇主题（astral-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
+  // 全 biome 唯一「地比天亮」的明度翻面构图：星白浮岩 #BEC4F9 + 墨蓝星空 #1F2244（对比 ≈10:1）。
+  astral: ASTRAL,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

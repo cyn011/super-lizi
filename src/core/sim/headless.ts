@@ -128,6 +128,9 @@ export class HeadlessSim {
       y: spawn.y,
       grounded: true,
     });
+    // Ch3 羽降（glide）：与 game-scene.loadLevel 同源注入，保证 headless 仿真与真实运行路径一致
+    // （缺省 false → 旧 13 关确定性哈希不变，零回归）。
+    this.cc.glideEnabled = this.level.data.mechanics?.glide === true;
     this.ia = new InputAbstraction(webInputConfig);
     this.enemies = this.level.enemies;
 

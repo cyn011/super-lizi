@@ -782,6 +782,9 @@ export class GameScene extends Phaser.Scene {
       y: spawn.y,
       grounded: true,
     });
+    // Ch3 羽降（glide）注入：按关卡 mechanics 开关置位（缺省 false → 旧 13 关行为完全不变，零回归）。
+    // 与 currentFrictionScale 同款「外部注入 + 局部钳制」范式；数值集中在 physics-config.json（QA 调校入口）。
+    this.controller.glideEnabled = this.runtime.data.mechanics?.glide === true;
 
     // C3：受伤状态机 + 击退计时（initialLives 取自 damageConfig，Economy/06 接入后可覆盖）
     this.damage = new DamageStateMachine(damageConfig.initialLives, damageConfig);

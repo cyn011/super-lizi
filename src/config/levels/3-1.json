@@ -1,0 +1,857 @@
+{
+  "id": "3-1",
+  "version": 1,
+  "tileSize": 32,
+  "width": 46,
+  "height": 9,
+  "tiles": [
+    {
+      "tx": 0,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 1,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 1,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 2,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 2,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 3,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 3,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 4,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 4,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 5,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 5,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 6,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 6,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 7,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 7,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 8,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 8,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 9,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 9,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 10,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 10,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 11,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 11,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 12,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 12,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 13,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 13,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 14,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 14,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 15,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 15,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 16,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 16,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 17,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 17,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 18,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 18,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 19,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 19,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 20,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 20,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 21,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 21,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 22,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 22,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 23,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 23,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 24,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 24,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 25,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 25,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 26,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 26,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 27,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 27,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 28,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 28,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 29,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 29,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 30,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 30,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 31,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 31,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 32,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 32,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 33,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 33,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 34,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 34,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 35,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 35,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 36,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 36,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 37,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 37,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 38,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 38,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 39,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 40,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 40,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 41,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 41,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 42,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 42,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 43,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 43,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 44,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 44,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 0,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 0,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 1,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 1,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 2,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 2,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 3,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 3,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 4,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 4,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 5,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 5,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 6,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 6,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 7,
+      "kind": "solid"
+    },
+    {
+      "tx": 0,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 45,
+      "ty": 8,
+      "kind": "solid"
+    },
+    {
+      "tx": 4,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 5,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 8,
+      "ty": 3,
+      "kind": "oneway"
+    },
+    {
+      "tx": 9,
+      "ty": 3,
+      "kind": "oneway"
+    },
+    {
+      "tx": 10,
+      "ty": 3,
+      "kind": "oneway"
+    },
+    {
+      "tx": 16,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 17,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 23,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 24,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 28,
+      "ty": 4,
+      "kind": "oneway"
+    },
+    {
+      "tx": 29,
+      "ty": 4,
+      "kind": "oneway"
+    },
+    {
+      "tx": 34,
+      "ty": 4,
+      "kind": "oneway"
+    },
+    {
+      "tx": 35,
+      "ty": 4,
+      "kind": "oneway"
+    },
+    {
+      "tx": 42,
+      "ty": 5,
+      "kind": "oneway"
+    },
+    {
+      "tx": 43,
+      "ty": 5,
+      "kind": "oneway"
+    }
+  ],
+  "entities": [
+    {
+      "type": "coin",
+      "x": 96,
+      "y": 200
+    },
+    {
+      "type": "gu_bao",
+      "x": 224,
+      "y": 224,
+      "params": {
+        "phaseOffset": 0
+      }
+    },
+    {
+      "type": "coin",
+      "x": 288,
+      "y": 80
+    },
+    {
+      "type": "seed",
+      "x": 320,
+      "y": 80,
+      "seedId": "seed_01"
+    },
+    {
+      "type": "coin",
+      "x": 352,
+      "y": 112
+    },
+    {
+      "type": "coin",
+      "x": 384,
+      "y": 136
+    },
+    {
+      "type": "coin",
+      "x": 416,
+      "y": 160
+    },
+    {
+      "type": "coin",
+      "x": 448,
+      "y": 184
+    },
+    {
+      "type": "ci_li",
+      "x": 480,
+      "y": 200
+    },
+    {
+      "type": "checkpoint",
+      "x": 512,
+      "y": 176
+    },
+    {
+      "type": "coin",
+      "x": 544,
+      "y": 128
+    },
+    {
+      "type": "seed",
+      "x": 608,
+      "y": 200,
+      "seedId": "seed_02"
+    },
+    {
+      "type": "du_fu",
+      "x": 640,
+      "y": 120
+    },
+    {
+      "type": "coin",
+      "x": 672,
+      "y": 128
+    },
+    {
+      "type": "coin",
+      "x": 736,
+      "y": 128
+    },
+    {
+      "type": "checkpoint",
+      "x": 800,
+      "y": 176
+    },
+    {
+      "type": "gu_bao",
+      "x": 832,
+      "y": 224,
+      "params": {
+        "phaseOffset": 530
+      }
+    },
+    {
+      "type": "seed",
+      "x": 864,
+      "y": 200,
+      "seedId": "seed_03"
+    },
+    {
+      "type": "coin",
+      "x": 896,
+      "y": 128
+    },
+    {
+      "type": "du_fu",
+      "x": 992,
+      "y": 120
+    },
+    {
+      "type": "ci_li",
+      "x": 1024,
+      "y": 200
+    },
+    {
+      "type": "coin",
+      "x": 1056,
+      "y": 200
+    },
+    {
+      "type": "checkpoint",
+      "x": 1088,
+      "y": 176
+    },
+    {
+      "type": "shi_pao",
+      "x": 1120,
+      "y": 100
+    },
+    {
+      "type": "du_fu",
+      "x": 1152,
+      "y": 120
+    },
+    {
+      "type": "seed",
+      "x": 1184,
+      "y": 200,
+      "seedId": "seed_04"
+    },
+    {
+      "type": "ci_li",
+      "x": 1216,
+      "y": 200
+    },
+    {
+      "type": "gu_bao",
+      "x": 1280,
+      "y": 224,
+      "params": {
+        "phaseOffset": 265
+      }
+    },
+    {
+      "type": "shi_pao",
+      "x": 1312,
+      "y": 100
+    },
+    {
+      "type": "coin",
+      "x": 1344,
+      "y": 128
+    },
+    {
+      "type": "seed",
+      "x": 1376,
+      "y": 128,
+      "seedId": "seed_05"
+    }
+  ],
+  "props": [],
+  "checkpoints": [],
+  "goal": {
+    "type": "triumph_gate",
+    "x": 1408,
+    "y": 160,
+    "w": 32,
+    "h": 64
+  },
+  "mechanics": {
+    "glide": true
+  },
+  "beat": {
+    "enabled": true,
+    "bpm": 120,
+    "grid": 8,
+    "tracks": [
+      {
+        "target": "bp_a1",
+        "pattern": "SSGG"
+      }
+    ]
+  },
+  "beatPlatforms": [
+    {
+      "id": "bp_a1",
+      "initial": "ghost",
+      "tiles": [
+        {
+          "tx": 38,
+          "ty": 4
+        },
+        {
+          "tx": 39,
+          "ty": 4
+        },
+        {
+          "tx": 40,
+          "ty": 4
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "name": "浮空初息",
+    "theme": "astral",
+    "parTimeMs": 88000
+  },
+  "spawn": {
+    "x": 64,
+    "y": 190
+  }
+}

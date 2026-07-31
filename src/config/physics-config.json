@@ -1,5 +1,7 @@
 {
   "tile": 32,
   "gravity": 1800,
-  "maxFall": 900
+  "maxFall": 900,
+  "glideMaxFall": 140,
+  "glideActivateVy": 60
 }

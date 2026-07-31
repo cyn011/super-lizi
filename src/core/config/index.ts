@@ -25,6 +25,7 @@ import level2_3Json from '../../config/levels/2-3.json';
 import level2_4Json from '../../config/levels/2-4.json';
 import level2_5Json from '../../config/levels/2-5.json';
 import level2_6Json from '../../config/levels/2-6.json';
+import level3_1Json from '../../config/levels/3-1.json';
 
 import type { InputMapping } from '../input/input-abstraction';
 import type { LevelData } from '../level/level-data';
@@ -33,6 +34,18 @@ import type { LevelData } from '../level/level-data';
 export const TILE = physicsJson.tile as number;
 export const GRAVITY = physicsJson.gravity as number;
 export const MAX_FALL = physicsJson.maxFall as number;
+/**
+ * 羽降（glide）下落速度上限（px/s，GDD level-3-1-design §4.4）。
+ * 仅当关卡 `mechanics.glide === true` 且玩家处于下落段并持续按住跳跃键时，取代全局 MAX_FALL(900)。
+ * 初值 140 = moveSpeed(140) → 轨迹恰为 45° 斜降，玩家凭直觉可预判落点（可读性设计），
+ * 并与 3-1 的四连金币教学弧（y 步进 24px/格）斜率精确匹配。**QA 调校入口即本常量。**
+ */
+export const GLIDE_MAX_FALL = physicsJson.glideMaxFall as number;
+/**
+ * 羽降激活阈值（px/s）：仅当 vy > 此值（= 已在下落段）才钳制，保护上升段的短跳手感
+ * （短跳发生在松开沿、上升段；羽降发生在下落中的持续按住，时序不重叠，GDD §4.3 无冲突证明）。
+ */
+export const GLIDE_ACTIVATE_VY = physicsJson.glideActivateVy as number;
 
 // ---- 固定步长（ADR-005）----
 export const STEP_MS = 1000 / 60;
@@ -75,6 +88,7 @@ export const levels: Record<string, LevelData> = {
   '2-4': level2_4Json as LevelData,
   '2-5': level2_5Json as LevelData,
   '2-6': level2_6Json as LevelData,
+  '3-1': level3_1Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
 export const LEVEL_ORDER: string[] = [
@@ -90,9 +104,12 @@ export const LEVEL_ORDER: string[] = [
   '2-3',
   '2-4',
   '2-5',
-  // 2-6 当前为第二章终章（第三章尚未开发）。作为 LEVEL_ORDER 最后一个元素，
-  // 使 nextLevelId('2-6') 返回 null → 结算页隐藏「下一关」。将来建 3-1 时插到 '2-6' 之后。
+  // 2-6 为第二章终章；3-1 起进入第三章（星界 astral + 新机制羽降 glide）。
   '2-6',
+  // 3-1《浮空初息》= 第三章开篇，当前为 LEVEL_ORDER **最后一个元素**：
+  // 使 nextLevelId('2-6')==='3-1'、nextLevelId('3-1')===null → 结算页对 3-1 隐藏「下一关」。
+  // 将来建 3-2 时插到 '3-1' 之后（并同步更新各 loader 测试里硬编码的 LEVEL_ORDER 期望数组）。
+  '3-1',
 ];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----

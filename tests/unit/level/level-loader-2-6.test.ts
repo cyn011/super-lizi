@@ -97,13 +97,14 @@ describe('2-6 熔心终焉关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（2-6 为当前终章 → null，结算页隐藏「下一关」）', () => {
-  it('LEVEL_ORDER 末关为 2-6；nextLevelId("2-5") === "2-6"，("2-6") === null', () => {
+describe('nextLevelId 进度链（2-6 为第二章终章，续接第三章开篇 3-1）', () => {
+  it('LEVEL_ORDER 含 2-6 且位于 2-5 之后；nextLevelId("2-5") === "2-6"，("2-6") === "3-1"', () => {
     expect(LEVEL_ORDER).toContain('2-6');
     expect(LEVEL_ORDER.indexOf('2-5')).toBeLessThan(LEVEL_ORDER.indexOf('2-6'));
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('2-6');
+    expect(LEVEL_ORDER.indexOf('2-6')).toBeLessThan(LEVEL_ORDER.indexOf('3-1'));
     expect(nextLevelId(LEVEL_ORDER, '2-5')).toBe('2-6');
-    expect(nextLevelId(LEVEL_ORDER, '2-6')).toBeNull();
+    // 3-1《浮空初息》上线后，2-6 不再是末关（末关断言迁至 level-loader-3-1.test.ts）。
+    expect(nextLevelId(LEVEL_ORDER, '2-6')).toBe('3-1');
   });
 });
 
