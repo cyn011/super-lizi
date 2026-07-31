@@ -18,6 +18,9 @@
  *    天空 #5BC8F5 / 暖橙 #F2933C / 暖黄 #FFD23F / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
  *  - 'silhouette'（2-4）：逆光辉廊，全锁色板内——天空 #5BC8F5（逆光基底）/ 暗蓝岩面 #254060（剪影廊柱/地形）/
  *    更深暗面 #1C2E49 / 暖黄 #FFD23F（廊灯辉光）/ 冷蓝辉光 #6E7BF2 / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
+ *  - 'volcano'（2-6 熔心终焉·第二章终章）：熔岩 biome，art/volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex——
+ *    玄武岩黑地面主面 #2A1A12（全 biome 唯一黑曜岩）/ 暗紫天空 #3F45A8（darken(#6E7BF2,0.3) tint 派生）/
+ *    熔岩橙红辉光 #F2933C / 灼热高光 #FFD23F / 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
  *
  * 未知 / 缺省 theme 回退 'grass'（fail-safe，保证旧关 / 回归稳定，art §6.1）。
  */
@@ -220,6 +223,26 @@ const SILHOUETTE: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（锁色板 #7）
 };
 
+/**
+ * 火山调色板（2-6「熔心终焉」终章，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）：
+ *   暗紫天空 #3F45A8（darken(#6E7BF2,0.3) tint 派生，bg 非 null → 由 drawLevel 平铺，锁色板 #4 派生，0 新增）/
+ *   玄武岩黑 #2A1A12（rockFace 地面主面，全 biome 唯一黑曜岩，锁色板 #1）/
+ *   rockBody #2A1A12（同 rockFace 有意复用，锁色板 #1）/ 描边 #2A1A12（锁色板 #5）/
+ *   熔岩橙红 #F2933C（firelight 裂隙辉光 + crystalGlow 熔岩辉光，锁色板 #2，同色有意复用）/
+ *   灼热高光 #FFD23F（crystalCore 平台顶缘发光边 / 凯旋之门核心，锁色板 #3）/ 警示红 #E8483B（danger，锁色板 #7）。
+ *   冷岩蓝 #4A78C0 / 蒸汽天蓝 #5BC8F5 仅在 deco / 阴影 tint 分支直接引用（锁色板 #5/#11，不进 palette 槽）。
+ */
+const VOLCANO: ThemePalette = {
+  bg: 0x3f45a8, // 暗紫天空 #3F45A8（darken(#6E7BF2,0.3) tint 派生，锁色板 #4 派生，0 新增）
+  rockFace: 0x2a1a12, // 玄武岩黑 #2A1A12（地面主面，全 biome 唯一黑曜岩，锁色板 #1）
+  rockBody: 0x2a1a12, // 玄武岩黑 #2A1A12（同 rockFace 有意复用，锁色板 #1）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #5）
+  firelight: 0xf2933c, // 熔岩橙红 #F2933C（裂隙辉光，锁色板 #2）
+  crystalCore: 0xffd23f, // 灼热高光 #FFD23F（平台顶缘发光边 / 凯旋之门核心，锁色板 #3）
+  crystalGlow: 0xf2933c, // 熔岩辉光 #F2933C（与 firelight 同源有意复用，锁色板 #2）
+  danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -241,6 +264,8 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   office: OFFICE,
   // 剪影 silhouette = 2-4「剪影回廊」专属主题（逆光辉廊 + 暗蓝剪影，锁色板内 0 新增 hex）。
   silhouette: SILHOUETTE,
+  // 火山 volcano = 2-6「熔心终焉」终章主题（熔岩 biome，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
+  volcano: VOLCANO,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

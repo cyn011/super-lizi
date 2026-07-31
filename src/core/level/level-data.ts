@@ -39,6 +39,7 @@ export type EntityDef =
  * 'mountain' = cave palette 别名（1-2 复用）；'sea' = 1-3 海主题（本批次新增）。
  * 'office' = 1-7 办公主题（批次 3，office-visual-spec §3 权威 8 槽，0 新增 hex）。
  * 'silhouette' = 2-4「剪影回廊」专属主题（逆光辉廊 + 暗蓝剪影，锁色板内 0 新增 hex）。
+ * 'volcano' = 2-6「熔心终焉」第二章终章主题（熔岩 biome，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
  */
 export type LevelTheme =
   | 'grass'
@@ -51,7 +52,8 @@ export type LevelTheme =
   | 'home'
   | 'street'
   | 'office'
-  | 'silhouette';
+  | 'silhouette'
+  | 'volcano';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =

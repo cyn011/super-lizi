@@ -24,6 +24,7 @@ import level2_2Json from '../../config/levels/2-2.json';
 import level2_3Json from '../../config/levels/2-3.json';
 import level2_4Json from '../../config/levels/2-4.json';
 import level2_5Json from '../../config/levels/2-5.json';
+import level2_6Json from '../../config/levels/2-6.json';
 
 import type { InputMapping } from '../input/input-abstraction';
 import type { LevelData } from '../level/level-data';
@@ -73,6 +74,7 @@ export const levels: Record<string, LevelData> = {
   '2-3': level2_3Json as LevelData,
   '2-4': level2_4Json as LevelData,
   '2-5': level2_5Json as LevelData,
+  '2-6': level2_6Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
 export const LEVEL_ORDER: string[] = [
@@ -88,6 +90,9 @@ export const LEVEL_ORDER: string[] = [
   '2-3',
   '2-4',
   '2-5',
+  // 2-6 当前为第二章终章（第三章尚未开发）。作为 LEVEL_ORDER 最后一个元素，
+  // 使 nextLevelId('2-6') 返回 null → 结算页隐藏「下一关」。将来建 3-1 时插到 '2-6' 之后。
+  '2-6',
 ];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----
