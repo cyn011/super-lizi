@@ -8,7 +8,8 @@
  * beat 启用 + beatPlatforms 单簇 tiles 全 ty=4（红线：严禁 ty5）、
  * **mechanics.glide === true（本关唯一 Schema 新增字段）** 且旧关缺省 = 关闭（零回归）、
  * 云海地面 ty7,8 全宽实心（公平性地板：零坠落死亡、零 soft-lock）、
- * nextLevelId 进度链（3-1 为当前末关 → null，结算页隐藏「下一关」）、biome 接线（astral 明度翻面）。
+ * nextLevelId 进度链（3-1 → 3-2 → 3-3；末关断言已随批 A 迁至 level-loader-3-3.test.ts）、
+ * biome 接线（astral 明度翻面）。
  * 零 Phaser / 零平台 API。
  */
 import { describe, it, expect } from 'vitest';
@@ -158,13 +159,16 @@ describe('3-1 浮空初息关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（3-1 为当前末关 → null，结算页隐藏「下一关」）', () => {
-  it('LEVEL_ORDER 末关为 3-1；nextLevelId("2-6") === "3-1"，("3-1") === null', () => {
+describe('nextLevelId 进度链（3-1 之后续接 3-2 / 3-3，末关为 3-3）', () => {
+  it('LEVEL_ORDER 中 2-6 → 3-1 → 3-2 → 3-3；nextLevelId("2-6") === "3-1"，("3-1") === "3-2"', () => {
     expect(LEVEL_ORDER).toContain('3-1');
     expect(LEVEL_ORDER.indexOf('2-6')).toBeLessThan(LEVEL_ORDER.indexOf('3-1'));
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-1');
+    expect(LEVEL_ORDER.indexOf('3-1')).toBeLessThan(LEVEL_ORDER.indexOf('3-2'));
+    // 末关已由 3-1 顺延至 3-3（批 A：3-2《星隙长渡》+ 3-3《鸣星回阶》落地）。
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-3');
     expect(nextLevelId(LEVEL_ORDER, '2-6')).toBe('3-1');
-    expect(nextLevelId(LEVEL_ORDER, '3-1')).toBeNull();
+    expect(nextLevelId(LEVEL_ORDER, '3-1')).toBe('3-2');
+    expect(nextLevelId(LEVEL_ORDER, '3-3')).toBeNull();
   });
 });
 

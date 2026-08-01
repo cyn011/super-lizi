@@ -26,6 +26,8 @@ import level2_4Json from '../../config/levels/2-4.json';
 import level2_5Json from '../../config/levels/2-5.json';
 import level2_6Json from '../../config/levels/2-6.json';
 import level3_1Json from '../../config/levels/3-1.json';
+import level3_2Json from '../../config/levels/3-2.json';
+import level3_3Json from '../../config/levels/3-3.json';
 
 import type { InputMapping } from '../input/input-abstraction';
 import type { LevelData } from '../level/level-data';
@@ -89,6 +91,8 @@ export const levels: Record<string, LevelData> = {
   '2-5': level2_5Json as LevelData,
   '2-6': level2_6Json as LevelData,
   '3-1': level3_1Json as LevelData,
+  '3-2': level3_2Json as LevelData,
+  '3-3': level3_3Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
 export const LEVEL_ORDER: string[] = [
@@ -106,10 +110,14 @@ export const LEVEL_ORDER: string[] = [
   '2-5',
   // 2-6 为第二章终章；3-1 起进入第三章（星界 astral + 新机制羽降 glide）。
   '2-6',
-  // 3-1《浮空初息》= 第三章开篇，当前为 LEVEL_ORDER **最后一个元素**：
-  // 使 nextLevelId('2-6')==='3-1'、nextLevelId('3-1')===null → 结算页对 3-1 隐藏「下一关」。
-  // 将来建 3-2 时插到 '3-1' 之后（并同步更新各 loader 测试里硬编码的 LEVEL_ORDER 期望数组）。
+  // 第三章（星界 astral + 羽降 glide）：3-1 开篇「浮空初息」→ 3-2 深化 A 空间轴「星隙长渡」
+  // → 3-3 深化 B 时间轴「鸣星回阶」。
   '3-1',
+  '3-2',
+  // 3-3《鸣星回阶》当前为 LEVEL_ORDER **最后一个元素**：
+  // 使 nextLevelId('3-2')==='3-3'、nextLevelId('3-3')===null → 结算页对 3-3 隐藏「下一关」。
+  // 将来建 3-4 时插到 '3-3' 之后（并同步更新各 loader 测试里硬编码的 LEVEL_ORDER 期望数组）。
+  '3-3',
 ];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----

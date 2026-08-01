@@ -82,7 +82,7 @@ describe('2-5 深渊回响关加载（注册表 + Loader）', () => {
 
 describe('nextLevelId 进度链（2-5 续接 2-6，非末关）', () => {
   it('LEVEL_ORDER 续接至 2-6；nextLevelId("2-4") === "2-5"，("2-5") === "2-6"', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '3-1']);
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '3-1', '3-2', '3-3']);
     expect(nextLevelId(LEVEL_ORDER, '2-4')).toBe('2-5');
     expect(nextLevelId(LEVEL_ORDER, '2-5')).toBe('2-6');
   });
