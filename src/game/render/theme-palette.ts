@@ -25,6 +25,10 @@
  *    **明度翻面**（全 biome 唯一亮地面 + 最暗天）：星白浮岩 #BEC4F9（lighten(#6E7BF2,0.55) tint）/
  *    墨蓝星空 #1F2244（darken(#6E7BF2,0.72) tint）/ 浮岩暗面 #6E7BF2 / 星屑暖黄 #FFD23F /
  *    星辉青 #5BC8F5（星核 + 星云辉光）/ 描边 #2A1A12 / 警示红 #E8483B；0 新增色。
+ *  - 'zenith'（3-6 星穹终启·第三章终章，仅本关）：破晓穹顶 biome，art/zenith-biome-spec.md §9.2 权威 8 槽，
+ *    锁色板内 0 新增 hex——**明度再翻面**（astral 的正片/负片）：破晓金天 #FFE695（全 biome 最亮天，tint）/
+ *    深星紫逆光岩 #373D79（tint）/ 穹壳暗面 #1F2244（tint，= astral 的 bg）/ 晨曦暖橙 #F2933C /
+ *    残星辉青 #5BC8F5（破穹之门核心）/ 破晓金 #FFD23F（顶缘亮边）/ 描边 #2A1A12 / 警示红 #E8483B。
  *
 
  * 未知 / 缺省 theme 回退 'grass'（fail-safe，保证旧关 / 回归稳定，art §6.1）。
@@ -275,6 +279,35 @@ const ASTRAL: ThemePalette = {
   danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
 };
 
+/**
+ * 破晓穹顶调色板（3-6「星穹终启」第三章终章，art/zenith-biome-spec.md §9.2 权威 8 槽，锁色板内 0 新增 hex）：
+ *   本 biome 是 astral 的**明度再翻面**——astral 是「亮地 + 最暗天」，zenith 是「**最亮天** + 暗地」，
+ *   两者构成正片 / 负片级的缩略图差异，也是锁色板内最后一个空明度象限：
+ *   破晓金天 #FFE695（bg，lighten(#FFD23F,0.45) tint 派生，**全 biome 最亮天**，0 新增）/
+ *   深星紫逆光岩 #373D79（rockFace 地面主面，darken(#6E7BF2,0.5) tint 派生，**签名色 / 识别锚点**，0 新增）/
+ *   穹壳暗面 #1F2244（rockBody，darken(#6E7BF2,0.72) tint 派生 = astral 的 bg，明度再翻面，0 新增）/
+ *   描边 #2A1A12（锁色板 #1）/ 晨曦暖橙 #F2933C（firelight 云海暖缘 / 暖尘 / 地平霭，锁色板 #2）/
+ *   残星辉青 #5BC8F5（crystalCore **破穹之门核心** / 残余星辉 / ghost 边，锁色板 #6）/
+ *   破晓金 #FFD23F（crystalGlow 顶缘破晓亮边 / 光柱 / 可踩窗口环，锁色板 #3）/
+ *   警示红 #E8483B（danger 危险双编码，锁色板 #7）。
+ *   ⚠️ 可站立信号相对 astral **再次反转**：astral = 亮岩 + 暗顶缘；zenith = 暗岩 + **亮顶缘**（crystalGlow），
+ *      与 volcano 同向（属渲染分支职责，不进 palette 槽）。
+ *   ⚠️ 破晓逆光可读性（spec A5）：敌体在破晓金天前须暗体 + 2px outline 描边；Tier-1 下 shi_pao 仅 1.08:1
+ *      （3-6 恰是 shi_pao×5 的全项目火力峰）→ 敌人 zenith 换皮为 Tier-2 高优先项，**不阻断出包**，
+ *      属 enemy-view.ts 职责，本批不改（批 C 只做纯数据 + 注册）。
+ *   ⚠️ crystalGlow=#FFD23F / firelight=#F2933C 为 spec §10 的两处槽位偏离（art-director 推荐案），主理人已确认。
+ */
+const ZENITH: ThemePalette = {
+  bg: 0xffe695, // 破晓金天 #FFE695（lighten(#FFD23F,0.45) tint 派生，全 biome 最亮天，0 新增）
+  rockFace: 0x373d79, // 深星紫逆光岩 #373D79（darken(#6E7BF2,0.5) tint 派生，签名色，0 新增）
+  rockBody: 0x1f2244, // 穹壳暗面 #1F2244（darken(#6E7BF2,0.72) tint 派生 = astral.bg，0 新增）
+  outline: 0x2a1a12, // 描边 #2A1A12（锁色板 #1）
+  firelight: 0xf2933c, // 晨曦暖橙 #F2933C（云海暖缘 / 暖尘 / 地平霭，锁色板 #2）
+  crystalCore: 0x5bc8f5, // 残星辉青 #5BC8F5（破穹之门核心 / 残余星辉，锁色板 #6）
+  crystalGlow: 0xffd23f, // 破晓金 #FFD23F（顶缘破晓亮边 / 光柱，锁色板 #3）
+  danger: 0xe8483b, // 警示红 #E8483B（危险双编码，锁色板 #7）
+};
+
 /** 调色板注册表（art §6.2 契约：THEME_PALETTES[theme]）。 */
 export const THEME_PALETTES: Record<string, ThemePalette> = {
   grass: GRASS,
@@ -301,6 +334,9 @@ export const THEME_PALETTES: Record<string, ThemePalette> = {
   // 星界 astral = 3-1「浮空初息」第三章开篇主题（astral-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
   // 全 biome 唯一「地比天亮」的明度翻面构图：星白浮岩 #BEC4F9 + 墨蓝星空 #1F2244（对比 ≈10:1）。
   astral: ASTRAL,
+  // 破晓穹顶 zenith = 3-6「星穹终启」第三章终章主题（zenith-biome-spec.md §9.2 权威 8 槽，锁色板内 0 新增 hex）。
+  // 相对 astral 的明度再翻面：破晓金天 #FFE695（全 biome 最亮天）+ 深星紫逆光岩 #373D79。**仅 3-6 使用。**
+  zenith: ZENITH,
 };
 
 /** 由 theme 字符串解析调色板（未知 / 缺省回退草原，fail-safe）。 */

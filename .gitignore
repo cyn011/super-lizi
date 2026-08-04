@@ -4,6 +4,9 @@ node_modules/
 # Build outputs
 dist/
 dist-wechat/
+dist */
+super-lizi-wechat.zip
+vite.config.ts.timestamp-*.mjs
 
 # WorkBuddy session artifacts
 .workbuddy/

@@ -213,13 +213,14 @@ describe('3-5 凌霄绝息关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（3-5 为当前末关 → null，结算页隐藏「下一关」）', () => {
-  it('LEVEL_ORDER 末关为 3-5；nextLevelId("3-4") === "3-5"，("3-5") === null', () => {
+describe('nextLevelId 进度链（3-5 续接 3-6《星穹终启》；3-6 为当前末关 → null）', () => {
+  it('LEVEL_ORDER 末关为 3-6；nextLevelId("3-4") === "3-5"，("3-5") === "3-6"，("3-6") === null', () => {
     expect(LEVEL_ORDER).toContain('3-5');
     expect(LEVEL_ORDER.indexOf('3-4')).toBeLessThan(LEVEL_ORDER.indexOf('3-5'));
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-5');
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-6');
     expect(nextLevelId(LEVEL_ORDER, '3-4')).toBe('3-5');
-    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBeNull();
+    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBe('3-6');
+    expect(nextLevelId(LEVEL_ORDER, '3-6')).toBeNull();
   });
 });
 

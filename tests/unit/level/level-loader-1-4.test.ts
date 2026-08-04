@@ -143,7 +143,7 @@ describe('1-4 沙漠卡加载（注册表 + Loader）', () => {
 
 describe('进度链（1-1 → 1-2 → 1-3 → 1-4 → 1-5 → 1-6 → 1-7 → 2-1）', () => {
   it('LEVEL_ORDER 含 1-4 且位于 1-3 之后、2-1 之前；nextLevelId("1-4") === "2-1"', () => {
-    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '3-1', '3-2', '3-3', '3-4', '3-5']);
+    expect(LEVEL_ORDER).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '3-1', '3-2', '3-3', '3-4', '3-5', '3-6']);
     expect(nextLevelId(LEVEL_ORDER, '1-4')).toBe('1-5');
     expect(nextLevelId(LEVEL_ORDER, '1-5')).toBe('1-6');
     expect(nextLevelId(LEVEL_ORDER, '1-6')).toBe('1-7');

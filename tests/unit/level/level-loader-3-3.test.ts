@@ -183,16 +183,16 @@ describe('3-3 鸣星回阶关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（3-3 续接 3-4；末关已随批 B 顺延至 3-5）', () => {
-  it('LEVEL_ORDER 末关为 3-5；nextLevelId("3-2") === "3-3"，("3-3") === "3-4"', () => {
+describe('nextLevelId 进度链（3-3 续接 3-4；末关已随批 B/C 顺延至 3-6）', () => {
+  it('LEVEL_ORDER 末关为 3-6；nextLevelId("3-2") === "3-3"，("3-3") === "3-4"', () => {
     expect(LEVEL_ORDER).toContain('3-3');
     expect(LEVEL_ORDER.indexOf('3-2')).toBeLessThan(LEVEL_ORDER.indexOf('3-3'));
     expect(LEVEL_ORDER.indexOf('3-3')).toBeLessThan(LEVEL_ORDER.indexOf('3-4'));
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-5');
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-6');
     expect(nextLevelId(LEVEL_ORDER, '3-2')).toBe('3-3');
-    // 批 B 前 3-3 为末关（null）；3-4《陨雨回廊》落地后进度链继续。
+    // 批 B 前 3-3 为末关（null）；3-4《陨雨回廊》/ 3-5《凌霄绝息》/ 3-6《星穹终启》落地后进度链继续。
     expect(nextLevelId(LEVEL_ORDER, '3-3')).toBe('3-4');
-    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBeNull();
+    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBe('3-6');
   });
 });
 

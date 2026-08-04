@@ -42,6 +42,9 @@ export type EntityDef =
  * 'volcano' = 2-6「熔心终焉」第二章终章主题（熔岩 biome，volcano-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex）。
  * 'astral' = 3-1「浮空初息」第三章开篇主题（星界 biome，astral-biome-spec.md §1.2 权威 8 槽，锁色板内 0 新增 hex；
  *            全 biome 唯一「明度翻面」：星白浮岩亮地面 #BEC4F9 + 墨蓝星空 #1F2244）。
+ * 'zenith' = 3-6「星穹终启」第三章终章主题（破晓穹顶 biome，zenith-biome-spec.md §9.1/§9.2 权威 8 槽，
+ *            锁色板内 0 新增 hex；**仅 3-6 使用**。相对 astral 的**明度再翻面**：破晓金天 #FFE695（全 biome 最亮天）
+ *            + 深星紫逆光岩 #373D79，与 astral 构成「正片 / 负片」级的缩略图差异）。
  */
 export type LevelTheme =
   | 'grass'
@@ -56,7 +59,8 @@ export type LevelTheme =
   | 'office'
   | 'silhouette'
   | 'volcano'
-  | 'astral';
+  | 'astral'
+  | 'zenith';
 
 /** S04-1/S04-2 敌人实体 schema（E3.S1/S2）：可由关卡 JSON 生成真实敌人（替代 C3 占位刺栗）。 */
 export type EnemyEntityType =

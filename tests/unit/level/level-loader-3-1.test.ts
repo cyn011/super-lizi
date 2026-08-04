@@ -159,17 +159,17 @@ describe('3-1 浮空初息关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（3-1 之后续接 3-2 / 3-3 / 3-4 / 3-5，末关为 3-5）', () => {
+describe('nextLevelId 进度链（3-1 之后续接 3-2 / 3-3 / 3-4 / 3-5 / 3-6，末关为 3-6）', () => {
   it('LEVEL_ORDER 中 2-6 → 3-1 → 3-2 → 3-3；nextLevelId("2-6") === "3-1"，("3-1") === "3-2"', () => {
     expect(LEVEL_ORDER).toContain('3-1');
     expect(LEVEL_ORDER.indexOf('2-6')).toBeLessThan(LEVEL_ORDER.indexOf('3-1'));
     expect(LEVEL_ORDER.indexOf('3-1')).toBeLessThan(LEVEL_ORDER.indexOf('3-2'));
-    // 末关已由 3-3 顺延至 3-5（批 B：3-4《陨雨回廊》+ 3-5《凌霄绝息》落地）。
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-5');
+    // 末关已由 3-3 顺延至 3-6（批 B：3-4《陨雨回廊》+ 3-5《凌霄绝息》；批 C：3-6《星穹终启》落地）。
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-6');
     expect(nextLevelId(LEVEL_ORDER, '2-6')).toBe('3-1');
     expect(nextLevelId(LEVEL_ORDER, '3-1')).toBe('3-2');
     expect(nextLevelId(LEVEL_ORDER, '3-3')).toBe('3-4');
-    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBeNull();
+    expect(nextLevelId(LEVEL_ORDER, '3-5')).toBe('3-6');
   });
 });
 
