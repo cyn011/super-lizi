@@ -10,6 +10,7 @@
  */
 import type Phaser from 'phaser';
 import type { EnemyAI } from '../../core/enemy/enemy-ai';
+import type { LevelTheme } from '../../core/level/level-data';
 import { drawCyclone } from './cyclone-view';
 
 const CI_LI_COLOR = 0xe8483b; // 警示红（ci_li）
@@ -22,11 +23,37 @@ const OUTLINE = 0x2a1a12; // 近黑棕描边
 const VINE_GREEN = 0x7cc242; // 草绿（弹藤藤体，锁色板 #1）
 const VINE_HIGHLIGHT = 0xffd23f; // 暖黄（弹藤高光环，友好辅助提示，锁色板 #4）
 
-/** 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。 */
+/**
+ * zenith（破晓穹顶，3-6）专用换皮配色（art/zenith-biome-spec.md §A5.2 逐敌处理表）。
+ * 全部取自 11 色锁色板或其既有 tint 派生，**0 新增 hex**：
+ *   #373D79 = darken(#6E7BF2,0.5)（深星紫，theme-palette ZENITH.rockFace 同值）；
+ *   #BDE9FB = lighten(#5BC8F5,0.6)（星云雾，astral-biome-spec §A5 已定义的 du_fu 翅膜色）。
+ *
+ * 总原则（§A5 三管齐下）：① 体色压暗至 #373D79（对破晓金天 8.06:1）；
+ * ② 上缘 1px #FFD23F 破晓 rim（对暗岩 6.90:1，解决「暗体掠过暗岩又糊」）；
+ * ③ 描边由全局 1px **加倍至 2px** #2A1A12（对天 13.56:1）。形状 + 明度双编码，不依赖色相，色盲安全。
+ *
+ * ⚠️ 这些常量**只在 zenith 分支内消费**；非 zenith 路径继续走上方原有常量，逐值不变。
+ */
+const ZEN_BODY_DARK = 0x373d79; // 深星紫暗体（vs 破晓金天 8.06:1）
+const ZEN_RIM = 0xffd23f; // 破晓金上缘 rim（vs 暗岩 6.90:1）
+const ZEN_STROKE_W = 2; // 描边加倍 2px（§A5.3 规则 1）
+const ZEN_DANGER = 0xe8483b; // 警示红（危险语义全局不变，§A5.3 规则 4）
+const ZEN_ACCENT = 0x5bc8f5; // 残星辉青（脉纹 / 炮口；仅用于暗体之上，§A5.3 规则 3）
+const ZEN_TRAIL = 0xf2933c; // 晨曦暖橙（ci_li 拖尾纹，增独特性）
+const ZEN_WING = 0xbde9fb; // 星云雾翅膜（du_fu，半透；同 astral §A5）
+
+/**
+ * 在世界坐标 Graphics 上绘制一个敌人（已消灭则跳过）。
+ *
+ * @param theme 关卡主题（`runtime.data.metadata.theme`）。仅 'zenith' 走 §A5.2 换皮分支；
+ *              其余全部 theme（含 undefined 缺省）走**完全原样**的现有代码路径，逐值零回归。
+ */
 export function drawEnemy(
   g: Phaser.GameObjects.Graphics,
   e: EnemyAI,
   reduceMotion = false,
+  theme?: LevelTheme,
 ): void {
   if (e.dead) return; // 已消灭不绘制
   if (e.type === 'bouncy_vine') {
@@ -34,11 +61,12 @@ export function drawEnemy(
     return;
   }
   if (e.type === 'cyclone') {
-    drawCyclone(g, e); // 气旋：半透明上升气流柱（纯辅助力场）
+    drawCyclone(g, e, theme, reduceMotion); // 气旋：半透明上升气流柱（zenith 走逆光暗管）
     return;
   }
   if (e.type === 'gu_bao') {
-    drawGuBao(g, e); // 鼓苞：地生苞 + 尖刺（危险）/ 软顶（可踩）
+    if (theme === 'zenith') drawGuBaoZenith(g, e);
+    else drawGuBao(g, e); // 鼓苞：地生苞 + 尖刺（危险）/ 软顶（可踩）
     return;
   }
   if (e.type === 'du_fu_silhouette') {
@@ -82,6 +110,16 @@ export function drawEnemy(
     return;
   }
   const b = e.getBounds();
+
+  // ── zenith 分支（§A5.2）：ci_li / du_fu / shi_pao 换皮。chong_feng 不在 3-6 出场，不做分支。
+  if (theme === 'zenith') {
+    if (e.type === 'shi_pao') drawShiPaoZenith(g, b, e);
+    else if (e.type === 'du_fu') drawDuFuZenith(g, b);
+    else if (e.type === 'ci_li') drawCiLiZenith(g, b);
+    else drawStompable(g, b, CHONG_FENG_COLOR); // 兜底：非 3-6 敌种走原样式
+    return;
+  }
+
   const color =
     e.type === 'ci_li'
       ? CI_LI_COLOR
@@ -98,6 +136,180 @@ export function drawEnemy(
   } else {
     drawStompable(g, b, color); // ci_li / du_fu：软顶圆角 + 双编码眼睛
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// zenith（破晓穹顶）换皮实现 —— art/zenith-biome-spec.md §A5.2 逐行落地。
+// 仅由 theme === 'zenith' 进入；所有非 zenith 关卡不触及本区任何代码。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 上缘 1px #FFD23F 破晓 rim（逆光轮廓光，把暗体从暗岩前景「拉」出来；§A5.3 规则 2）。 */
+function zenRim(
+  g: Phaser.GameObjects.Graphics,
+  b: { x: number; y: number; w: number; h: number },
+  inset = 0,
+): void {
+  g.lineStyle(1, ZEN_RIM, 1);
+  g.lineBetween(b.x + inset, b.y, b.x + b.w - inset, b.y);
+}
+
+/**
+ * shi_pao 穹炮（§A5.2 第 1 行）：石身 #F4EFE6 → #373D79（顺带在本分支内清掉 #F4EFE6/#8A8276 两个越界色）；
+ * 上缘 1px #FFD23F rim；炮口 #5BC8F5 + 缘 #E8483B；描边 2px。
+ * ⚠️ 越界色只在 zenith 分支内清理 —— 非 zenith 路径的 SHI_PAO_COLOR/SHI_PAO_MUZZLE 保持原样（全局整改为独立议题）。
+ */
+function drawShiPaoZenith(
+  g: Phaser.GameObjects.Graphics,
+  b: { x: number; y: number; w: number; h: number },
+  e: EnemyAI,
+): void {
+  // 炮身（方顶硬棱 = 不可踩形状语言不变）：暗体 + 2px 描边
+  g.fillStyle(ZEN_BODY_DARK, 1);
+  g.fillRect(b.x, b.y, b.w, b.h);
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeRect(b.x, b.y, b.w, b.h);
+  // 上缘破晓 rim（对暗岩 6.90:1）
+  zenRim(g, b);
+
+  // 炮口：朝 aim 方向伸出小矩形（#5BC8F5 芯；按 §A5.3 规则 3 必带 #2A1A12 描边）
+  const aim = e.aim;
+  const len = Math.hypot(aim.x, aim.y) || 1;
+  const ux = aim.x / len;
+  const uy = aim.y / len;
+  const mw = 6;
+  const mh = 6;
+  const mx = b.x + b.w / 2 + ux * (b.w / 2) - mw / 2;
+  const my = b.y + b.h / 2 + uy * (b.h / 2) - mh / 2;
+  g.fillStyle(ZEN_ACCENT, 1);
+  g.fillRect(mx, my, mw, mh);
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeRect(mx, my, mw, mh);
+  // 炮口缘（警示红，危险双编码 + 对金天 3.14:1 自持）
+  g.lineStyle(ZEN_STROKE_W, ZEN_DANGER, 1);
+  g.lineBetween(mx + ux * mw, my + uy * mh, mx + mw - ux * mw, my + mh - uy * mh);
+
+  // 开火闪光（仅视觉，危险语义色全局不变）
+  if (e.flash > 0) {
+    g.fillStyle(ZEN_DANGER, 0.9);
+    g.fillCircle(b.x + b.w / 2 + ux * (b.w / 2 + 4), b.y + b.h / 2 + uy * (b.h / 2 + 4), 4);
+  }
+  // 双编码眼睛（暗体上改用破晓金，保证在 #373D79 上仍可读；vs 暗体 6.90:1）
+  g.fillStyle(ZEN_RIM, 1);
+  g.fillCircle(b.x + b.w * 0.36, b.y + b.h * 0.4, 2);
+  g.fillCircle(b.x + b.w * 0.64, b.y + b.h * 0.4, 2);
+}
+
+/**
+ * gu_bao 曙苞（§A5.2 第 2 行）：苞体 #F2933C → #373D79；上缘 1px #FFD23F rim；脉纹 #5BC8F5；
+ * 顶刺 #E8483B；软顶 #FFD23F 环（vs 暗苞体 6.90:1，可踩窗口比 astral 更醒目）；描边 2px。
+ */
+function drawGuBaoZenith(g: Phaser.GameObjects.Graphics, e: EnemyAI): void {
+  const b = e.getBounds();
+  if (b.h <= 0.5) return; // DORMANT：地下不可见（盒高≈0）
+  const radii = { tl: b.w / 2, tr: b.w / 2, bl: 2, br: 2 };
+  // 苞体（暗体 + 2px 描边）
+  g.fillStyle(ZEN_BODY_DARK, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, radii);
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, radii);
+  // 脉纹（青，落在暗苞体上 8.03:1；仅装饰，不承载识别）
+  g.lineStyle(1, ZEN_ACCENT, 0.8);
+  g.lineBetween(b.x + b.w * 0.5, b.y + b.h * 0.25, b.x + b.w * 0.5, b.y + b.h * 0.85);
+  g.lineBetween(b.x + b.w * 0.3, b.y + b.h * 0.45, b.x + b.w * 0.3, b.y + b.h * 0.85);
+  g.lineBetween(b.x + b.w * 0.7, b.y + b.h * 0.45, b.x + b.w * 0.7, b.y + b.h * 0.85);
+  // 上缘破晓 rim（§A5.2 gu_bao 行：全状态恒有；后续尖刺 / 软顶环覆盖其上，不冲突）
+  zenRim(g, b, 2);
+
+  const state = e.guBaoPhaseState;
+  const cx = b.x + b.w / 2;
+  if (state === 'EMERGING' || state === 'ACTIVE') {
+    // 警示红尖刺顶（危险双编码，形状语言不变）：三枚三角 + 2px 描边
+    g.fillStyle(ZEN_DANGER, 1);
+    const half = b.w / 2;
+    const sh = Math.max(3, b.w * 0.45);
+    const mid = b.y - sh;
+    g.fillTriangle(b.x, b.y, b.x + half * 0.6, b.y, cx, mid);
+    g.fillTriangle(b.x + half * 0.4, b.y, b.x + b.w - half * 0.4, b.y, cx, mid);
+    g.fillTriangle(b.x + b.w - half * 0.6, b.y, b.x + b.w, b.y, cx, mid);
+    g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+    g.strokeTriangle(b.x, b.y, b.x + half * 0.6, b.y, cx, mid);
+    g.strokeTriangle(b.x + b.w - half * 0.6, b.y, b.x + b.w, b.y, cx, mid);
+  } else if (state === 'RETRACTING') {
+    // 软顶：破晓金高光环（可踩提示，vs 暗苞体 6.90:1），尖刺收起
+    g.fillStyle(ZEN_RIM, 1);
+    const topH = Math.max(3, b.h * 0.28);
+    g.fillRoundedRect(b.x + 2, b.y, b.w - 4, topH, { tl: b.w / 3, tr: b.w / 3, bl: 0, br: 0 });
+  }
+}
+
+/**
+ * ci_li 陨星体（§A5.2 第 3 行）：主体 #E8483B → #373D79（一致性提升，Tier-1 的 3.14:1 本已达标）；
+ * #F2933C 拖尾纹增独特性；上缘 1px #FFD23F rim；描边 2px。
+ * ⚠️ 「刺保持 #E8483B」= 保持现状 —— ci_li 是**可踩**敌（isStompable），现有占位为「软顶圆角·无刺」
+ *    （见本文件头部形状契约）。尖角是全项目保留给「不可踩·危险」的形状编码（§A5.3 规则 4 功能语义全局不变），
+ *    故 zenith 不为可踩敌新增尖刺，避免误导玩家「不可踩」。
+ */
+function drawCiLiZenith(
+  g: Phaser.GameObjects.Graphics,
+  b: { x: number; y: number; w: number; h: number },
+): void {
+  const topR = b.h / 2;
+  const radii = { tl: topR, tr: topR, bl: 4, br: 4 }; // 软顶圆角（可踩形状语言不变）
+  g.fillStyle(ZEN_BODY_DARK, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, radii);
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, radii);
+  // 拖尾纹（暖橙，落在暗体上；陨星体身份线索，与 du_fu 区分）
+  g.lineStyle(1, ZEN_TRAIL, 0.9);
+  g.lineBetween(b.x + b.w * 0.12, b.y + b.h * 0.72, b.x + b.w * 0.42, b.y + b.h * 0.72);
+  g.lineBetween(b.x + b.w * 0.2, b.y + b.h * 0.88, b.x + b.w * 0.5, b.y + b.h * 0.88);
+  // 上缘破晓 rim
+  zenRim(g, b, 3);
+  // 双编码眼睛（破晓金，vs 暗体 6.90:1）
+  g.fillStyle(ZEN_RIM, 1);
+  const eyeY = b.y + b.h * 0.42;
+  g.fillCircle(b.x + b.w * 0.36, eyeY, 2);
+  g.fillCircle(b.x + b.w * 0.64, eyeY, 2);
+}
+
+/**
+ * du_fu 曙精灵（§A5.2 第 4 行）：主体**保持 #6E7BF2**（跨关身份不动）；描边加倍至 2px #2A1A12；
+ * 肚斑 #373D79（同 astral §A5）；翅膜 #BDE9FB 半透。
+ * 翅尖朝上 —— 与 du_fu_silhouette 的「反向翅（朝下）」保持既有区分契约（见本文件 drawSilhouette 注释）。
+ */
+function drawDuFuZenith(
+  g: Phaser.GameObjects.Graphics,
+  b: { x: number; y: number; w: number; h: number },
+): void {
+  const cx = b.x + b.w / 2;
+  // 翅膜（星云雾半透，翅尖朝上；先画，被主体压住内缘）
+  const wingBaseY = b.y + b.h * 0.5;
+  const wingTipY = b.y - b.h * 0.45;
+  g.fillStyle(ZEN_WING, 0.55);
+  g.fillTriangle(b.x, wingBaseY, b.x, b.y + b.h * 0.15, cx - b.w * 0.12, wingTipY);
+  g.fillTriangle(b.x + b.w, wingBaseY, b.x + b.w, b.y + b.h * 0.15, cx + b.w * 0.12, wingTipY);
+  // 翅膜同样走 2px 描边：翅是剪影的一部分，亮天前须与主体同口径（§A5.3 规则 1）
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeTriangle(b.x, wingBaseY, b.x, b.y + b.h * 0.15, cx - b.w * 0.12, wingTipY);
+  g.strokeTriangle(b.x + b.w, wingBaseY, b.x + b.w, b.y + b.h * 0.15, cx + b.w * 0.12, wingTipY);
+
+  // 主体（蓝紫身份色不动）+ 2px 描边（临界 2.94:1 靠描边 13.56:1 兜底）
+  const topR = b.h / 2;
+  const radii = { tl: topR, tr: topR, bl: 4, br: 4 };
+  g.fillStyle(DU_FU_COLOR, 1);
+  g.fillRoundedRect(b.x, b.y, b.w, b.h, radii);
+  g.lineStyle(ZEN_STROKE_W, OUTLINE, 1);
+  g.strokeRoundedRect(b.x, b.y, b.w, b.h, radii);
+  // 肚斑（深星紫暗斑，亮天下给主体一块暗锚点；同 astral §A5）
+  g.fillStyle(ZEN_BODY_DARK, 1);
+  g.fillEllipse(cx, b.y + b.h * 0.68, b.w * 0.5, b.h * 0.42);
+  // 上缘破晓 rim
+  zenRim(g, b, 4);
+  // 双编码眼睛（描边色，落在蓝紫主体上，与非 zenith 一致）
+  g.fillStyle(OUTLINE, 1);
+  const eyeY = b.y + b.h * 0.42;
+  g.fillCircle(b.x + b.w * 0.36, eyeY, 2);
+  g.fillCircle(b.x + b.w * 0.64, eyeY, 2);
 }
 
 /**

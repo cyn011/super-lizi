@@ -1,0 +1,869 @@
+{
+  "cyclone_idle": {
+    "styles": [
+      "fill:0x5bc8f5@0.280",
+      "line:1px:0x2a1a12@0.500",
+      "fill:0x6e7bf2@0.220",
+      "fill:0x6e7bf2@0.160",
+      "fill:0xffd23f@0.600"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          6015221,
+          0.28
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          100,
+          200,
+          96,
+          160
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          0.5
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          100,
+          200,
+          96,
+          160
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          7240690,
+          0.22
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          138.54061861748045,
+          204,
+          48,
+          152,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          7240690,
+          0.16
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          109.45938138251955,
+          210,
+          33.599999999999994,
+          140,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          16765503,
+          0.6
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          116,
+          334.53520910529676,
+          2.2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          148,
+          281.2018757719634,
+          2.2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          180,
+          227.86854243863007,
+          2.2
+        ]
+      }
+    ]
+  },
+  "cyclone_inzone": {
+    "styles": [
+      "fill:0x5bc8f5@0.400",
+      "line:1px:0x2a1a12@0.500",
+      "fill:0x6e7bf2@0.350",
+      "fill:0x6e7bf2@0.250",
+      "fill:0xffd23f@0.900"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          6015221,
+          0.4
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          100,
+          200,
+          96,
+          160
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          0.5
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          100,
+          200,
+          96,
+          160
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          7240690,
+          0.35
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          135.67200375992388,
+          204,
+          48,
+          152,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          7240690,
+          0.25
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          112.32799624007612,
+          210,
+          33.599999999999994,
+          140,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          16765503,
+          0.9
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          116,
+          298.8845018527122,
+          2.2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          148,
+          245.55116851937885,
+          2.2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          180,
+          352.21783518604553,
+          2.2
+        ]
+      }
+    ]
+  },
+  "shi_pao": {
+    "styles": [
+      "fill:0xf4efe6@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x8a8276@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          16052198,
+          1
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          100,
+          200,
+          32,
+          32
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          100,
+          200,
+          32,
+          32
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          9077366,
+          1
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          129,
+          213,
+          6,
+          6
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          129,
+          213,
+          6,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          111.52,
+          212.8,
+          2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          120.48,
+          212.8,
+          2
+        ]
+      }
+    ]
+  },
+  "shi_pao_flash": {
+    "styles": [
+      "fill:0xf4efe6@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x8a8276@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0xe8483b@0.900",
+      "fill:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          16052198,
+          1
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          100,
+          200,
+          32,
+          32
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          100,
+          200,
+          32,
+          32
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          9077366,
+          1
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          113,
+          229,
+          6,
+          6
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          113,
+          229,
+          6,
+          6
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          15222843,
+          0.9
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          116,
+          236,
+          4
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          111.52,
+          212.8,
+          2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          120.48,
+          212.8,
+          2
+        ]
+      }
+    ]
+  },
+  "ci_li": {
+    "styles": [
+      "fill:0xe8483b@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          15222843,
+          1
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          100,
+          200,
+          32,
+          24,
+          12,
+          12,
+          4,
+          4
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRoundedRect",
+        "args": [
+          100,
+          200,
+          32,
+          24,
+          12,
+          12,
+          4,
+          4
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          111.52,
+          210.08,
+          2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          120.48,
+          210.08,
+          2
+        ]
+      }
+    ]
+  },
+  "du_fu": {
+    "styles": [
+      "fill:0x6e7bf2@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          7240690,
+          1
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          100,
+          200,
+          32,
+          24,
+          12,
+          12,
+          4,
+          4
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRoundedRect",
+        "args": [
+          100,
+          200,
+          32,
+          24,
+          12,
+          12,
+          4,
+          4
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          111.52,
+          210.08,
+          2
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          120.48,
+          210.08,
+          2
+        ]
+      }
+    ]
+  },
+  "gu_bao_active": {
+    "styles": [
+      "fill:0xf2933c@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0xe8483b@1.000",
+      "line:1px:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          15897404,
+          1
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          100,
+          200,
+          28,
+          40,
+          14,
+          14,
+          2,
+          2
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRoundedRect",
+        "args": [
+          100,
+          200,
+          28,
+          40,
+          14,
+          14,
+          2,
+          2
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          15222843,
+          1
+        ]
+      },
+      {
+        "method": "fillTriangle",
+        "args": [
+          100,
+          200,
+          108.4,
+          200,
+          114,
+          187.4
+        ]
+      },
+      {
+        "method": "fillTriangle",
+        "args": [
+          105.6,
+          200,
+          122.4,
+          200,
+          114,
+          187.4
+        ]
+      },
+      {
+        "method": "fillTriangle",
+        "args": [
+          119.6,
+          200,
+          128,
+          200,
+          114,
+          187.4
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeTriangle",
+        "args": [
+          100,
+          200,
+          108.4,
+          200,
+          114,
+          187.4
+        ]
+      },
+      {
+        "method": "strokeTriangle",
+        "args": [
+          119.6,
+          200,
+          128,
+          200,
+          114,
+          187.4
+        ]
+      }
+    ]
+  },
+  "gu_bao_retracting": {
+    "styles": [
+      "fill:0xf2933c@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0xffd23f@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          15897404,
+          1
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          100,
+          200,
+          28,
+          40,
+          14,
+          14,
+          2,
+          2
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRoundedRect",
+        "args": [
+          100,
+          200,
+          28,
+          40,
+          14,
+          14,
+          2,
+          2
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          16765503,
+          1
+        ]
+      },
+      {
+        "method": "fillRoundedRect",
+        "args": [
+          102,
+          200,
+          24,
+          11.200000000000001,
+          9.333333333333334,
+          9.333333333333334,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  "chong_feng": {
+    "styles": [
+      "fill:0xe8483b@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0xe8483b@1.000",
+      "line:1px:0x2a1a12@1.000",
+      "fill:0x2a1a12@1.000"
+    ],
+    "calls": [
+      {
+        "method": "fillStyle",
+        "args": [
+          15222843,
+          1
+        ]
+      },
+      {
+        "method": "fillRect",
+        "args": [
+          100,
+          200,
+          32,
+          24
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeRect",
+        "args": [
+          100,
+          200,
+          32,
+          24
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          15222843,
+          1
+        ]
+      },
+      {
+        "method": "fillTriangle",
+        "args": [
+          132,
+          204,
+          132,
+          220,
+          137,
+          212
+        ]
+      },
+      {
+        "method": "lineStyle",
+        "args": [
+          1,
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "strokeTriangle",
+        "args": [
+          132,
+          204,
+          132,
+          220,
+          137,
+          212
+        ]
+      },
+      {
+        "method": "fillStyle",
+        "args": [
+          2759186,
+          1
+        ]
+      },
+      {
+        "method": "fillCircle",
+        "args": [
+          119.84,
+          209.6,
+          2
+        ]
+      }
+    ]
+  }
+}

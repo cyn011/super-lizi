@@ -4128,15 +4128,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     // S04-1：每帧重绘敌人（位置由 stepSim 更新，世界坐标随相机偏移）。
+    // theme 透传：仅 'zenith'（3-6 破晓穹顶亮天）触发 zenith-biome-spec §A5.2 暗体换皮，
+    // 其余全部 biome（含 2-3 storm_sky 的 cyclone）走完全原样的现有渲染路径。
+    const enemyTheme = this.runtime.data.metadata.theme;
     if (this.enemyGfx) {
       this.enemyGfx.clear();
-      for (const e of this.enemies) drawEnemy(this.enemyGfx, e, this.reduceMotion);
+      for (const e of this.enemies) drawEnemy(this.enemyGfx, e, this.reduceMotion, enemyTheme);
     }
 
     // S04-2：每帧重绘弹丸（位置由 stepSim 积分，世界坐标随相机偏移）。
     if (this.projectileGfx) {
       this.projectileGfx.clear();
-      for (const p of this.projectiles) drawProjectile(this.projectileGfx, p);
+      for (const p of this.projectiles) drawProjectile(this.projectileGfx, p, enemyTheme);
     }
 
     this.drawSprite();
