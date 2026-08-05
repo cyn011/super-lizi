@@ -31,6 +31,7 @@ import level3_3Json from '../../config/levels/3-3.json';
 import level3_4Json from '../../config/levels/3-4.json';
 import level3_5Json from '../../config/levels/3-5.json';
 import level3_6Json from '../../config/levels/3-6.json';
+import level4_1Json from '../../config/levels/4-1.json';
 
 import type { InputMapping } from '../input/input-abstraction';
 import type { LevelData } from '../level/level-data';
@@ -102,6 +103,9 @@ export const levels: Record<string, LevelData> = {
   // ⚠️ 其 theme 必须同时存在于 level-data.ts 的 LevelTheme 与 theme-palette.ts 的 THEME_PALETTES，
   //    否则 resolveBiome() 会静默回退 grass（validateLevelData 不校验 theme 枚举）。
   '3-6': level3_6Json as LevelData,
+  // 4-1《拾掷回声》= 第四章 opener，刻意复用最老的 theme:'grass'（叙事「回响」：回到玩家
+  // 最后一次见到 chestnut 的地方，见 level-4-1-design §1.2）。纯数据落地，零引擎改动。
+  '4-1': level4_1Json as LevelData,
 };
 /** 静态关卡顺序（进度链）：决定「下一关」推导与解锁顺序，首关默认解锁。 */
 export const LEVEL_ORDER: string[] = [
@@ -127,10 +131,12 @@ export const LEVEL_ORDER: string[] = [
   '3-3',
   '3-4',
   '3-5',
-  // 3-6《星穹终启》当前为 LEVEL_ORDER **最后一个元素**：
-  // 使 nextLevelId('3-5')==='3-6'、nextLevelId('3-6')===null → 结算页对 3-6 隐藏「下一关」。
-  // 将来建 4-1 时插到 '3-6' 之后（并同步更新各 loader 测试里硬编码的 LEVEL_ORDER 期望数组）。
   '3-6',
+  // 第四章（翠野 grass 回响 + 旧动词「投」唤醒）：4-1 开篇「拾掷回声」。
+  // 4-1《拾掷回声》当前为 LEVEL_ORDER **最后一个元素**：
+  // 使 nextLevelId('3-6')==='4-1'、nextLevelId('4-1')===null → 结算页对 4-1 隐藏「下一关」。
+  // 将来建 4-2 时插到 '4-1' 之后（并同步更新各 loader 测试里硬编码的 LEVEL_ORDER 期望数组）。
+  '4-1',
 ];
 
 // ---- 输入映射（双端归一，GDD 01 §6 / E2.S2）----

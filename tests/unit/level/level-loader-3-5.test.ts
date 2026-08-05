@@ -213,14 +213,15 @@ describe('3-5 凌霄绝息关加载（注册表 + Loader）', () => {
   });
 });
 
-describe('nextLevelId 进度链（3-5 续接 3-6《星穹终启》；3-6 为当前末关 → null）', () => {
-  it('LEVEL_ORDER 末关为 3-6；nextLevelId("3-4") === "3-5"，("3-5") === "3-6"，("3-6") === null', () => {
+describe('nextLevelId 进度链（3-5 续接 3-6《星穹终启》；末关已随第四章顺延至 4-1）', () => {
+  it('LEVEL_ORDER 末关为 4-1；nextLevelId("3-4") === "3-5"，("3-5") === "3-6"，("3-6") === "4-1"', () => {
     expect(LEVEL_ORDER).toContain('3-5');
     expect(LEVEL_ORDER.indexOf('3-4')).toBeLessThan(LEVEL_ORDER.indexOf('3-5'));
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-6');
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('4-1');
     expect(nextLevelId(LEVEL_ORDER, '3-4')).toBe('3-5');
     expect(nextLevelId(LEVEL_ORDER, '3-5')).toBe('3-6');
-    expect(nextLevelId(LEVEL_ORDER, '3-6')).toBeNull();
+    // 4-1《拾掷回声》落地后 3-6 已非末关：跨章进度链 3-6 → 4-1。
+    expect(nextLevelId(LEVEL_ORDER, '3-6')).toBe('4-1');
   });
 });
 

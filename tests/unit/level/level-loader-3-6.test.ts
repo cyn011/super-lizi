@@ -12,7 +12,7 @@
  * ⚠️ **本关专属红线②**：beat 六格全 ty=4（严禁 ty5），
  * ⚠️ **本关专属红线③**：rt.enemies 含 cyclone → 长度 19、密度分子 18（不含 cyclone），
  * ⚠️ **biome 红线**：biomeForLevel(3-6).bg === 0xffe695（zenith 未注册会静默回退 grass，终章变草原）、
- * n1 必须是 tx29（反向回跳绕过相位漏洞封死）、nextLevelId 进度链（3-6 当前末关 → null）。
+ * n1 必须是 tx29（反向回跳绕过相位漏洞封死）、nextLevelId 进度链（3-6 已非末关，跨章续接 4-1）。
  * 零 Phaser / 零平台 API。
  */
 import { describe, it, expect } from 'vitest';
@@ -270,11 +270,12 @@ describe('biome 接线（zenith 破晓穹顶：明度再翻面，0 新增 hex）
   });
 });
 
-describe('nextLevelId 进度链（3-6 当前末关 → null）', () => {
-  it('LEVEL_ORDER 末关 3-6；nextLevelId("3-5")==="3-6"，("3-6")===null', () => {
+describe('nextLevelId 进度链（3-6 已非末关：跨章续接 4-1《拾掷回声》）', () => {
+  it('LEVEL_ORDER 末关 4-1；nextLevelId("3-5")==="3-6"，("3-6")==="4-1"', () => {
     expect(LEVEL_ORDER).toContain('3-6');
-    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('3-6');
+    expect(LEVEL_ORDER[LEVEL_ORDER.length - 1]).toBe('4-1');
     expect(nextLevelId(LEVEL_ORDER, '3-5')).toBe('3-6');
-    expect(nextLevelId(LEVEL_ORDER, '3-6')).toBeNull();
+    // 第四章 opener 落地 → 3-6 结算页重新出现「下一关」，末关语义移交 4-1。
+    expect(nextLevelId(LEVEL_ORDER, '3-6')).toBe('4-1');
   });
 });
